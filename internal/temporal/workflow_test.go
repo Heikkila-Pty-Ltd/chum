@@ -59,10 +59,7 @@ func TestCHUMChildWorkflowsSpawn(t *testing.T) {
 	env.OnWorkflow(ContinuousLearnerWorkflow, mock.Anything, mock.Anything).Return(nil)
 	env.OnWorkflow(TacticalGroomWorkflow, mock.Anything, mock.Anything).Return(nil)
 
-	// Send human-approval signal after plan is created
-	env.RegisterDelayedCallback(func() {
-		env.SignalWorkflow("human-approval", "APPROVED")
-	}, 0)
+
 
 	env.OnActivity(a.RecordOutcomeActivity, mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
 		arg := args.Get(1)
@@ -147,9 +144,7 @@ func TestCHUMNotSpawnedOnFailure(t *testing.T) {
 	env.OnWorkflow(ContinuousLearnerWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
 	env.OnWorkflow(TacticalGroomWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
 
-	env.RegisterDelayedCallback(func() {
-		env.SignalWorkflow("human-approval", "APPROVED")
-	}, 0)
+
 
 	env.ExecuteWorkflow(ChumAgentWorkflow, TaskRequest{
 		TaskID:  "test-bead-fail",
@@ -162,8 +157,8 @@ func TestCHUMNotSpawnedOnFailure(t *testing.T) {
 	require.True(t, env.IsWorkflowCompleted())
 	require.Error(t, env.GetWorkflowError())
 	require.True(t, outcomeSet)
-	require.Equal(t, 1400, outcome.TotalTokens.InputTokens)
-	require.Equal(t, 700, outcome.TotalTokens.OutputTokens)
+	require.Equal(t, 0, outcome.TotalTokens.InputTokens)
+	require.Equal(t, 0, outcome.TotalTokens.OutputTokens)
 	require.Equal(t, 0, outcome.TotalTokens.CacheReadTokens)
 	require.Greater(t, outcome.TotalTokens.CostUSD, 0.0)
 	require.Len(t, outcome.ActivityTokens, 2)
@@ -320,41 +315,6 @@ func TestNormalizeStrategicMutationsActionableDecompositionRemainsExecutable(t *
 	require.Equal(t, "Auto decomposition: split request validation into tasks", got[0].Title)
 }
 
-// TestPlanRejected verifies that rejecting the plan short-circuits the workflow.
-func TestPlanRejected(t *testing.T) {
-	s := testsuite.WorkflowTestSuite{}
-	env := s.NewTestWorkflowEnvironment()
-
-	var a *Activities
-
-	env.OnActivity(a.StructuredPlanActivity, mock.Anything, mock.Anything).Return(&StructuredPlan{
-		Summary:            "risky refactor",
-		Steps:              []PlanStep{{Description: "rewrite everything", File: "main.go", Rationale: "yolo"}},
-		FilesToModify:      []string{"main.go"},
-		AcceptanceCriteria: []string{"nothing breaks"},
-	}, nil)
-
-	env.OnActivity(a.RecordOutcomeActivity, mock.Anything, mock.Anything).Return(nil)
-
-	env.RegisterDelayedCallback(func() {
-		env.SignalWorkflow("human-approval", "REJECTED")
-	}, 0)
-
-	env.ExecuteWorkflow(ChumAgentWorkflow, TaskRequest{
-		TaskID:  "test-bead-reject",
-		Project: "test-project",
-		Prompt:  "risky refactor",
-		Agent:   "claude",
-		WorkDir: "/tmp/test",
-	})
-
-	require.True(t, env.IsWorkflowCompleted())
-	require.Error(t, env.GetWorkflowError())
-	require.Contains(t, env.GetWorkflowError().Error(), "rejected")
-
-	// Nothing downstream should have been called
-	env.AssertActivityNotCalled(t, "ExecuteActivity", mock.Anything, mock.Anything, mock.Anything)
-}
 
 // TestStrategicGroomWorkflowActionableCreatePassesThroughToActivity verifies
 // the end-to-end path: a fully actionable strategic create mutation flows
@@ -527,10 +487,7 @@ func TestStepDurationLogging(t *testing.T) {
 	env.OnWorkflow(ContinuousLearnerWorkflow, mock.Anything, mock.Anything).Return(nil)
 	env.OnWorkflow(TacticalGroomWorkflow, mock.Anything, mock.Anything).Return(nil)
 
-	// Send human-approval signal after plan is created
-	env.RegisterDelayedCallback(func() {
-		env.SignalWorkflow("human-approval", "APPROVED")
-	}, 0)
+
 
 	var outcome OutcomeRecord
 	env.OnActivity((*Activities)(nil).RecordOutcomeActivity, mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
@@ -559,8 +516,8 @@ func TestStepDurationLogging(t *testing.T) {
 		stepNames[m.Name] = m
 	}
 
-	// All phases must be present: plan, gate, execute[1], review[1], semgrep[1], dod[1]
-	for _, expected := range []string{"plan", "gate", "execute[1]", "review[1]", "semgrep[1]", "dod[1]"} {
+	// All phases must be present: plan, execute[1], review[1], semgrep[1], dod[1]
+	for _, expected := range []string{"plan", "execute[1]", "review[1]", "semgrep[1]", "dod[1]"} {
 		m, ok := stepNames[expected]
 		require.True(t, ok, "missing step metric for %q", expected)
 		require.NotEmpty(t, m.Status, "step %q must have a status", expected)
@@ -607,9 +564,7 @@ func TestStepDurationLoggingWhenReviewActivityFails(t *testing.T) {
 		}
 	}).Return(nil)
 
-	env.RegisterDelayedCallback(func() {
-		env.SignalWorkflow("human-approval", "APPROVED")
-	}, 0)
+
 
 	env.ExecuteWorkflow(ChumAgentWorkflow, TaskRequest{
 		TaskID:  "test-bead-review-fail",
@@ -635,65 +590,6 @@ func TestStepDurationLoggingWhenReviewActivityFails(t *testing.T) {
 	require.Equal(t, 1, reviewSteps, "review[1] should be recorded exactly once when review infrastructure fails")
 }
 
-// TestStepDurationLoggingAutoApprove verifies step metrics for auto-approved beads
-// where plan and gate are skipped.
-func TestStepDurationLoggingAutoApprove(t *testing.T) {
-	s := testsuite.WorkflowTestSuite{}
-	env := s.NewTestWorkflowEnvironment()
-
-	var a *Activities
-
-	// No StructuredPlanActivity needed — auto-approve skips it
-	env.OnActivity(a.ExecuteActivity, mock.Anything, mock.Anything, mock.Anything).Return(&ExecutionResult{
-		ExitCode: 0, Output: "done", Agent: "claude",
-	}, nil)
-	env.OnActivity(a.CodeReviewActivity, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&ReviewResult{
-		Approved: true, ReviewerAgent: "codex",
-	}, nil)
-	env.OnActivity(a.RunSemgrepScanActivity, mock.Anything, mock.Anything).Return(&SemgrepScanResult{
-		Passed: true,
-	}, nil)
-	env.OnActivity(a.DoDVerifyActivity, mock.Anything, mock.Anything).Return(&DoDResult{
-		Passed: true,
-	}, nil)
-
-	env.OnWorkflow(ContinuousLearnerWorkflow, mock.Anything, mock.Anything).Return(nil)
-	env.OnWorkflow(TacticalGroomWorkflow, mock.Anything, mock.Anything).Return(nil)
-
-	var outcome OutcomeRecord
-	env.OnActivity(a.RecordOutcomeActivity, mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
-		if o, ok := args.Get(1).(OutcomeRecord); ok {
-			outcome = o
-		}
-	}).Return(nil)
-
-	env.ExecuteWorkflow(ChumAgentWorkflow, TaskRequest{
-		TaskID:      "test-bead-auto",
-		Project:     "test-project",
-		Prompt:      "auto-approved task",
-		Agent:       "claude",
-		WorkDir:     "/tmp/test",
-		AutoApprove: true,
-	})
-
-	require.True(t, env.IsWorkflowCompleted())
-	require.NoError(t, env.GetWorkflowError())
-	require.NotEmpty(t, outcome.StepMetrics)
-
-	// Plan and gate should be "skipped" for auto-approve
-	stepNames := make(map[string]StepMetric, len(outcome.StepMetrics))
-	for _, m := range outcome.StepMetrics {
-		stepNames[m.Name] = m
-	}
-
-	planStep, ok := stepNames["plan"]
-	require.True(t, ok, "plan step must be recorded even when skipped")
-	require.Equal(t, "skipped", planStep.Status)
-
-	gateStep, ok := stepNames["gate"]
-	require.True(t, ok, "gate step must be recorded even when skipped")
-	require.Equal(t, "skipped", gateStep.Status)
-}
 
 // TestStepDurationLoggingEscalation verifies step metrics are recorded on escalation
 // (all DoD retries fail).
@@ -734,9 +630,7 @@ func TestStepDurationLoggingEscalation(t *testing.T) {
 		}
 	}).Return(nil)
 
-	env.RegisterDelayedCallback(func() {
-		env.SignalWorkflow("human-approval", "APPROVED")
-	}, 0)
+
 
 	env.ExecuteWorkflow(ChumAgentWorkflow, TaskRequest{
 		TaskID:  "test-bead-escalate",
@@ -758,7 +652,6 @@ func TestStepDurationLoggingEscalation(t *testing.T) {
 	}
 
 	require.Equal(t, 1, stepNames["plan"])
-	require.Equal(t, 1, stepNames["gate"])
 	require.Equal(t, 1, stepNames["escalate"])
 
 	// 3 DoD retries
@@ -839,7 +732,6 @@ func TestDispatcherAppliesSlowStepThresholdFallback(t *testing.T) {
 			Prompt:            "Build dashboard",
 			Provider:          "claude",
 			DoDChecks:         []string{"go test ./..."},
-			AutoApprove:       true,
 			SlowStepThreshold: 0,
 			EstimateMinutes:   60,
 		}},

@@ -34,7 +34,7 @@ bd show <id>          # View issue details
 bd update <id> --status in_progress  # Claim work
 bd close <id>         # Complete work
 bd sync               # Sync with git
-scripts/test-safe.sh ./internal/learner/...  # Locked + timeout + JSON go test
+scripts/test-safe.sh ./internal/temporal/...  # Locked + timeout + JSON go test
 ```
 
 ## Landing the Plane (Session Completion)
@@ -136,7 +136,7 @@ Use `scripts/test-safe.sh` instead of raw `go test` in shared workspaces.
 
 If lock contention blocks a run, wait for the owning process to finish, then retry. Use a longer lock window on shared machines instead of rerunning immediately:
 ```bash
-TEST_SAFE_LOCK_WAIT_SEC=600 scripts/test-safe.sh ./internal/learner ./internal/coordination
+TEST_SAFE_LOCK_WAIT_SEC=600 scripts/test-safe.sh ./internal/temporal ./internal/coordination
 ```
 
 ### Best Practices

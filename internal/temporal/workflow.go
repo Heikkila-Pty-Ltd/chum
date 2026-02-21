@@ -88,46 +88,31 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 	var a *Activities
 
 	// ===== PHASE 1: PLAN =====
-	// Execution-ready beads (AutoApprove=true) skip the LLM planning activity.
-	// CHUM beads already have acceptance criteria, design, and estimates —
-	// the bead IS the plan. "If CHUM is in the water, feed."
 	planStart := workflow.Now(ctx)
 	var plan StructuredPlan
-	if req.AutoApprove {
-		logger.Info(SharkPrefix + " Phase 1: Execution-ready bead — using bead as plan (skipping LLM)")
-		plan = StructuredPlan{
-			Summary:            req.Prompt,
-			AcceptanceCriteria: []string{"See bead acceptance criteria"},
-			Steps:              []PlanStep{{Description: req.Prompt, Rationale: "Pre-planned by CHUM"}},
-			FilesToModify:      []string{"(determined by agent at execution time)"},
-		}
-		recordStep("plan", planStart, "skipped")
-	} else {
-		logger.Info(SharkPrefix + " Phase 1: Generating structured plan via LLM")
-		planCtx := workflow.WithActivityOptions(ctx, planOpts)
+	logger.Info(SharkPrefix + " Phase 1: Generating structured plan via LLM")
+	planCtx := workflow.WithActivityOptions(ctx, planOpts)
 
-		if err := workflow.ExecuteActivity(planCtx, a.StructuredPlanActivity, req).Get(ctx, &plan); err != nil {
-			recordStep("plan", planStart, "failed")
-			return fmt.Errorf("plan generation failed: %w", err)
-		}
-		if plan.TokenUsage.InputTokens > 0 || plan.TokenUsage.OutputTokens > 0 || plan.TokenUsage.CostUSD > 0 ||
-			plan.TokenUsage.CacheReadTokens > 0 || plan.TokenUsage.CacheCreationTokens > 0 {
-			logger.Info(SharkPrefix+" Plan tokens recorded in workflow",
-				"InputTokens", plan.TokenUsage.InputTokens,
-				"OutputTokens", plan.TokenUsage.OutputTokens,
-				"CacheReadTokens", plan.TokenUsage.CacheReadTokens,
-				"CacheCreationTokens", plan.TokenUsage.CacheCreationTokens,
-				"CostUSD", plan.TokenUsage.CostUSD,
-			)
-		}
-		recordStep("plan", planStart, "ok")
+	if err := workflow.ExecuteActivity(planCtx, a.StructuredPlanActivity, req).Get(ctx, &plan); err != nil {
+		recordStep("plan", planStart, "failed")
+		return fmt.Errorf("plan generation failed: %w", err)
 	}
+	if plan.TokenUsage.InputTokens > 0 || plan.TokenUsage.OutputTokens > 0 || plan.TokenUsage.CostUSD > 0 ||
+		plan.TokenUsage.CacheReadTokens > 0 || plan.TokenUsage.CacheCreationTokens > 0 {
+		logger.Info(SharkPrefix+" Plan tokens recorded in workflow",
+			"InputTokens", plan.TokenUsage.InputTokens,
+			"OutputTokens", plan.TokenUsage.OutputTokens,
+			"CacheReadTokens", plan.TokenUsage.CacheReadTokens,
+			"CacheCreationTokens", plan.TokenUsage.CacheCreationTokens,
+			"CostUSD", plan.TokenUsage.CostUSD,
+		)
+	}
+	recordStep("plan", planStart, "ok")
 
 	logger.Info(SharkPrefix+" Plan ready",
 		"Summary", truncate(plan.Summary, 120),
 		"Steps", len(plan.Steps),
 		"Files", len(plan.FilesToModify),
-		"AutoApprove", req.AutoApprove,
 	)
 
 	// ===== PHASE 2: HUMAN GATE =====
@@ -157,24 +142,7 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 	}
 	resetAttemptTokens()
 
-	gateStart := workflow.Now(ctx)
-	if req.AutoApprove {
-		logger.Info(SharkPrefix + " Phase 2: Auto-approved (pre-planned work)")
-		recordStep("gate", gateStart, "skipped")
-	} else {
-		logger.Info(SharkPrefix + " Phase 2: Waiting for human approval")
-		signalChan := workflow.GetSignalChannel(ctx, "human-approval")
-		var signalVal string
-		signalChan.Receive(ctx, &signalVal)
-
-		if signalVal == "REJECTED" {
-			recordStep("gate", gateStart, "failed")
-			recordOutcome(ctx, recordOpts, a, req, "rejected", 0, 0, false, "Plan rejected by human", startTime,
-				totalTokens, activityTokens, stepMetrics)
-			return fmt.Errorf("plan rejected by human")
-		}
-		recordStep("gate", gateStart, "ok")
-	}
+	// ===== PHASE 2: (gate removed — ready status IS the approval) =====
 
 	// ===== PHASE 3-6: EXECUTE → REVIEW → DOD LOOP =====
 	handoffCount := 0

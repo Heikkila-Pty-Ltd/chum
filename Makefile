@@ -19,7 +19,6 @@ LDFLAGS := -ldflags "-X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main
 # Race test settings
 RACE_PACKAGES := \
 	./internal/store/... \
-	./internal/learner/... \
 	./internal/dispatch/... \
 	./internal/chief/... \
 	./internal/temporal/... \

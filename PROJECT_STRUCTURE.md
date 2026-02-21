@@ -44,12 +44,10 @@ chum/
 │   ├── matrix/                   # Matrix messaging integration
 │   ├── portfolio/                # Multi-project portfolio management
 │   ├── team/                     # Team/agent management
-│   └── learner/                  # Legacy learner (migrated to temporal/learner_activities.go)
 │
 ├── configs/                      # Configuration examples
 │   ├── chum.runner.toml        #   Production runner config template
 │   ├── chum-interactive.toml   #   Interactive development config
-│   ├── chum-learner-example.toml # Learner-focused config example
 │   ├── trial-chum.toml           #   Trial/testing config
 │   └── slo-thresholds.json       #   Service Level Objective definitions
 │

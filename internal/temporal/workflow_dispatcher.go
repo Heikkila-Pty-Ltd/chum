@@ -84,7 +84,6 @@ func DispatcherWorkflow(ctx workflow.Context, _ struct{}) error {
 			WorkDir:           c.WorkDir,
 			Provider:          c.Provider,
 			DoDChecks:         c.DoDChecks,
-			AutoApprove:       c.AutoApprove,
 			SlowStepThreshold: slowStep,
 		}
 
@@ -297,7 +296,6 @@ func (da *DispatchActivities) ScanCandidatesActivity(ctx context.Context) (*Scan
 			Prompt:            buildPrompt(c.task),
 			Provider:          resolveProvider(cfg),
 			DoDChecks:         dodChecks,
-			AutoApprove:       isPlannedWork(c.task),
 			SlowStepThreshold: slowStepThreshold,
 			EstimateMinutes:   c.task.EstimateMinutes,
 		})
@@ -366,12 +364,6 @@ type openWorkflowExecution struct {
 	startTime  time.Time
 }
 
-// isPlannedWork returns true if the task came from a planning ceremony
-// (has a parent-child dependency to an epic). Planned work skips the human
-// gate — "if CHUM is in the water, feed."
-func isPlannedWork(t graph.Task) bool {
-	return t.ParentID != ""
-}
 
 // isStrategicDeferredTask checks whether the task has the strategic deferred label.
 func isStrategicDeferredTask(t graph.Task) bool {

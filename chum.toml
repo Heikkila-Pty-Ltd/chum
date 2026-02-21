@@ -14,8 +14,8 @@ state_db = "~/.local/share/chum/chum.db"
 
 [projects.chum]
 enabled = true
-beads_dir = "~/projects/chum/.beads"
-workspace = "~/projects/chum"
+beads_dir = "~/projects/cortex/.beads"
+workspace = "~/projects/cortex"
 priority = 0
 
 [projects.chum.dod]

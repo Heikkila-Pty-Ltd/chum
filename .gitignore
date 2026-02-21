@@ -16,17 +16,10 @@ state/
 
 # Runtime data
 .chum/
+*.log
 
-# Beads runtime data
-.beads/*.log
-.beads/*.jsonl
-.beads/*.db
-.beads/*.db.disabled
-.beads/dolt/
-.beads/.local_version
-.beads/last-touched
-.beads/dolt-access.lock
-.beads/export-state/
+# Beads (archived)
+.beads/
 
 # OpenClaw / agent runtime
 .openclaw/
@@ -38,7 +31,6 @@ state/
 
 # Lock files
 *.lock
-!.beads/.gitignore
 
 # Operational artifacts (gitignored, not in repo)
 artifacts/

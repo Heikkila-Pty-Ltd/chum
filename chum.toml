@@ -28,23 +28,6 @@ coverage_min = 70
 require_estimate = true
 require_acceptance = true
 
-[projects.hg-website]
-enabled = false
-beads_dir = "~/projects/hg-website/.beads"
-workspace = "~/projects/hg-website"
-priority = 1
-
-[projects.hunter-galloway]
-enabled = false
-beads_dir = "/home/ubuntu/.openclaw/workspace-main/.beads"
-workspace = "/home/ubuntu/obsidian-vault"
-priority = 1
-matrix_room = "!adJhqAxLcYqQuYraGf:vmi3041112.contaboserver.net"
-
-[projects.hunter-galloway.dod]
-require_estimate = true
-require_acceptance = true
-
 [rate_limits]
 window_5h_cap = 150
 weekly_cap = 2000

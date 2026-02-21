@@ -18,6 +18,7 @@ type OpenClawBackend struct {
 	logPath    map[int]string
 }
 
+// NewOpenClawBackend wraps an existing Dispatcher as a pluggable Backend.
 func NewOpenClawBackend(d *Dispatcher) *OpenClawBackend {
 	if d == nil {
 		d = NewDispatcher()

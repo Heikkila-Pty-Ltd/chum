@@ -274,198 +274,75 @@ func Open(dbPath string) (*Store, error) {
 	return &Store{db: db}, nil
 }
 
+// addColumnIfNotExists checks whether a column exists on a table and adds it
+// using the supplied DDL fragment when it is missing.
+func addColumnIfNotExists(db *sql.DB, table, column, ddl string) error {
+	var count int
+	err := db.QueryRow(
+		`SELECT COUNT(*) FROM pragma_table_info('` + table + `') WHERE name = '` + column + `'`,
+	).Scan(&count)
+	if err != nil {
+		return fmt.Errorf("check %s.%s column: %w", table, column, err)
+	}
+	if count == 0 {
+		if _, err := db.Exec(`ALTER TABLE ` + table + ` ADD COLUMN ` + ddl); err != nil {
+			return fmt.Errorf("add %s.%s column: %w", table, column, err)
+		}
+	}
+	return nil
+}
+
 // migrate applies incremental schema migrations for existing databases.
 func migrate(db *sql.DB) error {
-	// Add session_name column if it doesn't exist (for databases created before this field was added)
-	var count int
-	err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('dispatches') WHERE name = 'session_name'`).Scan(&count)
-	if err != nil {
-		return fmt.Errorf("check session_name column: %w", err)
+	// Backfill columns added after the initial schema.
+	dispatchColumns := []struct {
+		column string
+		ddl    string
+	}{
+		{"session_name", "session_name TEXT NOT NULL DEFAULT ''"},
+		{"input_tokens", "input_tokens INTEGER NOT NULL DEFAULT 0"},
+		{"output_tokens", "output_tokens INTEGER NOT NULL DEFAULT 0"},
+		{"cost_usd", "cost_usd REAL NOT NULL DEFAULT 0"},
+		{"failure_category", "failure_category TEXT NOT NULL DEFAULT ''"},
+		{"failure_summary", "failure_summary TEXT NOT NULL DEFAULT ''"},
+		{"log_path", "log_path TEXT NOT NULL DEFAULT ''"},
+		{"branch", "branch TEXT NOT NULL DEFAULT ''"},
+		{"backend", "backend TEXT NOT NULL DEFAULT ''"},
+		{"stage", "stage TEXT NOT NULL DEFAULT 'dispatched'"},
+		{"labels", "labels TEXT NOT NULL DEFAULT ''"},
+		{"pr_url", "pr_url TEXT NOT NULL DEFAULT ''"},
+		{"pr_number", "pr_number INTEGER NOT NULL DEFAULT 0"},
+		{"next_retry_at", "next_retry_at DATETIME"},
 	}
-	if count == 0 {
-		if _, err := db.Exec(`ALTER TABLE dispatches ADD COLUMN session_name TEXT NOT NULL DEFAULT ''`); err != nil {
-			return fmt.Errorf("add session_name column: %w", err)
+	for _, col := range dispatchColumns {
+		if err := addColumnIfNotExists(db, "dispatches", col.column, col.ddl); err != nil {
+			return err
 		}
 	}
 
-	// Add cost tracking columns if they don't exist
-	err = db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('dispatches') WHERE name = 'input_tokens'`).Scan(&count)
-	if err != nil {
-		return fmt.Errorf("check input_tokens column: %w", err)
+	providerUsageColumns := []struct {
+		column string
+		ddl    string
+	}{
+		{"input_tokens", "input_tokens INTEGER NOT NULL DEFAULT 0"},
+		{"output_tokens", "output_tokens INTEGER NOT NULL DEFAULT 0"},
 	}
-	if count == 0 {
-		if _, err := db.Exec(`ALTER TABLE dispatches ADD COLUMN input_tokens INTEGER NOT NULL DEFAULT 0`); err != nil {
-			return fmt.Errorf("add input_tokens column: %w", err)
+	for _, col := range providerUsageColumns {
+		if err := addColumnIfNotExists(db, "provider_usage", col.column, col.ddl); err != nil {
+			return err
 		}
 	}
 
-	err = db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('dispatches') WHERE name = 'output_tokens'`).Scan(&count)
-	if err != nil {
-		return fmt.Errorf("check output_tokens column: %w", err)
+	healthEventColumns := []struct {
+		column string
+		ddl    string
+	}{
+		{"dispatch_id", "dispatch_id INTEGER NOT NULL DEFAULT 0"},
+		{"bead_id", "bead_id TEXT NOT NULL DEFAULT ''"},
 	}
-	if count == 0 {
-		if _, err := db.Exec(`ALTER TABLE dispatches ADD COLUMN output_tokens INTEGER NOT NULL DEFAULT 0`); err != nil {
-			return fmt.Errorf("add output_tokens column: %w", err)
-		}
-	}
-
-	err = db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('dispatches') WHERE name = 'cost_usd'`).Scan(&count)
-	if err != nil {
-		return fmt.Errorf("check cost_usd column: %w", err)
-	}
-	if count == 0 {
-		if _, err := db.Exec(`ALTER TABLE dispatches ADD COLUMN cost_usd REAL NOT NULL DEFAULT 0`); err != nil {
-			return fmt.Errorf("add cost_usd column: %w", err)
-		}
-	}
-
-	// Add failure diagnosis columns if they don't exist
-	err = db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('dispatches') WHERE name = 'failure_category'`).Scan(&count)
-	if err != nil {
-		return fmt.Errorf("check failure_category column: %w", err)
-	}
-	if count == 0 {
-		if _, err := db.Exec(`ALTER TABLE dispatches ADD COLUMN failure_category TEXT NOT NULL DEFAULT ''`); err != nil {
-			return fmt.Errorf("add failure_category column: %w", err)
-		}
-	}
-
-	err = db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('dispatches') WHERE name = 'failure_summary'`).Scan(&count)
-	if err != nil {
-		return fmt.Errorf("check failure_summary column: %w", err)
-	}
-	if count == 0 {
-		if _, err := db.Exec(`ALTER TABLE dispatches ADD COLUMN failure_summary TEXT NOT NULL DEFAULT ''`); err != nil {
-			return fmt.Errorf("add failure_summary column: %w", err)
-		}
-	}
-
-	// Add log_path column if it doesn't exist
-	err = db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('dispatches') WHERE name = 'log_path'`).Scan(&count)
-	if err != nil {
-		return fmt.Errorf("check log_path column: %w", err)
-	}
-	if count == 0 {
-		if _, err := db.Exec(`ALTER TABLE dispatches ADD COLUMN log_path TEXT NOT NULL DEFAULT ''`); err != nil {
-			return fmt.Errorf("add log_path column: %w", err)
-		}
-	}
-
-	// Add branch column if it doesn't exist
-	err = db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('dispatches') WHERE name = 'branch'`).Scan(&count)
-	if err != nil {
-		return fmt.Errorf("check branch column: %w", err)
-	}
-	if count == 0 {
-		if _, err := db.Exec(`ALTER TABLE dispatches ADD COLUMN branch TEXT NOT NULL DEFAULT ''`); err != nil {
-			return fmt.Errorf("add branch column: %w", err)
-		}
-	}
-
-	// Add backend column if it doesn't exist
-	err = db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('dispatches') WHERE name = 'backend'`).Scan(&count)
-	if err != nil {
-		return fmt.Errorf("check backend column: %w", err)
-	}
-	if count == 0 {
-		if _, err := db.Exec(`ALTER TABLE dispatches ADD COLUMN backend TEXT NOT NULL DEFAULT ''`); err != nil {
-			return fmt.Errorf("add backend column: %w", err)
-		}
-	}
-
-	// Add stage column if it doesn't exist
-	err = db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('dispatches') WHERE name = 'stage'`).Scan(&count)
-	if err != nil {
-		return fmt.Errorf("check stage column: %w", err)
-	}
-	if count == 0 {
-		if _, err := db.Exec(`ALTER TABLE dispatches ADD COLUMN stage TEXT NOT NULL DEFAULT 'dispatched'`); err != nil {
-			return fmt.Errorf("add stage column: %w", err)
-		}
-	}
-
-	// Add labels column if it doesn't exist
-	err = db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('dispatches') WHERE name = 'labels'`).Scan(&count)
-	if err != nil {
-		return fmt.Errorf("check labels column: %w", err)
-	}
-	if count == 0 {
-		if _, err := db.Exec(`ALTER TABLE dispatches ADD COLUMN labels TEXT NOT NULL DEFAULT ''`); err != nil {
-			return fmt.Errorf("add labels column: %w", err)
-		}
-	}
-
-	// Add token columns to provider_usage if they don't exist
-	err = db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('provider_usage') WHERE name = 'input_tokens'`).Scan(&count)
-	if err != nil {
-		return fmt.Errorf("check provider_usage input_tokens column: %w", err)
-	}
-	if count == 0 {
-		if _, err := db.Exec(`ALTER TABLE provider_usage ADD COLUMN input_tokens INTEGER NOT NULL DEFAULT 0`); err != nil {
-			return fmt.Errorf("add provider_usage input_tokens column: %w", err)
-		}
-	}
-
-	err = db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('provider_usage') WHERE name = 'output_tokens'`).Scan(&count)
-	if err != nil {
-		return fmt.Errorf("check provider_usage output_tokens column: %w", err)
-	}
-	if count == 0 {
-		if _, err := db.Exec(`ALTER TABLE provider_usage ADD COLUMN output_tokens INTEGER NOT NULL DEFAULT 0`); err != nil {
-			return fmt.Errorf("add provider_usage output_tokens column: %w", err)
-		}
-	}
-
-	// Add PR tracking columns if they don't exist
-	err = db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('dispatches') WHERE name = 'pr_url'`).Scan(&count)
-	if err != nil {
-		return fmt.Errorf("check pr_url column: %w", err)
-	}
-	if count == 0 {
-		if _, err := db.Exec(`ALTER TABLE dispatches ADD COLUMN pr_url TEXT NOT NULL DEFAULT ''`); err != nil {
-			return fmt.Errorf("add pr_url column: %w", err)
-		}
-	}
-
-	err = db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('dispatches') WHERE name = 'pr_number'`).Scan(&count)
-	if err != nil {
-		return fmt.Errorf("check pr_number column: %w", err)
-	}
-	if count == 0 {
-		if _, err := db.Exec(`ALTER TABLE dispatches ADD COLUMN pr_number INTEGER NOT NULL DEFAULT 0`); err != nil {
-			return fmt.Errorf("add pr_number column: %w", err)
-		}
-	}
-
-	// Add pending retry scheduling timestamp if it doesn't exist.
-	err = db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('dispatches') WHERE name = 'next_retry_at'`).Scan(&count)
-	if err != nil {
-		return fmt.Errorf("check next_retry_at column: %w", err)
-	}
-	if count == 0 {
-		if _, err := db.Exec(`ALTER TABLE dispatches ADD COLUMN next_retry_at DATETIME`); err != nil {
-			return fmt.Errorf("add next_retry_at column: %w", err)
-		}
-	}
-
-	// Add health event correlation columns if they don't exist
-	err = db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('health_events') WHERE name = 'dispatch_id'`).Scan(&count)
-	if err != nil {
-		return fmt.Errorf("check health_events dispatch_id column: %w", err)
-	}
-	if count == 0 {
-		if _, err := db.Exec(`ALTER TABLE health_events ADD COLUMN dispatch_id INTEGER NOT NULL DEFAULT 0`); err != nil {
-			return fmt.Errorf("add health_events dispatch_id column: %w", err)
-		}
-	}
-
-	err = db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('health_events') WHERE name = 'bead_id'`).Scan(&count)
-	if err != nil {
-		return fmt.Errorf("check health_events bead_id column: %w", err)
-	}
-	if count == 0 {
-		if _, err := db.Exec(`ALTER TABLE health_events ADD COLUMN bead_id TEXT NOT NULL DEFAULT ''`); err != nil {
-			return fmt.Errorf("add health_events bead_id column: %w", err)
+	for _, col := range healthEventColumns {
+		if err := addColumnIfNotExists(db, "health_events", col.column, col.ddl); err != nil {
+			return err
 		}
 	}
 

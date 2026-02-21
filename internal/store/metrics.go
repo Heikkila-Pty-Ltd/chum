@@ -498,24 +498,15 @@ func migrateTokenUsageTable(db *sql.DB) error {
 	}
 
 	// Backfill older token_usage schemas that may predate cache metrics columns.
-	var count int
-	err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('token_usage') WHERE name = 'cache_read_tokens'`).Scan(&count)
-	if err != nil {
-		return fmt.Errorf("check token_usage cache_read_tokens column: %w", err)
-	}
-	if count == 0 {
-		if _, err := db.Exec(`ALTER TABLE token_usage ADD COLUMN cache_read_tokens INTEGER NOT NULL DEFAULT 0`); err != nil {
-			return fmt.Errorf("add token_usage cache_read_tokens column: %w", err)
-		}
-	}
-
-	err = db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('token_usage') WHERE name = 'cache_creation_tokens'`).Scan(&count)
-	if err != nil {
-		return fmt.Errorf("check token_usage cache_creation_tokens column: %w", err)
-	}
-	if count == 0 {
-		if _, err := db.Exec(`ALTER TABLE token_usage ADD COLUMN cache_creation_tokens INTEGER NOT NULL DEFAULT 0`); err != nil {
-			return fmt.Errorf("add token_usage cache_creation_tokens column: %w", err)
+	for _, col := range []struct {
+		column string
+		ddl    string
+	}{
+		{"cache_read_tokens", "cache_read_tokens INTEGER NOT NULL DEFAULT 0"},
+		{"cache_creation_tokens", "cache_creation_tokens INTEGER NOT NULL DEFAULT 0"},
+	} {
+		if err := addColumnIfNotExists(db, "token_usage", col.column, col.ddl); err != nil {
+			return err
 		}
 	}
 

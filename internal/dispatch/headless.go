@@ -33,6 +33,7 @@ type HeadlessBackend struct {
 	processes map[int]*headlessProcess
 }
 
+// NewHeadlessBackend creates a backend that runs CLIs as background processes.
 func NewHeadlessBackend(cliConfigs map[string]config.CLIConfig, logDir string, retentionDays int) *HeadlessBackend {
 	clis := make(map[string]config.CLIConfig, len(cliConfigs))
 	for k, v := range cliConfigs {

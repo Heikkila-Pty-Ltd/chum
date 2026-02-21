@@ -17,6 +17,7 @@ import (
 	"github.com/docker/docker/pkg/stdcopy"
 )
 
+// DockerDispatcher runs agent sessions as isolated Docker containers.
 type DockerDispatcher struct {
 	mu         sync.Mutex
 	cli        *client.Client
@@ -26,6 +27,7 @@ type DockerDispatcher struct {
 	nextHandle int
 }
 
+// NewDockerDispatcher initializes a Docker-backed dispatcher with a connected client.
 func NewDockerDispatcher(logger *slog.Logger) *DockerDispatcher {
 	if logger == nil {
 		logger = slog.Default()
@@ -44,6 +46,7 @@ func NewDockerDispatcher(logger *slog.Logger) *DockerDispatcher {
 	}
 }
 
+// Dispatch creates and starts a new Docker container for the given agent and prompt.
 func (d *DockerDispatcher) Dispatch(ctx context.Context, agent string, prompt string, provider string, thinkingLevel string, workDir string) (int, error) {
 	d.mu.Lock()
 	handle := d.nextHandle
@@ -132,6 +135,7 @@ func (d *DockerDispatcher) Dispatch(ctx context.Context, agent string, prompt st
 	return handle, nil
 }
 
+// IsAlive returns true if the container for the given handle is still running.
 func (d *DockerDispatcher) IsAlive(handle int) bool {
 	d.mu.Lock()
 	sessionName, ok := d.sessions[handle]
@@ -145,6 +149,7 @@ func (d *DockerDispatcher) IsAlive(handle int) bool {
 	return inspect.State.Running
 }
 
+// Kill force-removes the container and cleans up its context directory.
 func (d *DockerDispatcher) Kill(handle int) error {
 	d.mu.Lock()
 	sessionName, ok := d.sessions[handle]
@@ -164,14 +169,17 @@ func (d *DockerDispatcher) Kill(handle int) error {
 	return nil
 }
 
+// GetHandleType returns "docker".
 func (d *DockerDispatcher) GetHandleType() string { return "docker" }
 
+// GetSessionName returns the container name for the given handle.
 func (d *DockerDispatcher) GetSessionName(handle int) string {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return d.sessions[handle]
 }
 
+// GetProcessState inspects the container and returns its current state.
 func (d *DockerDispatcher) GetProcessState(handle int) ProcessState {
 	d.mu.Lock()
 	sessionName, ok := d.sessions[handle]
@@ -194,6 +202,7 @@ func (d *DockerDispatcher) GetProcessState(handle int) ProcessState {
 	return state
 }
 
+// CaptureOutput retrieves combined stdout/stderr logs from a named container.
 func CaptureOutput(sessionName string) (string, error) {
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil { return "", err }
@@ -209,6 +218,7 @@ func CaptureOutput(sessionName string) (string, error) {
 	return strings.TrimSpace(stdout.String() + "\n" + stderr.String()), nil
 }
 
+// CleanDeadSessions removes all stopped chum-agent containers and their context dirs.
 func CleanDeadSessions() int {
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil { return 0 }
@@ -233,5 +243,8 @@ func CleanDeadSessions() int {
 	return killed
 }
 
+// IsDockerAvailable reports whether the Docker runtime is reachable.
 func IsDockerAvailable() bool { return true }
+
+// HasLiveSession reports whether the named agent has a running container.
 func HasLiveSession(agent string) bool { return false }

@@ -1,4 +1,4 @@
-# Cortex Interactive - Fast-tick orchestrator for workflows and tasks
+# CHUM Interactive - Fast-tick orchestrator for workflows and tasks
 # Triggered by Chief Scrum Master (Hex), executes via agents
 
 [general]
@@ -10,8 +10,8 @@ max_concurrent_total = 2
 stuck_timeout = "10m"
 max_retries = 2
 log_level = "info"
-state_db = "~/.local/share/cortex-interactive/cortex.db"
-lock_file = "/tmp/cortex-interactive.lock"
+state_db = "~/.local/share/chum-interactive/chum.db"
+lock_file = "/tmp/chum-interactive.lock"
 
 # Interactive workflows project (workspace-main)
 [projects.workflows]
@@ -47,7 +47,7 @@ fast = ["codex"]
 balanced = ["codex"]
 premium = ["codex"]
 
-# API on different port to avoid collision with cortex-dev
+# API on different port to avoid collision with chum-dev
 [api]
 bind = "127.0.0.1:8901"
 
@@ -100,4 +100,4 @@ max_concurrent_per_project = 1
 
 [dispatch.tmux]
 history_limit = 50000
-session_prefix = "cortex-int-"
+session_prefix = "chum-int-"

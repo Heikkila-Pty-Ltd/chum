@@ -1,4 +1,4 @@
-# Cortex Agent Orchestrator Configuration
+# CHUM Agent Orchestrator Configuration
 
 [general]
 tick_interval = "60s"
@@ -6,15 +6,15 @@ max_per_tick = 5
 stuck_timeout = "30m"
 max_retries = 2
 log_level = "info"
-state_db = "~/.local/share/cortex/cortex.db"
+state_db = "~/.local/share/chum/chum.db"
 
-[projects.cortex]
+[projects.chum]
 enabled = true
-beads_dir = "~/projects/cortex/.beads"
-workspace = "~/projects/cortex-runner"
+beads_dir = "~/projects/chum/.beads"
+workspace = "~/projects/chum-runner"
 priority = 0
 
-[projects.cortex.dod]
+[projects.chum.dod]
 checks = [
     "go test ./...",
     "go vet ./...",
@@ -147,17 +147,17 @@ balanced = "45m"
 premium = "120m"
 
 [dispatch.git]
-branch_prefix = "cortex/"
+branch_prefix = "chum/"
 branch_cleanup_days = 7
 merge_strategy = "squash"
 max_concurrent_per_project = 3
 
 [dispatch.tmux]
 history_limit = 50000
-session_prefix = "cortex-"
+session_prefix = "chum-"
 
 [chief]
 enabled = true
-matrix_room = "#cortex-coordination"
+matrix_room = "#chum-coordination"
 model = "claude-sonnet-4-20250514"
-agent_id = "cortex-chief-scrum"
+agent_id = "chum-chief-scrum"

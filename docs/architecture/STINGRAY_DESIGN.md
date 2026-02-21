@@ -2,7 +2,7 @@
 
 ## The Gap
 
-Cortex already has three self-improvement loops:
+CHUM already has three self-improvement loops:
 
 | System | Trigger | Looks At | Blind Spot |
 |--------|---------|----------|------------|
@@ -123,10 +123,10 @@ Each analyzer is a section of the LLM prompt, not a separate interface. The LLM 
 - Sub-checks:
   - **Stale docs**: docs/ files not updated in >30 days while their referenced code changed
   - **Missing godoc**: exported functions/types with no doc comment
-  - **Config drift**: keys in cortex.toml not mentioned in any doc file
+  - **Config drift**: keys in chum.toml not mentioned in any doc file
   - **Dead references**: docs referencing functions/files that no longer exist
   - **README freshness**: README.md last modified vs last 50 commits
-- Example: `"docs/architecture/CORTEX_OVERVIEW.md references 'internal/beads/' which was deprecated — update to reflect graph/ migration"`
+- Example: `"docs/architecture/CHUM_OVERVIEW.md references 'internal/beads/' which was deprecated — update to reflect graph/ migration"`
 - Example: `"14 exported functions in internal/scheduler/ have no godoc comment"`
 
 ### Data Model
@@ -207,8 +207,8 @@ They complement each other: the strategic groom decides priority order, the stin
 - `internal/store/stingray.go` — New store methods for findings/runs tables
 - `internal/store/schema.go` — Add stingray tables to EnsureSchema
 - `internal/config/config.go` — Add `[stingray]` config section
-- `cmd/cortex/main.go` or `cmd/chum/main.go` — Register cron workflow
-- `cortex.toml` — Add `[stingray]` section
+- `cmd/chum/main.go` or `cmd/chum/main.go` — Register cron workflow
+- `chum.toml` — Add `[stingray]` section
 
 ## Verification
 1. `go build ./...`

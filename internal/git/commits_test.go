@@ -122,7 +122,7 @@ func TestIsLikelyBeadID(t *testing.T) {
 		},
 		{
 			name:      "first part too short",
-			candidate: "a-cortex",
+			candidate: "a-chum",
 			expected:  false,
 		},
 		{

@@ -4,7 +4,7 @@
 SHELL := /usr/bin/env bash
 
 # Build settings
-BINARY_NAME := cortex
+BINARY_NAME := chum
 BUILD_DIR := build
 DIST_DIR := $(BUILD_DIR)/dist
 VERSION := $(shell cat VERSION 2>/dev/null || echo "dev")
@@ -21,7 +21,13 @@ RACE_PACKAGES := \
 	./internal/store/... \
 	./internal/learner/... \
 	./internal/dispatch/... \
-	./internal/chief/...
+	./internal/chief/... \
+	./internal/temporal/... \
+	./internal/api/... \
+	./internal/config/... \
+	./internal/matrix/... \
+	./internal/graph/... \
+	./internal/git/...
 RACE_TIMEOUT ?= 10m
 RACE_LOCK_WAIT ?= 120
 RACE_JSON_OUT ?=
@@ -52,15 +58,15 @@ help: ## Display this help message
 	@echo ""
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-build: $(SRC_FILES) ## Build cortex binary
-	$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BINARY_NAME) ./cmd/cortex/
+build: $(SRC_FILES) ## Build chum binary
+	$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BINARY_NAME) ./cmd/chum/
 
-build-all: ## Build all binaries (cortex + tools)
-	$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BINARY_NAME) ./cmd/cortex/
+build-all: ## Build all binaries (chum + tools)
+	$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BINARY_NAME) ./cmd/chum/
 	$(GO) build $(GOFLAGS) -o $(BUILD_DIR)/db-backup ./cmd/db-backup/
 	$(GO) build $(GOFLAGS) -o $(BUILD_DIR)/db-restore ./cmd/db-restore/
 
-install: build ## Build and install cortex to ~/.local/bin
+install: build ## Build and install chum to ~/.local/bin
 	mkdir -p ~/.local/bin
 	cp $(BINARY_NAME) ~/.local/bin/
 
@@ -84,6 +90,14 @@ fmt: ## Format Go code
 
 vet: ## Run go vet
 	$(GO) vet ./...
+
+lint-full: ## Run full golangci-lint suite (uses .golangci.yml)
+	golangci-lint run ./...
+
+test-coverage: ## Run tests with coverage report
+	$(GO) test -coverprofile=$(BUILD_DIR)/coverage.out ./...
+	$(GO) tool cover -func=$(BUILD_DIR)/coverage.out | tail -1
+	@echo "Full report: go tool cover -html=$(BUILD_DIR)/coverage.out"
 
 lint-docs: ## Check markdown docs for broken internal references
 	@bash $(DEV_SCRIPTS)/docs-lint.sh
@@ -140,10 +154,10 @@ dry-run: ## Dry run release process
 ##@ Docker
 
 docker-build: ## Build Docker image
-	docker build -t cortex:$(VERSION) -f build/package/Dockerfile .
+	docker build -t chum:$(VERSION) -f build/package/Dockerfile .
 
 docker-run: ## Run Docker container
-	docker run --rm -v $(PWD)/cortex.toml:/etc/cortex/cortex.toml cortex:$(VERSION)
+	docker run --rm -v $(PWD)/cortex.toml:/etc/cortex/cortex.toml chum:$(VERSION)
 
 ##@ Utilities
 

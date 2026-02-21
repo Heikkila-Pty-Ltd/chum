@@ -1,9 +1,11 @@
 # Built binaries
 /cortex
+/chum
 *.test
 
 # Local config (do not commit)
 cortex.toml
+chum.toml
 cortex-interactive.toml
 cortex.runner.toml
 
@@ -43,6 +45,7 @@ state/
 # Operational artifacts (gitignored, not in repo)
 artifacts/
 evidence/
+memory/
 rollback-config/
 rollback-configs/
 archive/

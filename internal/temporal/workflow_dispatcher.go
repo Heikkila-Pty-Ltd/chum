@@ -58,7 +58,7 @@ func DispatcherWorkflow(ctx workflow.Context, _ struct{}) error {
 
 		childOpts := workflow.ChildWorkflowOptions{
 			WorkflowID:               c.TaskID,
-			TaskQueue:                "chum-task-queue",
+			TaskQueue:                DefaultTaskQueue,
 			WorkflowExecutionTimeout: timeout,
 			// ALLOW_DUPLICATE_FAILED_ONLY allows retry after failure/termination
 			// but rejects if a workflow with this task ID is currently running.

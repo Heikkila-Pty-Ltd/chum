@@ -1,14 +1,17 @@
 package main
 
 import (
+	"compress/gzip"
 	"database/sql"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/antigravity-dev/chum/cmd/internal/dbutil"
 	_ "modernc.org/sqlite"
 )
 
@@ -23,12 +26,12 @@ func main() {
 	flag.Parse()
 
 	if *dbPath == "" {
-		die("--db path is required")
+		dbutil.Die("--db path is required")
 	}
 
 	// Expand tilde in paths
-	*dbPath = expandPath(*dbPath)
-	
+	*dbPath = dbutil.ExpandPath(*dbPath)
+
 	// Auto-generate backup path if not provided
 	if *backupPath == "" {
 		timestamp := time.Now().Format("20060102-150405")
@@ -39,7 +42,7 @@ func main() {
 		}
 		*backupPath = fmt.Sprintf("%s-backup-%s%s", base, timestamp, ext)
 	}
-	*backupPath = expandPath(*backupPath)
+	*backupPath = dbutil.ExpandPath(*backupPath)
 
 	fmt.Printf("SQLite Backup Tool\n")
 	fmt.Printf("Source: %s\n", *dbPath)
@@ -47,13 +50,13 @@ func main() {
 
 	// Ensure backup directory exists
 	if err := os.MkdirAll(filepath.Dir(*backupPath), 0o755); err != nil {
-		die("create backup directory: %v", err)
+		dbutil.Die("create backup directory: %v", err)
 	}
 
 	// Open source database
 	db, err := sql.Open("sqlite", *dbPath+"?mode=ro")
 	if err != nil {
-		die("open source database: %v", err)
+		dbutil.Die("open source database: %v", err)
 	}
 	defer db.Close()
 
@@ -65,14 +68,14 @@ func main() {
 		}
 	}
 
-	// Perform backup using SQLite's backup API
+	// Perform backup using file copy after checkpoint
 	fmt.Printf("Creating backup...\n")
 	start := time.Now()
-	
+
 	if err := performBackup(*dbPath, *backupPath, *compress); err != nil {
-		die("backup failed: %v", err)
+		dbutil.Die("backup failed: %v", err)
 	}
-	
+
 	duration := time.Since(start)
 	fmt.Printf("Backup completed in %v\n", duration)
 
@@ -80,7 +83,7 @@ func main() {
 	if *verify {
 		fmt.Printf("Verifying backup integrity...\n")
 		if err := verifyBackup(*backupPath, *compress); err != nil {
-			die("backup verification failed: %v", err)
+			dbutil.Die("backup verification failed: %v", err)
 		}
 		fmt.Printf("Backup verification successful\n")
 	}
@@ -95,92 +98,101 @@ func main() {
 }
 
 func performBackup(srcPath, dstPath string, compress bool) error {
-	// For SQLite, the most reliable backup is using the .backup command via sqlite3
-	// or copying the file after checkpoint. We'll use file copy for simplicity.
-	
-	src, err := os.Open(srcPath)
+	if !compress {
+		return dbutil.CopyFile(srcPath, dstPath)
+	}
+
+	srcFile, err := os.Open(srcPath)
 	if err != nil {
 		return fmt.Errorf("open source: %v", err)
 	}
-	defer src.Close()
+	defer srcFile.Close()
 
-	dst, err := os.Create(dstPath)
+	dstFile, err := os.Create(dstPath)
 	if err != nil {
 		return fmt.Errorf("create destination: %v", err)
 	}
-	defer dst.Close()
+	defer dstFile.Close()
 
-	if compress {
-		// TODO: Add gzip compression if needed
-		return fmt.Errorf("compression not implemented yet")
+	gz, err := gzip.NewWriterLevel(dstFile, gzip.BestCompression)
+	if err != nil {
+		return fmt.Errorf("create gzip writer: %v", err)
+	}
+	gz.Name = filepath.Base(srcPath)
+	gz.ModTime = time.Now()
+
+	if _, err := io.Copy(gz, srcFile); err != nil {
+		gz.Close()
+		return fmt.Errorf("gzip copy: %v", err)
+	}
+	if err := gz.Close(); err != nil {
+		return fmt.Errorf("gzip close: %v", err)
 	}
 
-	// Simple file copy for now
-	buf := make([]byte, 1024*1024) // 1MB buffer
-	for {
-		n, err := src.Read(buf)
-		if n > 0 {
-			if _, err := dst.Write(buf[:n]); err != nil {
-				return fmt.Errorf("write: %v", err)
-			}
-		}
-		if err != nil {
-			if err.Error() == "EOF" {
-				break
-			}
-			return fmt.Errorf("read: %v", err)
-		}
-	}
-
-	return dst.Sync()
+	return dstFile.Sync()
 }
 
 func verifyBackup(backupPath string, compress bool) error {
+	verifyPath := backupPath
+
+	// For compressed backups, decompress to a temp file for integrity checking.
 	if compress {
-		return fmt.Errorf("compressed backup verification not implemented")
+		tmp, err := decompressToTemp(backupPath)
+		if err != nil {
+			return fmt.Errorf("decompress for verification: %v", err)
+		}
+		defer os.Remove(tmp)
+		verifyPath = tmp
 	}
 
-	// Open backup and run integrity check
-	db, err := sql.Open("sqlite", backupPath+"?mode=ro")
+	if err := dbutil.CheckIntegrity(verifyPath); err != nil {
+		return err
+	}
+
+	counts, err := dbutil.CountTableRows(verifyPath, dbutil.KnownTables)
 	if err != nil {
-		return fmt.Errorf("open backup: %v", err)
+		return fmt.Errorf("count table rows: %v", err)
 	}
-	defer db.Close()
-
-	// Run PRAGMA integrity_check
-	var result string
-	if err := db.QueryRow("PRAGMA integrity_check").Scan(&result); err != nil {
-		return fmt.Errorf("integrity check query: %v", err)
-	}
-
-	if result != "ok" {
-		return fmt.Errorf("integrity check failed: %s", result)
-	}
-
-	// Quick sanity check - verify we can read some basic tables
-	tables := []string{"dispatches", "health_events"}
-	for _, table := range tables {
-		var count int
-		query := fmt.Sprintf("SELECT COUNT(*) FROM %s", table)
-		if err := db.QueryRow(query).Scan(&count); err != nil {
-			fmt.Printf("Warning: could not count rows in %s: %v\n", table, err)
-		} else {
+	for table, count := range counts {
+		if count >= 0 {
 			fmt.Printf("Verified table %s: %d rows\n", table, count)
+		} else {
+			fmt.Printf("Warning: could not count rows in %s\n", table)
 		}
 	}
 
 	return nil
 }
 
-func expandPath(path string) string {
-	if strings.HasPrefix(path, "~/") {
-		home, _ := os.UserHomeDir()
-		return filepath.Join(home, path[2:])
+// decompressToTemp decompresses a gzip file to a temporary file and returns
+// the temp file path. The caller is responsible for removing the temp file.
+func decompressToTemp(gzPath string) (string, error) {
+	f, err := os.Open(gzPath)
+	if err != nil {
+		return "", fmt.Errorf("open gzip file: %v", err)
 	}
-	return path
-}
+	defer f.Close()
 
-func die(format string, args ...interface{}) {
-	fmt.Fprintf(os.Stderr, format+"\n", args...)
-	os.Exit(1)
+	gz, err := gzip.NewReader(f)
+	if err != nil {
+		return "", fmt.Errorf("create gzip reader: %v", err)
+	}
+	defer gz.Close()
+
+	tmp, err := os.CreateTemp("", "chum-backup-verify-*.db")
+	if err != nil {
+		return "", fmt.Errorf("create temp file: %v", err)
+	}
+
+	if _, err := io.Copy(tmp, gz); err != nil {
+		tmp.Close()
+		os.Remove(tmp.Name())
+		return "", fmt.Errorf("decompress: %v", err)
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmp.Name())
+		return "", fmt.Errorf("close temp file: %v", err)
+	}
+
+	return tmp.Name(), nil
 }

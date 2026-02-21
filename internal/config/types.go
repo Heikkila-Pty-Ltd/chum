@@ -1,0 +1,265 @@
+package config
+
+import (
+	"fmt"
+	"time"
+)
+
+// Duration is a time.Duration that unmarshals from TOML strings like "60s" or "2m".
+type Duration struct {
+	time.Duration
+}
+
+func (d *Duration) UnmarshalText(text []byte) error {
+	var err error
+	d.Duration, err = time.ParseDuration(string(text))
+	if err != nil {
+		return fmt.Errorf("invalid duration %q: %w", string(text), err)
+	}
+	return nil
+}
+
+func (d Duration) MarshalText() ([]byte, error) {
+	return []byte(d.Duration.String()), nil
+}
+
+type Config struct {
+	General    General                   `toml:"general"`
+	Projects   map[string]Project        `toml:"projects"`
+	RateLimits RateLimits                `toml:"rate_limits"`
+	Providers  map[string]Provider       `toml:"providers"`
+	Tiers      Tiers                     `toml:"tiers"`
+	Workflows  map[string]WorkflowConfig `toml:"workflows"`
+	Cadence    Cadence                   `toml:"cadence"`
+	Health     Health                    `toml:"health"`
+	Reporter   Reporter                  `toml:"reporter"`
+	Learner    Learner                   `toml:"learner"`
+	Matrix     Matrix                    `toml:"matrix"`
+	API        API                       `toml:"api"`
+	Dispatch   Dispatch                  `toml:"dispatch"`
+	Chief      Chief                     `toml:"chief"`
+}
+
+type General struct {
+	TickInterval           Duration               `toml:"tick_interval"`
+	MaxPerTick             int                    `toml:"max_per_tick"`
+	StuckTimeout           Duration               `toml:"stuck_timeout"`
+	MaxRetries             int                    `toml:"max_retries"`
+	RetryBackoffBase       Duration               `toml:"retry_backoff_base"`
+	RetryMaxDelay          Duration               `toml:"retry_max_delay"`
+	RetryPolicy            RetryPolicy            `toml:"retry_policy"`
+	RetryTiers             map[string]RetryPolicy `toml:"retry_tiers"`
+	DispatchCooldown       Duration               `toml:"dispatch_cooldown"`
+	LogLevel               string                 `toml:"log_level"`
+	StateDB                string                 `toml:"state_db"`
+	LockFile               string                 `toml:"lock_file"`
+	MaxConcurrentCoders    int                    `toml:"max_concurrent_coders"`    // hard cap on concurrent coder agents
+	MaxConcurrentReviewers int                    `toml:"max_concurrent_reviewers"` // hard cap on concurrent reviewer agents
+	MaxConcurrentTotal     int                    `toml:"max_concurrent_total"`     // hard cap on total concurrent agents
+	SlowStepThreshold      Duration               `toml:"slow_step_threshold"`      // steps exceeding this are flagged slow (default 2m)
+	TemporalHostPort       string                 `toml:"temporal_host_port"`       // Temporal server address (default 127.0.0.1:7233)
+}
+
+// Cadence defines shared sprint cadence across all projects.
+type Cadence struct {
+	SprintLength    string `toml:"sprint_length"`     // e.g. 1w, 2w
+	SprintStartDay  string `toml:"sprint_start_day"`  // e.g. Monday
+	SprintStartTime string `toml:"sprint_start_time"` // HH:MM 24h
+	Timezone        string `toml:"timezone"`          // IANA timezone (e.g. UTC)
+}
+
+type Project struct {
+	Enabled      bool   `toml:"enabled"`
+	BeadsDir     string `toml:"beads_dir"`
+	Workspace    string `toml:"workspace"`
+	Priority     int    `toml:"priority"`
+	MatrixRoom   string `toml:"matrix_room"`   // project-specific Matrix room (optional)
+	BaseBranch   string `toml:"base_branch"`   // branch to create features from (default "main")
+	BranchPrefix string `toml:"branch_prefix"` // prefix for feature branches (default "feat/")
+	UseBranches  bool   `toml:"use_branches"`  // enable branch workflow (default false)
+	MergeMethod  string `toml:"merge_method"`  // squash, merge, rebase (default squash)
+
+	PostMergeChecks     []string `toml:"post_merge_checks"`      // checks run after PR merge
+	AutoRevertOnFailure bool     `toml:"auto_revert_on_failure"` // auto-revert merge when post-merge checks fail (default true)
+
+	// Sprint planning configuration (optional for backward compatibility)
+	SprintPlanningDay  string `toml:"sprint_planning_day"`  // day of week for sprint planning (e.g., "Monday")
+	SprintPlanningTime string `toml:"sprint_planning_time"` // time of day for sprint planning (e.g., "09:00")
+	SprintCapacity     int    `toml:"sprint_capacity"`      // maximum points/tasks per sprint
+	BacklogThreshold   int    `toml:"backlog_threshold"`    // minimum backlog size to maintain
+
+	// Definition of Done configuration
+	DoD DoDConfig `toml:"dod"`
+
+	RetryPolicy RetryPolicy `toml:"retry_policy"`
+}
+
+type RetryPolicy struct {
+	MaxRetries    int      `toml:"max_retries"`
+	InitialDelay  Duration `toml:"initial_delay"`
+	BackoffFactor float64  `toml:"backoff_factor"`
+	MaxDelay      Duration `toml:"max_delay"`
+	EscalateAfter int      `toml:"escalate_after"`
+}
+
+// DoDConfig defines the Definition of Done configuration for a project
+type DoDConfig struct {
+	Checks            []string `toml:"checks"`             // commands to run (e.g. "go test ./...", "go vet ./...")
+	CoverageMin       int      `toml:"coverage_min"`       // optional: fail if coverage < N%
+	RequireEstimate   bool     `toml:"require_estimate"`   // bead must have estimate before closing
+	RequireAcceptance bool     `toml:"require_acceptance"` // bead must have acceptance criteria
+}
+
+type RateLimits struct {
+	Window5hCap       int            `toml:"window_5h_cap"`
+	WeeklyCap         int            `toml:"weekly_cap"`
+	WeeklyHeadroomPct int            `toml:"weekly_headroom_pct"`
+	Budget            map[string]int `toml:"budget"` // project -> percentage allocation
+}
+
+type Provider struct {
+	Tier              string  `toml:"tier"`
+	Authed            bool    `toml:"authed"`
+	Model             string  `toml:"model"`
+	CLI               string  `toml:"cli"`
+	CostInputPerMtok  float64 `toml:"cost_input_per_mtok"`
+	CostOutputPerMtok float64 `toml:"cost_output_per_mtok"`
+}
+
+type Tiers struct {
+	Fast     []string `toml:"fast"`
+	Balanced []string `toml:"balanced"`
+	Premium  []string `toml:"premium"`
+}
+
+type WorkflowConfig struct {
+	MatchLabels []string      `toml:"match_labels"`
+	MatchTypes  []string      `toml:"match_types"`
+	Stages      []StageConfig `toml:"stages"`
+}
+
+type StageConfig struct {
+	Name string `toml:"name"`
+	Role string `toml:"role"`
+}
+
+type Health struct {
+	CheckInterval          Duration `toml:"check_interval"`
+	GatewayUnit            string   `toml:"gateway_unit"`
+	GatewayUserService     bool     `toml:"gateway_user_service"`     // use `systemctl --user` instead of system scope
+	ConcurrencyWarningPct  float64  `toml:"concurrency_warning_pct"`  // alert threshold (default 0.80)
+	ConcurrencyCriticalPct float64  `toml:"concurrency_critical_pct"` // critical threshold (default 0.95)
+}
+
+type Reporter struct {
+	Channel          string `toml:"channel"`
+	AgentID          string `toml:"agent_id"`
+	MatrixBotAccount string `toml:"matrix_bot_account"` // optional OpenClaw matrix account id for direct reporting
+	DefaultRoom      string `toml:"default_room"`       // fallback Matrix room when project has no explicit room
+	DailyDigestTime  string `toml:"daily_digest_time"`
+	WeeklyRetroDay   string `toml:"weekly_retro_day"`
+}
+
+type Learner struct {
+	Enabled         bool     `toml:"enabled"`
+	AnalysisWindow  Duration `toml:"analysis_window"`
+	CycleInterval   Duration `toml:"cycle_interval"`
+	IncludeInDigest bool     `toml:"include_in_digest"`
+}
+
+// Matrix configures inbound Matrix polling for scrum master routing.
+type Matrix struct {
+	Enabled      bool     `toml:"enabled"`
+	PollInterval Duration `toml:"poll_interval"`
+	BotUser      string   `toml:"bot_user"`
+	ReadLimit    int      `toml:"read_limit"`
+}
+
+type API struct {
+	Bind     string      `toml:"bind"`
+	Security APISecurity `toml:"security"`
+}
+
+type APISecurity struct {
+	Enabled          bool     `toml:"enabled"`            // Enable auth for control endpoints
+	AllowedTokens    []string `toml:"allowed_tokens"`     // Valid API tokens for auth
+	RequireLocalOnly bool     `toml:"require_local_only"` // Only allow local connections when auth disabled
+	AuditLog         string   `toml:"audit_log"`          // Path to audit log file
+}
+
+type Dispatch struct {
+	CLI              map[string]CLIConfig `toml:"cli"`
+	Routing          DispatchRouting      `toml:"routing"`
+	Timeouts         DispatchTimeouts     `toml:"timeouts"`
+	Git              DispatchGit          `toml:"git"`
+	Tmux             DispatchTmux         `toml:"tmux"`
+	CostControl      DispatchCostControl  `toml:"cost_control"`
+	LogDir           string               `toml:"log_dir"`
+	LogRetentionDays int                  `toml:"log_retention_days"`
+}
+
+type CLIConfig struct {
+	Cmd           string   `toml:"cmd"`
+	PromptMode    string   `toml:"prompt_mode"` // "stdin", "file", "arg"
+	Args          []string `toml:"args"`
+	ModelFlag     string   `toml:"model_flag"`     // e.g. "--model"
+	ApprovalFlags []string `toml:"approval_flags"` // e.g. ["--dangerously-skip-permissions"]
+}
+
+type DispatchRouting struct {
+	FastBackend     string `toml:"fast_backend"` // "headless_cli", "tmux"
+	BalancedBackend string `toml:"balanced_backend"`
+	PremiumBackend  string `toml:"premium_backend"`
+	CommsBackend    string `toml:"comms_backend"`
+	RetryBackend    string `toml:"retry_backend"` // backend for retries
+}
+
+type DispatchTimeouts struct {
+	Fast     Duration `toml:"fast"`     // default 15m
+	Balanced Duration `toml:"balanced"` // default 45m
+	Premium  Duration `toml:"premium"`  // default 120m
+}
+
+type DispatchGit struct {
+	BranchPrefix            string `toml:"branch_prefix"`              // default "chum/"
+	BranchCleanupDays       int    `toml:"branch_cleanup_days"`        // default 7
+	MergeStrategy           string `toml:"merge_strategy"`             // "merge", "squash", "rebase"
+	MaxConcurrentPerProject int    `toml:"max_concurrent_per_project"` // default 3
+}
+
+type DispatchTmux struct {
+	HistoryLimit  int    `toml:"history_limit"`  // default 50000
+	SessionPrefix string `toml:"session_prefix"` // default "chum-"
+}
+
+// DispatchCostControl defines configurable dispatch policies to reduce expensive usage/churn.
+type DispatchCostControl struct {
+	Enabled                     bool     `toml:"enabled"`
+	SparkFirst                  bool     `toml:"spark_first"`
+	RetryEscalationAttempt      int      `toml:"retry_escalation_attempt"`
+	ComplexityEscalationMinutes int      `toml:"complexity_escalation_minutes"`
+	RiskyReviewLabels           []string `toml:"risky_review_labels"`
+	ForceSparkAtWeeklyUsagePct  float64  `toml:"force_spark_at_weekly_usage_pct"`
+	DailyCostCapUSD             float64  `toml:"daily_cost_cap_usd"`
+	PerBeadCostCapUSD           float64  `toml:"per_bead_cost_cap_usd"`
+	PerBeadStageAttemptLimit    int      `toml:"per_bead_stage_attempt_limit"`
+	StageAttemptWindow          Duration `toml:"stage_attempt_window"`
+	StageCooldown               Duration `toml:"stage_cooldown"`
+
+	// Escalation pause controls for system-level churn/token waste.
+	PauseOnChurn      bool     `toml:"pause_on_churn"`
+	ChurnPauseWindow  Duration `toml:"churn_pause_window"`
+	ChurnPauseFailure int      `toml:"churn_pause_failure_threshold"`
+	ChurnPauseTotal   int      `toml:"churn_pause_total_threshold"`
+
+	PauseOnTokenWastage bool     `toml:"pause_on_token_waste"`
+	TokenWasteWindow    Duration `toml:"token_waste_window"`
+}
+
+type Chief struct {
+	Enabled             bool   `toml:"enabled"`               // Enable Chief Scrum Master
+	MatrixRoom          string `toml:"matrix_room"`           // Matrix room for coordination
+	Model               string `toml:"model"`                 // Model to use (defaults to premium)
+	AgentID             string `toml:"agent_id"`              // Agent identifier (defaults to "chum-chief")
+	RequireApprovedPlan bool   `toml:"require_approved_plan"` // Block implementation dispatch without active approved plan
+}

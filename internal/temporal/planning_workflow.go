@@ -142,7 +142,7 @@ func PlanningCeremonyWorkflow(ctx workflow.Context, req PlanningRequest) (*TaskR
 			// "How do you build a coding elephant? One piece of chum at a time."
 			childOpts := workflow.ChildWorkflowOptions{
 				WorkflowID: fmt.Sprintf("exec-%s-%d", taskReq.TaskID, workflow.Now(ctx).Unix()),
-				TaskQueue:  "chum-task-queue",
+				TaskQueue:  DefaultTaskQueue,
 			}
 			childCtx := workflow.WithChildOptions(ctx, childOpts)
 

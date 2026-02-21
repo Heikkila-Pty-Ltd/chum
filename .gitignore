@@ -1,10 +1,8 @@
 # Built binaries
 /chum
-/chum
 *.test
 
 # Local config (do not commit)
-chum.toml
 chum.toml
 chum-interactive.toml
 chum.runner.toml
@@ -71,5 +69,3 @@ Thumbs.db
 *.swp
 *.swo
 *~
-evidence/
-rollback-config/

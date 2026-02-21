@@ -88,7 +88,7 @@ func (ar *AllocationRecorder) completeActiveAllocations(_ context.Context) error
 }
 
 // applyBudgetUpdates applies rate limit budget changes recommended by Chief SM
-func (ar *AllocationRecorder) applyBudgetUpdates(_ context.Context, updates []store.BudgetUpdate) error { //nolint:unparam // TODO: will return errors when budget persistence is implemented
+func (ar *AllocationRecorder) applyBudgetUpdates(_ context.Context, updates []store.BudgetUpdate) error { //nolint:unparam // NOTE: budget changes are persisted inside the AllocationDecision record; runtime config reload is not yet wired
 	ar.logger.Info("applying budget updates", "count", len(updates))
 
 	// In a real implementation, this would update the configuration
@@ -109,10 +109,9 @@ func (ar *AllocationRecorder) applyBudgetUpdates(_ context.Context, updates []st
 		}
 	}
 
-	// TODO: In a production system, this would:
-	// 1. Update the actual configuration
-	// 2. Trigger a configuration reload
-	// 3. Notify the scheduler of new budget allocations
+	// NOTE: Budget updates are currently logged and recorded as health events.
+	// Actual runtime config reload and scheduler notification are not yet wired;
+	// budget values are persisted as part of the AllocationDecision record.
 	
 	return nil
 }
@@ -270,13 +269,12 @@ func (ar *AllocationRecorder) ParseAllocationFromOutput(_ context.Context, cerem
 		Status:             "draft",
 	}
 
-	// TODO: Parse the actual LLM output to extract:
-	// - Project allocations with capacity percentages
-	// - Cross-project dependencies
-	// - Budget update recommendations
-	// - Structured reasoning
-	
-	// For now, create a basic allocation based on configured projects
+	// NOTE: LLM output parsing is not yet implemented. The function currently
+	// creates a uniform allocation across all enabled projects. When structured
+	// output parsing is added, it should extract per-project capacity percentages,
+	// cross-project dependencies, and budget update recommendations from chiefOutput.
+
+	// Create a basic allocation based on configured projects
 	totalProjects := len(ar.cfg.Projects)
 	if totalProjects > 0 {
 		basePercent := 100.0 / float64(totalProjects)

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,22 +20,27 @@ import (
 type DockerDispatcher struct {
 	mu         sync.Mutex
 	cli        *client.Client
-	sessions   map[int]string    
-	metadata   map[string]string 
+	logger     *slog.Logger
+	sessions   map[int]string
+	metadata   map[string]string
 	nextHandle int
 }
 
-func NewDockerDispatcher() *DockerDispatcher {
+func NewDockerDispatcher(logger *slog.Logger) *DockerDispatcher {
+	if logger == nil {
+		logger = slog.Default()
+	}
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
-		fmt.Printf("Warning: failed to initialize Docker client: %v\n", err)
+		logger.Warn("failed to initialize Docker client", "error", err)
 	}
 
 	return &DockerDispatcher{
 		cli:        cli,
+		logger:     logger,
 		sessions:   make(map[int]string),
 		metadata:   make(map[string]string),
-		nextHandle: 1, 
+		nextHandle: 1,
 	}
 }
 
@@ -51,11 +57,21 @@ func (d *DockerDispatcher) Dispatch(ctx context.Context, agent string, prompt st
 		return 0, fmt.Errorf("failed to create context dir: %w", err)
 	}
 
-	os.WriteFile(filepath.Join(hostCtxDir, "prompt.txt"), []byte(prompt), 0644)
-	os.WriteFile(filepath.Join(hostCtxDir, "agent.txt"), []byte(agent), 0644)
-	os.WriteFile(filepath.Join(hostCtxDir, "thinking.txt"), []byte(thinkingLevel), 0644)
-	os.WriteFile(filepath.Join(hostCtxDir, "provider.txt"), []byte(provider), 0644)
-	os.WriteFile(filepath.Join(hostCtxDir, "script.sh"), []byte(openclawShellScript()), 0755)
+	for _, f := range []struct {
+		name    string
+		content string
+		perm    os.FileMode
+	}{
+		{"prompt.txt", prompt, 0644},
+		{"agent.txt", agent, 0644},
+		{"thinking.txt", thinkingLevel, 0644},
+		{"provider.txt", provider, 0644},
+		{"script.sh", openclawShellScript(), 0755},
+	} {
+		if err := os.WriteFile(filepath.Join(hostCtxDir, f.name), []byte(f.content), f.perm); err != nil {
+			return 0, fmt.Errorf("write %s: %w", f.name, err)
+		}
+	}
 
 	containerConfig := &container.Config{
 		Image: "chum-agent:latest",
@@ -68,6 +84,10 @@ func (d *DockerDispatcher) Dispatch(ctx context.Context, agent string, prompt st
 		},
 		Tty:        false,
 		WorkingDir: "/workspace",
+		// SECURITY: API keys are passed as env vars to all containers. This means
+		// every dispatched agent container has access to all provider keys, not just
+		// the one it needs. A future improvement would mount per-provider secrets
+		// via Docker secrets or a sidecar vault agent. Tracked as a known limitation.
 		Env: []string{
 			"ANTHROPIC_API_KEY=" + os.Getenv("ANTHROPIC_API_KEY"),
 			"OPENAI_API_KEY=" + os.Getenv("OPENAI_API_KEY"),

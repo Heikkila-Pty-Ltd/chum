@@ -66,7 +66,8 @@ func main() {
 	dev := flag.Bool("dev", false, "use text log format (default is JSON)")
 	disableAnthropic := flag.Bool("disable-anthropic", false, "remove Anthropic/Claude providers from config and exit")
 	setTickInterval := flag.String("set-tick-interval", "", "set [general].tick_interval in config (e.g. 2m) and exit")
-	fallbackModel := flag.String("fallback-model", "gpt-5.3-codex", "fallback chief model used with -disable-anthropic")
+	const defaultFallbackModel = "gpt-5.3-codex"
+	fallbackModel := flag.String("fallback-model", defaultFallbackModel, "fallback chief model used with -disable-anthropic")
 	flag.Parse()
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
@@ -144,7 +145,7 @@ func main() {
 	// Start Temporal worker — now includes DispatcherWorkflow + ScanCandidatesActivity
 	go func() {
 		logger.Info("starting temporal worker")
-		if workerErr := temporal.StartWorker(st, cfg.Tiers, dag, cfgManager); workerErr != nil {
+		if workerErr := temporal.StartWorker(st, cfg.Tiers, dag, cfgManager, cfg.General.TemporalHostPort, logger); workerErr != nil {
 			logger.Error("temporal worker error", "error", workerErr)
 		}
 	}()
@@ -155,7 +156,7 @@ func main() {
 		time.Sleep(5 * time.Second)
 
 		tc, dialErr := tclient.Dial(tclient.Options{
-			HostPort: "127.0.0.1:7233",
+			HostPort: cfg.General.TemporalHostPort,
 		})
 		if dialErr != nil {
 			logger.Error("failed to create temporal client for schedules", "error", dialErr)
@@ -180,7 +181,7 @@ func main() {
 			Action: &tclient.ScheduleWorkflowAction{
 				Workflow:  temporal.DispatcherWorkflow,
 				Args:      []interface{}{struct{}{}},
-				TaskQueue: "chum-task-queue",
+				TaskQueue: temporal.DefaultTaskQueue,
 				ID:        "dispatcher",
 			},
 			Overlap: enumspb.SCHEDULE_OVERLAP_POLICY_SKIP,

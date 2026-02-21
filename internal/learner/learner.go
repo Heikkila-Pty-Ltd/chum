@@ -165,25 +165,33 @@ func querySizingAnalysis(db *sql.DB) (*SizingAnalysis, error) {
 	sa := &SizingAnalysis{}
 
 	// Average duration
-	db.QueryRow(`SELECT COALESCE(AVG(duration_s), 0) FROM dispatches WHERE backend = 'temporal'`).Scan(&sa.AvgDuration)
+	if err := db.QueryRow(`SELECT COALESCE(AVG(duration_s), 0) FROM dispatches WHERE backend = 'temporal'`).Scan(&sa.AvgDuration); err != nil {
+		return sa, fmt.Errorf("query avg duration: %w", err)
+	}
 
 	// Short tasks (< 120s)
 	var shortTotal, shortPassed int
-	db.QueryRow(`SELECT COUNT(*), SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) FROM dispatches WHERE backend='temporal' AND duration_s > 0 AND duration_s < 120`).Scan(&shortTotal, &shortPassed)
+	if err := db.QueryRow(`SELECT COUNT(*), SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) FROM dispatches WHERE backend='temporal' AND duration_s > 0 AND duration_s < 120`).Scan(&shortTotal, &shortPassed); err != nil {
+		return sa, fmt.Errorf("query short tasks: %w", err)
+	}
 	if shortTotal > 0 {
 		sa.ShortTaskPassRate = float64(shortPassed) / float64(shortTotal)
 	}
 
 	// Medium tasks (120-600s)
 	var medTotal, medPassed int
-	db.QueryRow(`SELECT COUNT(*), SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) FROM dispatches WHERE backend='temporal' AND duration_s >= 120 AND duration_s < 600`).Scan(&medTotal, &medPassed)
+	if err := db.QueryRow(`SELECT COUNT(*), SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) FROM dispatches WHERE backend='temporal' AND duration_s >= 120 AND duration_s < 600`).Scan(&medTotal, &medPassed); err != nil {
+		return sa, fmt.Errorf("query medium tasks: %w", err)
+	}
 	if medTotal > 0 {
 		sa.MedTaskPassRate = float64(medPassed) / float64(medTotal)
 	}
 
 	// Long tasks (> 600s)
 	var longTotal, longPassed int
-	db.QueryRow(`SELECT COUNT(*), SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) FROM dispatches WHERE backend='temporal' AND duration_s >= 600`).Scan(&longTotal, &longPassed)
+	if err := db.QueryRow(`SELECT COUNT(*), SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) FROM dispatches WHERE backend='temporal' AND duration_s >= 600`).Scan(&longTotal, &longPassed); err != nil {
+		return sa, fmt.Errorf("query long tasks: %w", err)
+	}
 	if longTotal > 0 {
 		sa.LongTaskPassRate = float64(longPassed) / float64(longTotal)
 	}
@@ -230,7 +238,9 @@ func detectPatterns(db *sql.DB) ([]Pattern, error) {
 
 	// Pattern: escalations
 	var escalations int
-	db.QueryRow(`SELECT COUNT(*) FROM health_events WHERE event_type = 'escalation_required'`).Scan(&escalations)
+	if err := db.QueryRow(`SELECT COUNT(*) FROM health_events WHERE event_type = 'escalation_required'`).Scan(&escalations); err != nil {
+		escalations = 0
+	}
 	if escalations > 0 {
 		patterns = append(patterns, Pattern{
 			Type:        "escalation",
@@ -242,7 +252,9 @@ func detectPatterns(db *sql.DB) ([]Pattern, error) {
 
 	// Pattern: high handoff count
 	var highHandoffs int
-	db.QueryRow(`SELECT COUNT(*) FROM dispatches WHERE backend='temporal' AND retries >= 2`).Scan(&highHandoffs)
+	if err := db.QueryRow(`SELECT COUNT(*) FROM dispatches WHERE backend='temporal' AND retries >= 2`).Scan(&highHandoffs); err != nil {
+		highHandoffs = 0
+	}
 	if highHandoffs > 0 {
 		patterns = append(patterns, Pattern{
 			Type:        "review_churn",

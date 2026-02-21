@@ -1,7 +1,7 @@
 package temporal
 
 import (
-	"log"
+	"log/slog"
 
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/worker"
@@ -14,16 +14,22 @@ import (
 // StartWorker connects to Temporal and starts the chum task queue worker.
 // The store, tiers, dag, and cfgMgr are injected so activities can record
 // outcomes, resolve agents, and scan for ready tasks.
-func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr config.ConfigManager) error {
+func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr config.ConfigManager, temporalHostPort string, logger *slog.Logger) error {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	if temporalHostPort == "" {
+		temporalHostPort = DefaultTemporalHostPort
+	}
 	c, err := client.Dial(client.Options{
-		HostPort: "127.0.0.1:7233",
+		HostPort: temporalHostPort,
 	})
 	if err != nil {
 		return err
 	}
 	defer c.Close()
 
-	w := worker.New(c, "chum-task-queue", worker.Options{})
+	w := worker.New(c, DefaultTaskQueue, worker.Options{})
 
 	acts := &Activities{Store: st, Tiers: tiers, DAG: dag}
 	dispatchActs := &DispatchActivities{
@@ -49,6 +55,7 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 	w.RegisterActivity(acts.ExecuteActivity)
 	w.RegisterActivity(acts.CodeReviewActivity)
 	w.RegisterActivity(acts.DoDVerifyActivity)
+	w.RegisterActivity(acts.GatherMetricsActivity)
 	w.RegisterActivity(acts.RecordOutcomeActivity)
 	w.RegisterActivity(acts.EscalateActivity)
 	w.RegisterActivity(acts.GroomBacklogActivity)
@@ -71,6 +78,6 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 	w.RegisterActivity(acts.StrategicAnalysisActivity)
 	w.RegisterActivity(acts.GenerateMorningBriefingActivity)
 
-	log.Println("Temporal Worker started on chum-task-queue...")
+	logger.Info("temporal worker started", "task_queue", DefaultTaskQueue)
 	return w.Run(worker.InterruptCh())
 }

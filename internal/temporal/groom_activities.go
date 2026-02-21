@@ -21,19 +21,19 @@ import (
 // Mutations are capped at 5 per cycle to prevent runaway grooming.
 func (a *Activities) MutateTasksActivity(ctx context.Context, req TacticalGroomRequest) (*GroomResult, error) {
 	logger := activity.GetLogger(ctx)
-	logger.Info(GroomPrefix+" Tactical groom: analyzing tasks", "TaskID", req.TaskID, "Project", req.Project)
+	logger.Info(RemoraPrefix+" Tactical groom: analyzing tasks", "TaskID", req.TaskID, "Project", req.Project)
 
 	// Get current task state
 	allTasks, err := a.DAG.ListTasks(ctx, req.Project)
 	if err != nil {
-		logger.Warn(GroomPrefix+" Can't list tasks, skipping grooming", "error", err)
+		logger.Warn(RemoraPrefix+" Can't list tasks, skipping grooming", "error", err)
 		return &GroomResult{}, nil
 	}
 
 	// Get detail of completed task
 	completedTask, showErr := a.DAG.GetTask(ctx, req.TaskID)
 	if showErr != nil {
-		logger.Warn(GroomPrefix+" Can't show completed task", "task", req.TaskID, "error", showErr)
+		logger.Warn(RemoraPrefix+" Can't show completed task", "task", req.TaskID, "error", showErr)
 	}
 
 	// Build compressed backlog summary for the LLM
@@ -91,7 +91,7 @@ Return empty array [] if no mutations are needed.`,
 	agent := ResolveTierAgent(a.Tiers, req.Tier)
 	cliResult, err := runAgent(ctx, agent, prompt, req.WorkDir)
 	if err != nil {
-		logger.Warn(GroomPrefix+" LLM grooming call failed (non-fatal)", "error", err)
+		logger.Warn(RemoraPrefix+" LLM grooming call failed (non-fatal)", "error", err)
 		return &GroomResult{}, nil
 	}
 
@@ -102,7 +102,7 @@ Return empty array [] if no mutations are needed.`,
 
 	var mutations []BeadMutation
 	if err := json.Unmarshal([]byte(jsonStr), &mutations); err != nil {
-		logger.Warn(GroomPrefix+" Failed to parse mutations JSON", "error", err)
+		logger.Warn(RemoraPrefix+" Failed to parse mutations JSON", "error", err)
 		return &GroomResult{}, nil
 	}
 
@@ -117,14 +117,14 @@ Return empty array [] if no mutations are needed.`,
 		if err := a.applyMutation(ctx, req.Project, *m); err != nil {
 			result.MutationsFailed++
 			result.Details = append(result.Details, fmt.Sprintf("FAILED %s on %s: %v", m.Action, m.TaskID, err))
-			logger.Warn(GroomPrefix+" Mutation failed", "action", m.Action, "task", m.TaskID, "error", err)
+			logger.Warn(RemoraPrefix+" Mutation failed", "action", m.Action, "task", m.TaskID, "error", err)
 		} else {
 			result.MutationsApplied++
 			result.Details = append(result.Details, fmt.Sprintf("OK %s on %s", m.Action, m.TaskID))
 		}
 	}
 
-	logger.Info(GroomPrefix+" Tactical groom complete", "Applied", result.MutationsApplied, "Failed", result.MutationsFailed)
+	logger.Info(RemoraPrefix+" Tactical groom complete", "Applied", result.MutationsApplied, "Failed", result.MutationsFailed)
 	return result, nil
 }
 
@@ -133,7 +133,7 @@ Return empty array [] if no mutations are needed.`,
 // produced by StrategicAnalysisActivity + normalizeStrategicMutations.
 func (a *Activities) ApplyStrategicMutationsActivity(ctx context.Context, project string, mutations []BeadMutation) (*GroomResult, error) {
 	logger := activity.GetLogger(ctx)
-	logger.Info(GroomPrefix+" Applying strategic mutations", "count", len(mutations))
+	logger.Info(RemoraPrefix+" Applying strategic mutations", "count", len(mutations))
 
 	result := &GroomResult{}
 	for i := range mutations {
@@ -141,14 +141,14 @@ func (a *Activities) ApplyStrategicMutationsActivity(ctx context.Context, projec
 		if err := a.applyMutation(ctx, project, *m); err != nil {
 			result.MutationsFailed++
 			result.Details = append(result.Details, fmt.Sprintf("FAILED %s on %s: %v", m.Action, m.TaskID, err))
-			logger.Warn(GroomPrefix+" Strategic mutation failed", "action", m.Action, "task", m.TaskID, "error", err)
+			logger.Warn(RemoraPrefix+" Strategic mutation failed", "action", m.Action, "task", m.TaskID, "error", err)
 		} else {
 			result.MutationsApplied++
 			result.Details = append(result.Details, fmt.Sprintf("OK %s on %s", m.Action, m.TaskID))
 		}
 	}
 
-	logger.Info(GroomPrefix+" Strategic mutations complete", "Applied", result.MutationsApplied, "Failed", result.MutationsFailed)
+	logger.Info(RemoraPrefix+" Strategic mutations complete", "Applied", result.MutationsApplied, "Failed", result.MutationsFailed)
 	return result, nil
 }
 
@@ -273,7 +273,7 @@ func countOpenTasks(allTasks []graph.Task) int {
 // This gives the strategic groombot structural awareness without reading entire files.
 func (a *Activities) GenerateRepoMapActivity(ctx context.Context, req StrategicGroomRequest) (*RepoMap, error) {
 	logger := activity.GetLogger(ctx)
-	logger.Info(GroomPrefix+" Generating repo map", "Project", req.Project)
+	logger.Info(RemoraPrefix+" Generating repo map", "Project", req.Project)
 
 	cmd := exec.CommandContext(ctx, "go", "list", "-json", "./...")
 	cmd.Dir = req.WorkDir
@@ -326,7 +326,7 @@ func (a *Activities) GenerateRepoMapActivity(ctx context.Context, req StrategicG
 		repoMap.TotalFiles += len(pkg.GoFiles)
 	}
 
-	logger.Info(GroomPrefix+" Repo map generated", "Packages", len(repoMap.Packages), "Files", repoMap.TotalFiles)
+	logger.Info(RemoraPrefix+" Repo map generated", "Packages", len(repoMap.Packages), "Files", repoMap.TotalFiles)
 	return repoMap, nil
 }
 
@@ -378,14 +378,14 @@ func (a *Activities) GetBeadStateSummaryActivity(ctx context.Context, req Strate
 // + recent lessons to produce a strategic analysis.
 func (a *Activities) StrategicAnalysisActivity(ctx context.Context, req StrategicGroomRequest, repoMap *RepoMap, taskState string) (*StrategicAnalysis, error) {
 	logger := activity.GetLogger(ctx)
-	logger.Info(GroomPrefix+" Strategic analysis", "Project", req.Project)
+	logger.Info(RemoraPrefix+" Strategic analysis", "Project", req.Project)
 
 	// Query recent lessons for context
 	var lessonsContext string
 	if a.Store != nil {
 		lessons, lessonsErr := a.Store.GetRecentLessons(req.Project, 10)
 		if lessonsErr != nil {
-			logger.Warn(GroomPrefix+" Failed to get recent lessons", "error", lessonsErr)
+			logger.Warn(RemoraPrefix+" Failed to get recent lessons", "error", lessonsErr)
 		} else if len(lessons) > 0 {
 			var lb strings.Builder
 			for i := range lessons {
@@ -486,7 +486,7 @@ Be opinionated. Say what matters most and why.`,
 		return nil, fmt.Errorf("failed to parse strategic analysis: %w", err)
 	}
 
-	logger.Info(GroomPrefix+" Strategic analysis complete", "Priorities", len(analysis.Priorities), "Risks", len(analysis.Risks))
+	logger.Info(RemoraPrefix+" Strategic analysis complete", "Priorities", len(analysis.Priorities), "Risks", len(analysis.Risks))
 	return &analysis, nil
 }
 
@@ -500,7 +500,7 @@ func (a *Activities) GenerateMorningBriefingActivity(ctx context.Context, req St
 	if a.Store != nil {
 		stored, storedErr := a.Store.GetRecentLessons(req.Project, 5)
 		if storedErr != nil {
-			logger.Warn(GroomPrefix+" Failed to get recent lessons for briefing", "error", storedErr)
+			logger.Warn(RemoraPrefix+" Failed to get recent lessons for briefing", "error", storedErr)
 		}
 		for i := range stored {
 			recentLessons = append(recentLessons, Lesson{
@@ -563,9 +563,9 @@ func (a *Activities) GenerateMorningBriefingActivity(ctx context.Context, req St
 	// Write to work dir morning_briefing.md
 	briefingPath := filepath.Join(req.WorkDir, "morning_briefing.md")
 	if err := os.WriteFile(briefingPath, []byte(briefing.Markdown), 0o644); err != nil {
-		logger.Error(GroomPrefix+" Failed to write morning briefing", "path", briefingPath, "error", err)
+		logger.Error(RemoraPrefix+" Failed to write morning briefing", "path", briefingPath, "error", err)
 	} else {
-		logger.Info(GroomPrefix+" Morning briefing written", "path", briefingPath)
+		logger.Info(RemoraPrefix+" Morning briefing written", "path", briefingPath)
 	}
 
 	return briefing, nil

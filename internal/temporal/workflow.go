@@ -240,13 +240,21 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 				"Handoff", handoffCount,
 			)
 
-			// Feed review issues back into the plan
+			// Feed review issues back into the plan with context
 			plan.PreviousErrors = append(plan.PreviousErrors,
-				fmt.Sprintf("Review by %s found issues: %s", review.ReviewerAgent, strings.Join(review.Issues, "; ")))
+				fmt.Sprintf("The previous agent (%s) attempted to implement the plan but failed code review. Their changes were reverted to give you a clean slate. Review by %s found issues: %s", currentAgent, review.ReviewerAgent, strings.Join(review.Issues, "; ")))
 
 			// Swap: the reviewer becomes the implementer, and vice versa
 			currentAgent, currentReviewer = currentReviewer, currentAgent
 			req.Agent = currentAgent
+
+			// Reset workspace for the new agent so they have a fresh slate
+			resetStart := workflow.Now(ctx)
+			resetCtx := workflow.WithActivityOptions(ctx, execOpts) // Use the longer execOpts timeout for git commands
+			if err := workflow.ExecuteActivity(resetCtx, a.ResetWorkspaceActivity, req.WorkDir).Get(ctx, nil); err != nil {
+				logger.Warn(SharkPrefix+" Failed to reset workspace for fresh agent", "error", err)
+			}
+			recordStep(fmt.Sprintf("handoff-reset[%d]", handoffCount), resetStart, "ok")
 
 			// Re-execute with the swapped agent
 			handoffExecStart := workflow.Now(ctx)

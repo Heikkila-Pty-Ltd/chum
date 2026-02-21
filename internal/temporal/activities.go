@@ -107,6 +107,7 @@ func (a *Activities) ExecuteActivity(ctx context.Context, plan StructuredPlan, r
 
 	if len(plan.PreviousErrors) > 0 {
 		sb.WriteString(fmt.Sprintf("\nPREVIOUS ERRORS TO FIX:\n%s\n", strings.Join(plan.PreviousErrors, "\n")))
+		sb.WriteString("\nCRITICAL: You are fixing a build/test failure or review rejection. Fix ONLY the specific errors reported. DO NOT restructure the code, do not engage in large refactors, and DO NOT create new files. Only modify existing files to make the errors pass.\n")
 	}
 
 	// --- Learner feedback loop: inject recent lessons and DoD patterns ---
@@ -157,6 +158,15 @@ func (a *Activities) ExecuteActivity(ctx context.Context, plan StructuredPlan, r
 	sb.WriteString("\nImplement this plan now. Make all necessary code changes.")
 
 	cliResult, err := runAgent(ctx, agent, sb.String(), req.WorkDir)
+
+	// Auto-stage any untracked or modified files so the review agent can see them
+	// and so DoD checks see the same committed state.
+	addCmd := exec.CommandContext(ctx, "git", "add", ".")
+	addCmd.Dir = req.WorkDir
+	if addErr := addCmd.Run(); addErr != nil {
+		logger.Warn(SharkPrefix+" Failed to auto-stage files", "error", addErr)
+	}
+
 	exitCode := 0
 	if err != nil {
 		exitCode = 1
@@ -488,7 +498,28 @@ func truncate(s string, maxLen int) string {
 	if len(s) <= maxLen {
 		return s
 	}
-	return s[:maxLen] + "\n... [truncated]"
+	return s[:maxLen] + "..."
+}
+
+// ResetWorkspaceActivity hard resets the codebase and cleans untracked files
+// to give a backup agent a fresh slate when taking over a failed execution.
+func (a *Activities) ResetWorkspaceActivity(ctx context.Context, workDir string) error {
+	logger := activity.GetLogger(ctx)
+	logger.Info(SharkPrefix+" Resetting workspace for fresh handoff", "WorkDir", workDir)
+
+	cmd := exec.CommandContext(ctx, "git", "reset", "--hard", "HEAD")
+	cmd.Dir = workDir
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("git reset: %w", err)
+	}
+
+	cleanCmd := exec.CommandContext(ctx, "git", "clean", "-fd")
+	cleanCmd.Dir = workDir
+	if err := cleanCmd.Run(); err != nil {
+		return fmt.Errorf("git clean: %w", err)
+	}
+
+	return nil
 }
 
 func formatCriteria(criteria []string) string {

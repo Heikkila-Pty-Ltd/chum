@@ -1,3 +1,5 @@
+// Package graph manages the Beads dependency DAG.
+
 package graph
 
 import (

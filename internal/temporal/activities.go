@@ -1,3 +1,5 @@
+// Package temporal implements the core CHUM Temporal workflows and activities.
+
 package temporal
 
 import (

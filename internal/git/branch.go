@@ -1,3 +1,5 @@
+// Package git provides branch and commit operations for DoD verification.
+
 package git
 
 import (

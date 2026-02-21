@@ -1,3 +1,5 @@
+// Package matrix provides Matrix.org chat integration.
+
 package matrix
 
 import (

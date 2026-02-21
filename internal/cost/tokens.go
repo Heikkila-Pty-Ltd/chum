@@ -1,3 +1,5 @@
+// Package tokens provides utilities for counting LLM tokens.
+
 package cost
 
 import (

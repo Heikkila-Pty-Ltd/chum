@@ -1,3 +1,5 @@
+// Package allocations manages budget tracking and recording.
+
 package chief
 
 import (

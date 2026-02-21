@@ -235,6 +235,17 @@ func applyDefaults(cfg *Config, md toml.MetaData) {
 	if cfg.Chief.AgentID == "" {
 		cfg.Chief.AgentID = "chum-chief"
 	}
+
+	// Crab defaults
+	if cfg.Crab.Tier == "" {
+		cfg.Crab.Tier = "fast"
+	}
+	if cfg.Crab.MaxMorselsPerPlan == 0 {
+		cfg.Crab.MaxMorselsPerPlan = 20
+	}
+	if cfg.Crab.MaxScopeItems == 0 {
+		cfg.Crab.MaxScopeItems = 10
+	}
 }
 
 // isLocalBind checks if a bind address is local (localhost, 127.0.0.1, or unix socket)

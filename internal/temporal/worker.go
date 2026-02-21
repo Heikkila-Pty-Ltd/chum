@@ -79,6 +79,15 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 	w.RegisterActivity(acts.StrategicAnalysisActivity)
 	w.RegisterActivity(acts.GenerateMorningBriefingActivity)
 
+	// --- Crab Decomposition ---
+	w.RegisterWorkflow(CrabDecompositionWorkflow)
+	w.RegisterActivity(acts.ParsePlanActivity)
+	w.RegisterActivity(acts.ClarifyGapsActivity)
+	w.RegisterActivity(acts.DecomposeActivity)
+	w.RegisterActivity(acts.ScopeMorselsActivity)
+	w.RegisterActivity(acts.SizeMorselsActivity)
+	w.RegisterActivity(acts.EmitMorselsActivity)
+
 	logger.Info("temporal worker started", "task_queue", DefaultTaskQueue)
 	return w.Run(worker.InterruptCh())
 }

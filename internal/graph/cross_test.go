@@ -354,7 +354,7 @@ func TestFilterUnblockedCrossProject_AllLocalDepsResolved(t *testing.T) {
 	// Task with only local deps, all closed.
 	tasks := []Task{
 		{ID: "dep", Status: "closed"},
-		{ID: "worker", Status: "open", DependsOn: []string{"dep"}, Priority: 1},
+		{ID: "worker", Status: "ready", DependsOn: []string{"dep"}, Priority: 1},
 	}
 	localGraph := BuildDepGraph(tasks)
 	cpg := &CrossProjectGraph{Projects: map[string]map[string]*Task{}}
@@ -368,7 +368,7 @@ func TestFilterUnblockedCrossProject_AllLocalDepsResolved(t *testing.T) {
 func TestFilterUnblockedCrossProject_CrossDepBlocks(t *testing.T) {
 	// Task depends on a cross-project task that is still open.
 	tasks := []Task{
-		{ID: "worker", Status: "open", DependsOn: []string{"frontend:task-001"}, Priority: 1},
+		{ID: "worker", Status: "ready", DependsOn: []string{"frontend:task-001"}, Priority: 1},
 	}
 	localGraph := BuildDepGraph(tasks)
 	cpg := &CrossProjectGraph{
@@ -388,7 +388,7 @@ func TestFilterUnblockedCrossProject_CrossDepBlocks(t *testing.T) {
 func TestFilterUnblockedCrossProject_CrossDepResolved(t *testing.T) {
 	// Task depends on a cross-project task that is closed.
 	tasks := []Task{
-		{ID: "worker", Status: "open", DependsOn: []string{"frontend:task-001"}, Priority: 1},
+		{ID: "worker", Status: "ready", DependsOn: []string{"frontend:task-001"}, Priority: 1},
 	}
 	localGraph := BuildDepGraph(tasks)
 	cpg := &CrossProjectGraph{
@@ -409,7 +409,7 @@ func TestFilterUnblockedCrossProject_MixedLocalAndCross(t *testing.T) {
 	// Task with both local and cross deps. All must be resolved.
 	tasks := []Task{
 		{ID: "local-dep", Status: "closed"},
-		{ID: "worker", Status: "open", DependsOn: []string{"local-dep", "backend:api-task"}, Priority: 1},
+		{ID: "worker", Status: "ready", DependsOn: []string{"local-dep", "backend:api-task"}, Priority: 1},
 	}
 	localGraph := BuildDepGraph(tasks)
 
@@ -429,10 +429,10 @@ func TestFilterUnblockedCrossProject_MixedLocalAndCross(t *testing.T) {
 }
 
 func TestFilterUnblockedCrossProject_MixedLocalAndCross_LocalBlocks(t *testing.T) {
-	// Local dep is open — even though cross dep is resolved, worker is blocked.
+	// Local dep is ready — even though cross dep is resolved, worker is blocked.
 	tasks := []Task{
-		{ID: "local-dep", Status: "open"},
-		{ID: "worker", Status: "open", DependsOn: []string{"local-dep", "backend:api-task"}, Priority: 1},
+		{ID: "local-dep", Status: "ready"},
+		{ID: "worker", Status: "ready", DependsOn: []string{"local-dep", "backend:api-task"}, Priority: 1},
 	}
 	localGraph := BuildDepGraph(tasks)
 	cpg := &CrossProjectGraph{
@@ -453,7 +453,7 @@ func TestFilterUnblockedCrossProject_MixedLocalAndCross_LocalBlocks(t *testing.T
 func TestFilterUnblockedCrossProject_MissingCrossProject(t *testing.T) {
 	// Cross dep references a project not in the graph — treated as unresolved.
 	tasks := []Task{
-		{ID: "worker", Status: "open", DependsOn: []string{"unknown:task-001"}, Priority: 1},
+		{ID: "worker", Status: "ready", DependsOn: []string{"unknown:task-001"}, Priority: 1},
 	}
 	localGraph := BuildDepGraph(tasks)
 	cpg := &CrossProjectGraph{Projects: map[string]map[string]*Task{}}
@@ -466,7 +466,7 @@ func TestFilterUnblockedCrossProject_MissingCrossProject(t *testing.T) {
 
 func TestFilterUnblockedCrossProject_NilCrossGraph(t *testing.T) {
 	tasks := []Task{
-		{ID: "worker", Status: "open", DependsOn: []string{"proj:task-001"}, Priority: 1},
+		{ID: "worker", Status: "ready", DependsOn: []string{"proj:task-001"}, Priority: 1},
 	}
 	localGraph := BuildDepGraph(tasks)
 
@@ -478,9 +478,9 @@ func TestFilterUnblockedCrossProject_NilCrossGraph(t *testing.T) {
 
 func TestFilterUnblockedCrossProject_ExcludesEpicsAndClosed(t *testing.T) {
 	tasks := []Task{
-		{ID: "open-task", Status: "open", Priority: 1},
+		{ID: "open-task", Status: "ready", Priority: 1},
 		{ID: "closed-task", Status: "closed"},
-		{ID: "epic-task", Status: "open", Type: "epic"},
+		{ID: "epic-task", Status: "ready", Type: "epic"},
 	}
 	localGraph := BuildDepGraph(tasks)
 	cpg := &CrossProjectGraph{Projects: map[string]map[string]*Task{}}
@@ -494,10 +494,10 @@ func TestFilterUnblockedCrossProject_ExcludesEpicsAndClosed(t *testing.T) {
 func TestFilterUnblockedCrossProject_SortOrder(t *testing.T) {
 	// Verify same sort order as FilterUnblockedOpen: stage > priority > estimate > ID.
 	tasks := []Task{
-		{ID: "plain-b", Status: "open", Priority: 1, EstimateMinutes: 10},
-		{ID: "plain-a", Status: "open", Priority: 1, EstimateMinutes: 10},
-		{ID: "stage-z", Status: "open", Priority: 2, EstimateMinutes: 60, Labels: []string{"stage:late"}},
-		{ID: "stage-a", Status: "open", Priority: 0, EstimateMinutes: 5, Labels: []string{"stage:early"}},
+		{ID: "plain-b", Status: "ready", Priority: 1, EstimateMinutes: 10},
+		{ID: "plain-a", Status: "ready", Priority: 1, EstimateMinutes: 10},
+		{ID: "stage-z", Status: "ready", Priority: 2, EstimateMinutes: 60, Labels: []string{"stage:late"}},
+		{ID: "stage-a", Status: "ready", Priority: 0, EstimateMinutes: 5, Labels: []string{"stage:early"}},
 	}
 	localGraph := BuildDepGraph(tasks)
 	cpg := &CrossProjectGraph{Projects: map[string]map[string]*Task{}}
@@ -512,8 +512,8 @@ func TestFilterUnblockedCrossProject_SortOrder(t *testing.T) {
 func TestFilterUnblockedCrossProject_NilLocalGraph(t *testing.T) {
 	// With nil local graph and no cross deps, tasks without deps should pass.
 	tasks := []Task{
-		{ID: "free", Status: "open"},
-		{ID: "blocked", Status: "open", DependsOn: []string{"free"}},
+		{ID: "free", Status: "ready"},
+		{ID: "blocked", Status: "ready", DependsOn: []string{"free"}},
 	}
 	cpg := &CrossProjectGraph{Projects: map[string]map[string]*Task{}}
 
@@ -639,7 +639,7 @@ func TestConcurrentAddEdge(t *testing.T) {
 	ctx := t.Context()
 
 	// Create a hub and spokes: all spokes depend on hub.
-	hubID, _ := dag.CreateTask(ctx, Task{Title: "hub", Project: "concurrent"})
+	hubID, _ := dag.CreateTask(ctx, Task{Title: "hub", Project: "concurrent", Status: "ready"})
 
 	const spokes = 20
 	spokeIDs := make([]string, spokes)
@@ -647,6 +647,7 @@ func TestConcurrentAddEdge(t *testing.T) {
 		id, err := dag.CreateTask(ctx, Task{
 			Title:   fmt.Sprintf("spoke-%d", i),
 			Project: "concurrent",
+			Status:  "ready",
 		})
 		if err != nil {
 			t.Fatalf("setup: %v", err)
@@ -703,6 +704,7 @@ func TestGetReadyNodes_LargeGraph(t *testing.T) {
 			Title:    fmt.Sprintf("node-%d", i),
 			Project:  "large",
 			Priority: i % 5,
+			Status:   "ready",
 		})
 		if err != nil {
 			t.Fatalf("CreateTask node-%d: %v", i, err)
@@ -762,7 +764,7 @@ func TestGetReadyNodes_LargeGraph_ClosingDepsUnblocks(t *testing.T) {
 	ctx := t.Context()
 
 	// Create a fan-out: 1 root, 100 children that depend on root.
-	rootID, _ := dag.CreateTask(ctx, Task{Title: "root", Project: "large"})
+	rootID, _ := dag.CreateTask(ctx, Task{Title: "root", Project: "large", Status: "ready"})
 
 	const children = 100
 	childIDs := make([]string, children)
@@ -770,6 +772,7 @@ func TestGetReadyNodes_LargeGraph_ClosingDepsUnblocks(t *testing.T) {
 		id, err := dag.CreateTask(ctx, Task{
 			Title:   fmt.Sprintf("child-%d", i),
 			Project: "large",
+			Status:  "ready",
 		})
 		if err != nil {
 			t.Fatalf("CreateTask child-%d: %v", i, err)
@@ -815,6 +818,7 @@ func TestGetReadyNodes_LargeGraph_OrderPreserved(t *testing.T) {
 			Project:         "large",
 			Priority:        i % 5,
 			EstimateMinutes: (n - i),
+			Status:          "ready",
 		})
 		if err != nil {
 			t.Fatalf("CreateTask: %v", err)

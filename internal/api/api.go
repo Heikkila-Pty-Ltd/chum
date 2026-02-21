@@ -72,6 +72,10 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.HandleFunc("/planning/start", s.authMiddleware.RequireAuth(s.handlePlanningStart))
 	mux.HandleFunc("/planning/", s.authMiddleware.RequireAuth(s.routePlanning))
 
+	// Crab decomposition endpoints
+	mux.HandleFunc("/crab/decompose", s.authMiddleware.RequireAuth(s.handleCrabDecompose))
+	mux.HandleFunc("/crab/", s.authMiddleware.RequireAuth(s.routeCrab))
+
 	s.httpServer = &http.Server{
 		Addr:        s.cfg.API.Bind,
 		Handler:     mux,

@@ -41,6 +41,7 @@ type Config struct {
 	API        API                       `toml:"api"`
 	Dispatch   Dispatch                  `toml:"dispatch"`
 	Chief      Chief                     `toml:"chief"`
+	Crab       Crab                      `toml:"crab"`
 }
 
 // General holds top-level scheduler settings (tick interval, retries, concurrency caps).
@@ -285,4 +286,16 @@ type Chief struct {
 	Model               string `toml:"model"`                 // Model to use (defaults to premium)
 	AgentID             string `toml:"agent_id"`              // Agent identifier (defaults to "chum-chief")
 	RequireApprovedPlan bool   `toml:"require_approved_plan"` // Block implementation dispatch without active approved plan
+}
+
+// Crab configures the Crab decomposition agent.
+// Crabs sit between Chief/human and Sharks: they take a high-level markdown
+// plan and decompose it into whales (epic-level groupings) and morsels
+// (bite-sized executable units) for shark consumption.
+type Crab struct {
+	Enabled           bool   `toml:"enabled"`              // Enable Crab decomposition agent
+	Tier              string `toml:"tier"`                 // Default LLM tier: "fast", "balanced", or "premium" (default "fast")
+	MaxMorselsPerPlan int    `toml:"max_morsels_per_plan"` // Maximum morsels emitted per plan (default 20)
+	MaxScopeItems     int    `toml:"max_scope_items"`      // Maximum scope items accepted in a plan (default 10)
+	AutoApprove       bool   `toml:"auto_approve"`         // Phase 2: auto-approve high-confidence decompositions (default false)
 }

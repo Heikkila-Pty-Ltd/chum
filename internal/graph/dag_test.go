@@ -603,9 +603,9 @@ func TestGetReadyNodes_BasicScenario(t *testing.T) {
 	dag := newTestDAG(t)
 	ctx := t.Context()
 
-	// Create tasks: A (open, no deps), B (open, depends on A), C (closed).
-	idA, _ := dag.CreateTask(ctx, Task{Title: "A", Project: "p", Priority: 1})
-	idB, _ := dag.CreateTask(ctx, Task{Title: "B", Project: "p", Priority: 0})
+	// Create tasks: A (ready, no deps), B (ready, depends on A), C (closed).
+	idA, _ := dag.CreateTask(ctx, Task{Title: "A", Project: "p", Priority: 1, Status: "ready"})
+	idB, _ := dag.CreateTask(ctx, Task{Title: "B", Project: "p", Priority: 0, Status: "ready"})
 	dag.CreateTask(ctx, Task{Title: "C", Project: "p", Status: "closed"})
 
 	dag.AddEdge(ctx, idB, idA) // B depends on A
@@ -615,7 +615,7 @@ func TestGetReadyNodes_BasicScenario(t *testing.T) {
 		t.Fatalf("GetReadyNodes: %v", err)
 	}
 
-	// A has no deps (ready), B depends on open A (not ready), C is closed (excluded).
+	// A has no deps (ready), B depends on non-closed A (not ready), C is closed (excluded).
 	if len(ready) != 1 || ready[0].ID != idA {
 		t.Fatalf("expected only A to be ready, got %v", ids(ready))
 	}
@@ -625,8 +625,8 @@ func TestGetReadyNodes_AllDependenciesClosed(t *testing.T) {
 	dag := newTestDAG(t)
 	ctx := t.Context()
 
-	idDep, _ := dag.CreateTask(ctx, Task{Title: "dep", Project: "p"})
-	idTask, _ := dag.CreateTask(ctx, Task{Title: "task", Project: "p"})
+	idDep, _ := dag.CreateTask(ctx, Task{Title: "dep", Project: "p", Status: "ready"})
+	idTask, _ := dag.CreateTask(ctx, Task{Title: "task", Project: "p", Status: "ready"})
 
 	dag.AddEdge(ctx, idTask, idDep)  // task depends on dep
 	dag.CloseTask(ctx, idDep)        // close the dependency
@@ -652,8 +652,8 @@ func TestGetReadyNodes_ExcludesEpics(t *testing.T) {
 	dag := newTestDAG(t)
 	ctx := t.Context()
 
-	dag.CreateTask(ctx, Task{Title: "epic", Project: "p", Type: "epic"})
-	idTask, _ := dag.CreateTask(ctx, Task{Title: "task", Project: "p", Type: "task"})
+	dag.CreateTask(ctx, Task{Title: "epic", Project: "p", Type: "epic", Status: "ready"})
+	idTask, _ := dag.CreateTask(ctx, Task{Title: "task", Project: "p", Type: "task", Status: "ready"})
 
 	ready, err := dag.GetReadyNodes(ctx, "p")
 	if err != nil {
@@ -669,7 +669,7 @@ func TestGetReadyNodes_ExcludesClosedTasks(t *testing.T) {
 	dag := newTestDAG(t)
 	ctx := t.Context()
 
-	id, _ := dag.CreateTask(ctx, Task{Title: "will close", Project: "p"})
+	id, _ := dag.CreateTask(ctx, Task{Title: "will close", Project: "p", Status: "ready"})
 	dag.CloseTask(ctx, id)
 
 	ready, err := dag.GetReadyNodes(ctx, "p")
@@ -685,9 +685,9 @@ func TestGetReadyNodes_OrderByPriorityThenEstimate(t *testing.T) {
 	dag := newTestDAG(t)
 	ctx := t.Context()
 
-	idLow, _ := dag.CreateTask(ctx, Task{Title: "low-prio", Project: "p", Priority: 2, EstimateMinutes: 10})
-	idHigh, _ := dag.CreateTask(ctx, Task{Title: "high-prio", Project: "p", Priority: 0, EstimateMinutes: 60})
-	idMed, _ := dag.CreateTask(ctx, Task{Title: "med-prio", Project: "p", Priority: 1, EstimateMinutes: 30})
+	idLow, _ := dag.CreateTask(ctx, Task{Title: "low-prio", Project: "p", Priority: 2, EstimateMinutes: 10, Status: "ready"})
+	idHigh, _ := dag.CreateTask(ctx, Task{Title: "high-prio", Project: "p", Priority: 0, EstimateMinutes: 60, Status: "ready"})
+	idMed, _ := dag.CreateTask(ctx, Task{Title: "med-prio", Project: "p", Priority: 1, EstimateMinutes: 30, Status: "ready"})
 
 	ready, err := dag.GetReadyNodes(ctx, "p")
 	if err != nil {
@@ -707,8 +707,8 @@ func TestGetReadyNodes_ProjectIsolation(t *testing.T) {
 	dag := newTestDAG(t)
 	ctx := t.Context()
 
-	dag.CreateTask(ctx, Task{Title: "alpha task", Project: "alpha"})
-	dag.CreateTask(ctx, Task{Title: "beta task", Project: "beta"})
+	dag.CreateTask(ctx, Task{Title: "alpha task", Project: "alpha", Status: "ready"})
+	dag.CreateTask(ctx, Task{Title: "beta task", Project: "beta", Status: "ready"})
 
 	ready, err := dag.GetReadyNodes(ctx, "alpha")
 	if err != nil {
@@ -731,9 +731,9 @@ func TestGetReadyNodes_NoDependenciesAllReady(t *testing.T) {
 	dag := newTestDAG(t)
 	ctx := t.Context()
 
-	dag.CreateTask(ctx, Task{Title: "a", Project: "p"})
-	dag.CreateTask(ctx, Task{Title: "b", Project: "p"})
-	dag.CreateTask(ctx, Task{Title: "c", Project: "p"})
+	dag.CreateTask(ctx, Task{Title: "a", Project: "p", Status: "ready"})
+	dag.CreateTask(ctx, Task{Title: "b", Project: "p", Status: "ready"})
+	dag.CreateTask(ctx, Task{Title: "c", Project: "p", Status: "ready"})
 
 	ready, err := dag.GetReadyNodes(ctx, "p")
 	if err != nil {

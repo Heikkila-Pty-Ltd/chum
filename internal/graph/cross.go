@@ -99,7 +99,7 @@ func GetCrossProjectBlockers(t Task) []CrossDep {
 func FilterUnblockedCrossProject(tasks []Task, localGraph *DepGraph, crossGraph *CrossProjectGraph) []Task {
 	result := make([]Task, 0, len(tasks))
 	for i := range tasks {
-		if !isOpenTask(tasks[i]) || isEpicTask(tasks[i]) {
+		if !isDispatchableTask(tasks[i]) || isContainerTask(tasks[i]) {
 			continue
 		}
 		if !allDepsClosedCross(tasks[i], localGraph, crossGraph) {

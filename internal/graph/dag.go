@@ -20,6 +20,7 @@ const (
 	pragmaForeignKeysOn  = `PRAGMA foreign_keys = ON;`
 
 	statusOpen   = "open"
+	statusReady  = "ready"
 	statusClosed = "closed"
 	defaultType  = "task"
 )
@@ -89,7 +90,7 @@ const (
 		FROM tasks AS t
 		WHERE t.project = ?
 		  AND lower(t.status) = ?
-		  AND lower(t."type") != ?
+		  AND lower(t."type") NOT IN (?, ?)
 		  AND NOT EXISTS (
 			SELECT 1
 			FROM task_edges e
@@ -505,7 +506,7 @@ func (d *DAG) GetReadyNodes(ctx context.Context, project string) ([]Task, error)
 		return nil, fmt.Errorf("project is required")
 	}
 
-	rows, err := queryContext(ctx, d.db, readyNodesSQL, project, statusOpen, taskTypeEpic, statusClosed)
+	rows, err := queryContext(ctx, d.db, readyNodesSQL, project, statusReady, taskTypeEpic, taskTypeWhale, statusClosed)
 	if err != nil {
 		return nil, fmt.Errorf("get ready nodes: %w", err)
 	}

@@ -159,10 +159,10 @@ func TestAccessorsReturnCopiesForDependencies(t *testing.T) {
 
 func TestFilterUnblockedOpen_DeterministicTieBreakers(t *testing.T) {
 	tasks := []Task{
-		{ID: "b", Status: "open", Priority: 1, EstimateMinutes: 30},
-		{ID: "a", Status: "open", Priority: 1, EstimateMinutes: 30},
-		{ID: "c", Status: "open", Priority: 1, EstimateMinutes: 20, Labels: []string{"stage:beta"}},
-		{ID: "d", Status: "open", Priority: 1, EstimateMinutes: 20, Labels: []string{"stage:alpha"}},
+		{ID: "b", Status: "ready", Priority: 1, EstimateMinutes: 30},
+		{ID: "a", Status: "ready", Priority: 1, EstimateMinutes: 30},
+		{ID: "c", Status: "ready", Priority: 1, EstimateMinutes: 20, Labels: []string{"stage:beta"}},
+		{ID: "d", Status: "ready", Priority: 1, EstimateMinutes: 20, Labels: []string{"stage:alpha"}},
 	}
 
 	graph := BuildDepGraph(tasks)
@@ -176,13 +176,13 @@ func TestFilterUnblockedOpen_DeterministicTieBreakers(t *testing.T) {
 
 func TestFilterUnblockedOpen_ExcludesBlockedClosedAndEpic(t *testing.T) {
 	tasks := []Task{
-		{ID: "root", Status: "open", Priority: 2, EstimateMinutes: 5},
-		{ID: "blocked", Status: "open", DependsOn: []string{"root"}, Priority: 1, EstimateMinutes: 3},
-		{ID: "unblocked", Status: "open", DependsOn: []string{"done"}, Priority: 1, EstimateMinutes: 8},
+		{ID: "root", Status: "ready", Priority: 2, EstimateMinutes: 5},
+		{ID: "blocked", Status: "ready", DependsOn: []string{"root"}, Priority: 1, EstimateMinutes: 3},
+		{ID: "unblocked", Status: "ready", DependsOn: []string{"done"}, Priority: 1, EstimateMinutes: 8},
 		{ID: "done", Status: "closed"},
-		{ID: "epic", Status: "open", Type: "epic"},
+		{ID: "epic", Status: "ready", Type: "epic"},
 		{ID: "closed", Status: "closed"},
-		{ID: "missing", Status: "open", DependsOn: []string{"ghost"}},
+		{ID: "missing", Status: "ready", DependsOn: []string{"ghost"}},
 	}
 
 	graph := BuildDepGraph(tasks)
@@ -196,10 +196,10 @@ func TestFilterUnblockedOpen_ExcludesBlockedClosedAndEpic(t *testing.T) {
 
 func TestFilterUnblockedOpen_ExcludesClosedAndEpic(t *testing.T) {
 	tasks := []Task{
-		{ID: "open-task", Status: "open", Type: "task"},
+		{ID: "open-task", Status: "ready", Type: "task"},
 		{ID: "closed-task", Status: "closed", Type: "task"},
-		{ID: "open-epic", Status: "open", Type: "epic"},
-		{ID: "open-feature", Status: "open", Type: "feature"},
+		{ID: "open-epic", Status: "ready", Type: "epic"},
+		{ID: "open-feature", Status: "ready", Type: "feature"},
 	}
 
 	graph := BuildDepGraph(tasks)
@@ -213,8 +213,8 @@ func TestFilterUnblockedOpen_ExcludesClosedAndEpic(t *testing.T) {
 
 func TestFilterUnblockedOpen_UsesGraphDependencySnapshot(t *testing.T) {
 	tasks := []Task{
-		{ID: "base", Status: "open"},
-		{ID: "child", Status: "open", DependsOn: []string{"base"}},
+		{ID: "base", Status: "ready"},
+		{ID: "child", Status: "ready", DependsOn: []string{"base"}},
 	}
 
 	graph := BuildDepGraph(tasks)
@@ -229,8 +229,8 @@ func TestFilterUnblockedOpen_UsesGraphDependencySnapshot(t *testing.T) {
 }
 
 func TestFilterUnblockedOpen_FallsBackToInputDepsWhenTaskMissingFromGraph(t *testing.T) {
-	base := Task{ID: "base", Status: "open"}
-	orphan := Task{ID: "orphan", Status: "open", DependsOn: []string{"base"}}
+	base := Task{ID: "base", Status: "ready"}
+	orphan := Task{ID: "orphan", Status: "ready", DependsOn: []string{"base"}}
 
 	graph := BuildDepGraph([]Task{base})
 	result := FilterUnblockedOpen([]Task{base, orphan}, graph)
@@ -242,10 +242,10 @@ func TestFilterUnblockedOpen_FallsBackToInputDepsWhenTaskMissingFromGraph(t *tes
 func TestFilterUnblockedOpen_DependencyResolution(t *testing.T) {
 	tasks := []Task{
 		{ID: "dep-closed", Status: "closed"},
-		{ID: "dep-open", Status: "open"},
-		{ID: "unblocked", Status: "open", DependsOn: []string{"dep-closed"}},
-		{ID: "blocked", Status: "open", DependsOn: []string{"dep-open"}},
-		{ID: "mixed", Status: "open", DependsOn: []string{"dep-closed", "dep-open"}},
+		{ID: "dep-open", Status: "ready"},
+		{ID: "unblocked", Status: "ready", DependsOn: []string{"dep-closed"}},
+		{ID: "blocked", Status: "ready", DependsOn: []string{"dep-open"}},
+		{ID: "mixed", Status: "ready", DependsOn: []string{"dep-closed", "dep-open"}},
 	}
 
 	graph := BuildDepGraph(tasks)
@@ -260,14 +260,14 @@ func TestFilterUnblockedOpen_DependencyResolution(t *testing.T) {
 
 func TestFilterUnblockedOpen_SortingByPriorityStageEstimateAndID(t *testing.T) {
 	tasks := []Task{
-		{ID: "plain-a", Status: "open", Priority: 1, EstimateMinutes: 5},
-		{ID: "plain-b", Status: "open", Priority: 1, EstimateMinutes: 5},
-		{ID: "plain-low", Status: "open", Priority: 0, EstimateMinutes: 100},
-		{ID: "stage-c", Status: "open", Priority: 1, EstimateMinutes: 2, Labels: []string{"stage:gamma"}},
-		{ID: "stage-b", Status: "open", Priority: 0, EstimateMinutes: 30, Labels: []string{"stage:beta"}},
-		{ID: "stage-a", Status: "open", Priority: 0, EstimateMinutes: 10, Labels: []string{"stage:alpha"}},
-		{ID: "stage-d", Status: "open", Priority: 1, EstimateMinutes: 2, Labels: []string{"stage:zz"}},
-		{ID: "stage-e", Status: "open", Priority: 0, EstimateMinutes: 10, Labels: []string{"stage:epsilon"}},
+		{ID: "plain-a", Status: "ready", Priority: 1, EstimateMinutes: 5},
+		{ID: "plain-b", Status: "ready", Priority: 1, EstimateMinutes: 5},
+		{ID: "plain-low", Status: "ready", Priority: 0, EstimateMinutes: 100},
+		{ID: "stage-c", Status: "ready", Priority: 1, EstimateMinutes: 2, Labels: []string{"stage:gamma"}},
+		{ID: "stage-b", Status: "ready", Priority: 0, EstimateMinutes: 30, Labels: []string{"stage:beta"}},
+		{ID: "stage-a", Status: "ready", Priority: 0, EstimateMinutes: 10, Labels: []string{"stage:alpha"}},
+		{ID: "stage-d", Status: "ready", Priority: 1, EstimateMinutes: 2, Labels: []string{"stage:zz"}},
+		{ID: "stage-e", Status: "ready", Priority: 0, EstimateMinutes: 10, Labels: []string{"stage:epsilon"}},
 	}
 
 	graph := BuildDepGraph(tasks)
@@ -282,9 +282,9 @@ func TestFilterUnblockedOpen_SortingByPriorityStageEstimateAndID(t *testing.T) {
 func TestFilterUnblockedOpen_SortsByStageBeforePriority(t *testing.T) {
 	// Explicitly confirm primary key is stage-labeled.
 	tasks := []Task{
-		{ID: "low-priority-stage", Status: "open", Priority: 2, EstimateMinutes: 1, Labels: []string{"stage:high"}},
-		{ID: "high-priority-plain", Status: "open", Priority: 1, EstimateMinutes: 10},
-		{ID: "same-priority-stage", Status: "open", Priority: 1, EstimateMinutes: 5, Labels: []string{"stage:mid"}},
+		{ID: "low-priority-stage", Status: "ready", Priority: 2, EstimateMinutes: 1, Labels: []string{"stage:high"}},
+		{ID: "high-priority-plain", Status: "ready", Priority: 1, EstimateMinutes: 10},
+		{ID: "same-priority-stage", Status: "ready", Priority: 1, EstimateMinutes: 5, Labels: []string{"stage:mid"}},
 	}
 
 	graph := BuildDepGraph(tasks)
@@ -298,8 +298,8 @@ func TestFilterUnblockedOpen_SortsByStageBeforePriority(t *testing.T) {
 
 func TestFilterUnblockedOpen_NilGraph(t *testing.T) {
 	tasks := []Task{
-		{ID: "open", Status: "open"},
-		{ID: "open-with-missing", Status: "open", DependsOn: []string{"ghost"}},
+		{ID: "open", Status: "ready"},
+		{ID: "open-with-missing", Status: "ready", DependsOn: []string{"ghost"}},
 	}
 
 	result := FilterUnblockedOpen(tasks, nil)
@@ -312,8 +312,8 @@ func TestFilterUnblockedOpen_NilGraph(t *testing.T) {
 func TestFilterUnblockedOpen_NilDependenciesAndMissingDependencyRefs(t *testing.T) {
 	tasks := []Task{
 		{ID: "base", Status: "closed", Priority: 1},
-		{ID: "child", Status: "open", DependsOn: []string{"base"}, Priority: 0},
-		{ID: "missing", Status: "open", DependsOn: []string{"ghost"}, Priority: 2},
+		{ID: "child", Status: "ready", DependsOn: []string{"base"}, Priority: 0},
+		{ID: "missing", Status: "ready", DependsOn: []string{"ghost"}, Priority: 2},
 		{ID: "finished", Status: "closed"},
 	}
 
@@ -332,8 +332,8 @@ func TestFilterUnblockedOpen_NilDependenciesAndMissingDependencyRefs(t *testing.
 func TestFilterUnblockedOpen_EmptyResult(t *testing.T) {
 	tasks := []Task{
 		{ID: "closed", Status: "closed"},
-		{ID: "epic", Status: "open", Type: "epic"},
-		{ID: "blocked", Status: "open", DependsOn: []string{"epic"}},
+		{ID: "epic", Status: "ready", Type: "epic"},
+		{ID: "blocked", Status: "ready", DependsOn: []string{"epic"}},
 	}
 
 	result := FilterUnblockedOpen(tasks, BuildDepGraph(tasks))

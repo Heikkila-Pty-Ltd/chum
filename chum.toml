@@ -138,3 +138,10 @@ matrix_room = "#chum-coordination"
 model = "gpt-5.3-codex-spark"
 agent_id = "chum-chief-scrum"
 require_approved_plan = true
+
+[crab]
+enabled = true
+tier = "fast"
+max_morsels_per_plan = 20
+max_scope_items = 10
+auto_approve = false

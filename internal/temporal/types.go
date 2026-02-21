@@ -12,7 +12,6 @@ type TaskRequest struct {
 	WorkDir           string        `json:"work_dir"`
 	Provider          string        `json:"provider"`
 	DoDChecks         []string      `json:"dod_checks"`         // e.g. ["go build ./cmd/chum", "go test ./..."]
-	AutoApprove       bool          `json:"auto_approve"`       // skip human gate for pre-planned work
 	SlowStepThreshold time.Duration `json:"slow_step_threshold"` // steps exceeding this are flagged slow
 }
 
@@ -391,7 +390,6 @@ type DispatchCandidate struct {
 	Prompt          string   `json:"prompt"`
 	Provider        string   `json:"provider"`
 	DoDChecks       []string `json:"dod_checks"`
-	AutoApprove     bool     `json:"auto_approve"`
 	SlowStepThreshold time.Duration `json:"slow_step_threshold"`
 	EstimateMinutes int      `json:"estimate_minutes"`
 }
@@ -401,4 +399,107 @@ type ScanCandidatesResult struct {
 	Candidates []DispatchCandidate `json:"candidates"`
 	Running    int                 `json:"running"` // currently running workflow count
 	MaxTotal   int                 `json:"max_total"`
+}
+
+// --- Crab Decomposition Types ---
+// Crabs sit between Chief/human and Sharks. They take a high-level
+// markdown plan and decompose it into whales (epic-level groupings)
+// and morsels (bite-sized executable units) for shark consumption.
+
+// CrabDecompositionRequest starts a crab decomposition workflow.
+type CrabDecompositionRequest struct {
+	PlanID        string `json:"plan_id"`
+	Project       string `json:"project"`
+	WorkDir       string `json:"work_dir"`
+	PlanMarkdown  string `json:"plan_markdown"`
+	Tier          string `json:"tier"`                        // LLM tier: "fast", "balanced", or "premium"
+	ParentWhaleID string `json:"parent_whale_id,omitempty"`   // optional parent whale to nest under
+}
+
+// ParsedPlan is the output of deterministic markdown parsing.
+type ParsedPlan struct {
+	Title              string      `json:"title"`
+	Context            string      `json:"context"`
+	ScopeItems         []ScopeItem `json:"scope_items"`
+	AcceptanceCriteria []string    `json:"acceptance_criteria"`
+	OutOfScope         []string    `json:"out_of_scope"`
+	RawMarkdown        string      `json:"raw_markdown"`
+}
+
+// ScopeItem is a single deliverable from the plan's scope section.
+type ScopeItem struct {
+	Index       int    `json:"index"`
+	Description string `json:"description"`
+	Completed   bool   `json:"completed"` // true if [x] instead of [ ]
+}
+
+// ClarificationResult holds the results of the 3-tier clarification process.
+type ClarificationResult struct {
+	Resolved        []ClarificationEntry `json:"resolved"`
+	NeedsHumanInput bool                 `json:"needs_human_input"`
+	HumanQuestions  []string             `json:"human_questions,omitempty"`
+	HumanAnswers    string               `json:"human_answers,omitempty"`
+	Tokens          TokenUsage           `json:"tokens,omitempty"`
+}
+
+// ClarificationEntry is a single resolved question.
+type ClarificationEntry struct {
+	Question string `json:"question"`
+	Answer   string `json:"answer"`
+	Source   string `json:"source"` // "lessons_db", "existing_beads", "chief_llm", "human"
+}
+
+// CandidateWhale is a proposed whale (epic-level grouping) from decomposition.
+type CandidateWhale struct {
+	Index              int               `json:"index"`
+	Title              string            `json:"title"`
+	Description        string            `json:"description"`
+	AcceptanceCriteria string            `json:"acceptance_criteria"`
+	Morsels            []CandidateMorsel `json:"morsels"`
+	ParentScopeItem    int               `json:"parent_scope_item"` // index into ParsedPlan.ScopeItems
+}
+
+// CandidateMorsel is a proposed morsel (bite-sized executable unit) before sizing.
+type CandidateMorsel struct {
+	Index              int      `json:"index"`
+	Title              string   `json:"title"`
+	Description        string   `json:"description"`
+	AcceptanceCriteria string   `json:"acceptance_criteria"`
+	DesignHints        string   `json:"design_hints"`
+	FileHints          []string `json:"file_hints,omitempty"`
+	DependsOnIndices   []int    `json:"depends_on_indices,omitempty"` // indices into flat morsel list
+}
+
+// SizedMorsel is a fully-qualified morsel ready for human review and DAG emission.
+type SizedMorsel struct {
+	Title              string   `json:"title"`
+	Description        string   `json:"description"`
+	AcceptanceCriteria string   `json:"acceptance_criteria"`
+	Design             string   `json:"design"`
+	EstimateMinutes    int      `json:"estimate_minutes"`
+	Priority           int      `json:"priority"`
+	Labels             []string `json:"labels"`
+	FileHints          []string `json:"file_hints,omitempty"`
+	DependsOnIndices   []int    `json:"depends_on_indices,omitempty"`
+	WhaleIndex         int      `json:"whale_index"`
+	RiskLevel          string   `json:"risk_level"`       // "low", "medium", "high"
+	SizingRationale    string   `json:"sizing_rationale"`
+}
+
+// EmitResult is the output of the morsel emission activity.
+type EmitResult struct {
+	WhaleIDs    []string `json:"whale_ids"`
+	MorselIDs   []string `json:"morsel_ids"`
+	FailedCount int      `json:"failed_count"`
+	Details     []string `json:"details"`
+}
+
+// CrabDecompositionResult is the final output of the crab workflow.
+type CrabDecompositionResult struct {
+	Status         string       `json:"status"` // "completed", "rejected"
+	PlanID         string       `json:"plan_id"`
+	WhalesEmitted  []string     `json:"whales_emitted"`
+	MorselsEmitted []string     `json:"morsels_emitted"`
+	StepMetrics    []StepMetric `json:"step_metrics,omitempty"`
+	TotalTokens    TokenUsage   `json:"total_tokens,omitempty"`
 }

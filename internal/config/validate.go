@@ -152,6 +152,26 @@ func validate(cfg *Config) error {
 		}
 	}
 
+	// Validate Crab configuration
+	if cfg.Crab.Enabled {
+		if cfg.Crab.MaxMorselsPerPlan < 0 {
+			return fmt.Errorf("crab.max_morsels_per_plan cannot be negative: %d", cfg.Crab.MaxMorselsPerPlan)
+		}
+		if cfg.Crab.MaxMorselsPerPlan > 50 {
+			return fmt.Errorf("crab.max_morsels_per_plan seems unreasonably large: %d (max 50)", cfg.Crab.MaxMorselsPerPlan)
+		}
+		if cfg.Crab.MaxScopeItems < 0 {
+			return fmt.Errorf("crab.max_scope_items cannot be negative: %d", cfg.Crab.MaxScopeItems)
+		}
+		if cfg.Crab.MaxScopeItems > 25 {
+			return fmt.Errorf("crab.max_scope_items seems unreasonably large: %d (max 25)", cfg.Crab.MaxScopeItems)
+		}
+		validTiers := map[string]bool{"fast": true, "balanced": true, "premium": true}
+		if cfg.Crab.Tier != "" && !validTiers[cfg.Crab.Tier] {
+			return fmt.Errorf("crab.tier must be one of: fast, balanced, premium")
+		}
+	}
+
 	// Validate Matrix polling configuration
 	if cfg.Matrix.Enabled {
 		if cfg.Matrix.PollInterval.Duration <= 0 {

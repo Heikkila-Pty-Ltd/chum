@@ -102,8 +102,8 @@ func (g *DepGraph) BlocksIDs(id string) []string {
 	return cloneStringSlice(blockers)
 }
 
-// FilterUnblockedOpen returns open, non-epic tasks whose dependencies are all
-// closed.
+// FilterUnblockedOpen returns ready (groomed), non-epic tasks whose
+// dependencies are all closed.
 //
 // Results are sorted deterministically:
 //  1. Stage-labeled tasks first ("stage:" prefix in labels)
@@ -113,7 +113,7 @@ func (g *DepGraph) BlocksIDs(id string) []string {
 func FilterUnblockedOpen(tasks []Task, graph *DepGraph) []Task {
 	result := make([]Task, 0, len(tasks))
 	for i := range tasks {
-		if !isOpenTask(tasks[i]) || isEpicTask(tasks[i]) {
+		if !isDispatchableTask(tasks[i]) || isContainerTask(tasks[i]) {
 			continue
 		}
 		if !allDepsClosed(tasks[i], graph) {
@@ -175,12 +175,19 @@ func isClosedTask(status string) bool {
 	return normalizeTaskStatus(status) == statusClosed
 }
 
-func isOpenTask(task Task) bool {
-	return normalizeTaskStatus(task.Status) == statusOpen
+// isDispatchableTask returns true for tasks with status "ready".
+// Tasks enter as "open" (ungroomed) and become "ready" after
+// decomposition/grooming. Only "ready" tasks are picked up by sharks.
+func isDispatchableTask(task Task) bool {
+	s := normalizeTaskStatus(task.Status)
+	return s == statusReady
 }
 
-func isEpicTask(task Task) bool {
-	return strings.EqualFold(strings.TrimSpace(task.Type), taskTypeEpic)
+// isContainerTask returns true for container types (epics, whales) that
+// group work but are not directly executable by sharks.
+func isContainerTask(task Task) bool {
+	t := strings.ToLower(strings.TrimSpace(task.Type))
+	return t == taskTypeEpic || t == taskTypeWhale
 }
 
 func hasStageLabel(task Task) bool {

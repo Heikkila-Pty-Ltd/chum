@@ -125,10 +125,10 @@ approval_flags = []
 
 [dispatch.routing]
 fast_backend = "headless_cli"
-balanced_backend = "tmux"
-premium_backend = "tmux"
+balanced_backend = "headless_cli"
+premium_backend = "headless_cli"
 comms_backend = "headless_cli"
-retry_backend = "tmux"
+retry_backend = "headless_cli"
 
 [dispatch.cost_control]
 enabled = true
@@ -151,10 +151,6 @@ branch_prefix = "chum/"
 branch_cleanup_days = 7
 merge_strategy = "squash"
 max_concurrent_per_project = 3
-
-[dispatch.tmux]
-history_limit = 50000
-session_prefix = "chum-"
 
 [chief]
 enabled = true

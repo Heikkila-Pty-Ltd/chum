@@ -250,11 +250,11 @@ approval_flags = ["--full-auto"]
 
 ```toml
 [dispatch.routing]
-fast_backend     = "headless_cli"     # "headless_cli" or "tmux"
-balanced_backend = "tmux"
-premium_backend  = "tmux"
+fast_backend     = "headless_cli"
+balanced_backend = "headless_cli"
+premium_backend  = "headless_cli"
 comms_backend    = "headless_cli"     # for Matrix/comms tasks
-retry_backend    = "tmux"
+retry_backend    = "headless_cli"
 ```
 
 ### `[dispatch.timeouts]` — Per-Tier Execution Limits
@@ -274,14 +274,6 @@ branch_prefix              = "chum/"     # prefix for auto-created branches
 branch_cleanup_days        = 7             # delete merged branches older than N days
 merge_strategy             = "squash"      # "merge", "squash", "rebase"
 max_concurrent_per_project = 3             # max parallel branches per project
-```
-
-### `[dispatch.tmux]` — Tmux Session Management
-
-```toml
-[dispatch.tmux]
-history_limit  = 50000                     # scrollback buffer per session
-session_prefix = "chum-"                 # prefix for tmux session names
 ```
 
 ### `[dispatch.cost_control]` — Cost and Churn Guards
@@ -549,10 +541,10 @@ premium  = ["opus"]
 
 [dispatch.routing]
 fast_backend     = "headless_cli"
-balanced_backend = "tmux"
-premium_backend  = "tmux"
+balanced_backend = "headless_cli"
+premium_backend  = "headless_cli"
 comms_backend    = "headless_cli"
-retry_backend    = "tmux"
+retry_backend    = "headless_cli"
 
 [dispatch.timeouts]
 fast     = "15m"
@@ -564,10 +556,6 @@ branch_prefix              = "chum/"
 branch_cleanup_days        = 7
 merge_strategy             = "squash"
 max_concurrent_per_project = 3
-
-[dispatch.tmux]
-history_limit  = 50000
-session_prefix = "chum-"
 
 [dispatch.cost_control]
 enabled                  = true

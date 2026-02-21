@@ -128,10 +128,6 @@ branch_cleanup_days = 7
 merge_strategy = "squash"
 max_concurrent_per_project = 3
 
-[dispatch.tmux]
-history_limit = 50000
-session_prefix = "chum-"
-
 [chief]
 enabled = true
 matrix_room = "#chum-coordination"

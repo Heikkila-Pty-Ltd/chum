@@ -97,7 +97,3 @@ premium = "60m"
 
 [dispatch.git]
 max_concurrent_per_project = 1
-
-[dispatch.tmux]
-history_limit = 50000
-session_prefix = "chum-int-"

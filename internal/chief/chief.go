@@ -326,9 +326,9 @@ func (c *Chief) dispatchChiefSM(ctx context.Context, bead graph.Task, promptTemp
 		-1, // handle (will be set by dispatcher)
 		"", // session name (will be set by dispatcher)
 		prompt,
-		"",     // log path (will be set by dispatcher)
-		"",     // branch (not used for ceremonies)
-		"tmux", // backend
+		"", // log path (will be set by dispatcher)
+		"", // branch (not used for ceremonies)
+		"headless_cli", // backend
 	)
 	if err != nil {
 		return 0, fmt.Errorf("failed to record ceremony dispatch: %w", err)

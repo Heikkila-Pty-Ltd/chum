@@ -860,8 +860,8 @@ approval_flags = []
 
 [dispatch.routing]
 fast_backend = "headless_cli"
-balanced_backend = "tmux"
-premium_backend = "tmux"
+balanced_backend = "headless_cli"
+premium_backend = "headless_cli"
 `
 	path := writeTestConfig(t, cfg)
 	config, err := Load(path)
@@ -888,7 +888,7 @@ func TestLoadDispatchInvalidBackend(t *testing.T) {
 
 [dispatch.routing]
 fast_backend = "invalid_backend"
-balanced_backend = "tmux"
+balanced_backend = "headless_cli"
 `
 	path := writeTestConfig(t, cfg)
 	_, err := Load(path)

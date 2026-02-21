@@ -84,8 +84,20 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 		StartToCloseTimeout: 30 * time.Second,
 		RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 3},
 	}
+	notifyOpts := workflow.ActivityOptions{
+		StartToCloseTimeout: 5 * time.Second,
+		RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 1},
+	}
 
 	var a *Activities
+
+	// notify is a fire-and-forget helper — errors never block the pipeline.
+	notify := func(event string, extra map[string]string) {
+		nCtx := workflow.WithActivityOptions(ctx, notifyOpts)
+		_ = workflow.ExecuteActivity(nCtx, a.NotifyActivity, NotifyRequest{
+			Event: event, TaskID: req.TaskID, Extra: extra,
+		}).Get(ctx, nil)
+	}
 
 	// ===== PHASE 1: PLAN =====
 	planStart := workflow.Now(ctx)
@@ -114,6 +126,7 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 		"Steps", len(plan.Steps),
 		"Files", len(plan.FilesToModify),
 	)
+	notify("plan", map[string]string{"title": plan.Summary, "agent": req.Agent})
 
 	// ===== PHASE 2: HUMAN GATE =====
 	// Pre-planned work (has acceptance criteria) skips the gate.
@@ -149,6 +162,7 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 
 	for attempt := 0; attempt < maxDoDRetries; attempt++ {
 		logger.Info(SharkPrefix+" Execution attempt", "Attempt", attempt+1, "Agent", currentAgent)
+		notify("execute", map[string]string{"agent": currentAgent, "attempt": fmt.Sprintf("%d", attempt+1)})
 
 		// Reset token tracking to plan baseline for each attempt.
 		// Only the last attempt's costs are reported in the outcome.
@@ -195,6 +209,7 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 
 			if review.Approved {
 				logger.Info(SharkPrefix+" Code review approved", "Reviewer", review.ReviewerAgent, "Handoff", handoff)
+				notify("review_approved", map[string]string{"reviewer": review.ReviewerAgent})
 				reviewPassed = true
 				reviewStatus = "ok"
 				break
@@ -202,6 +217,7 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 
 			// Review failed — swap agents and re-execute with feedback
 			handoffCount++
+			notify("handoff", map[string]string{"from": currentAgent, "to": currentReviewer, "handoff": fmt.Sprintf("%d", handoffCount)})
 			logger.Info(SharkPrefix+" Code review rejected, swapping agents",
 				"Reviewer", currentReviewer,
 				"Issues", strings.Join(review.Issues, "; "),
@@ -286,6 +302,10 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 		if dodResult.Passed {
 			recordStep(fmt.Sprintf("dod[%d]", attempt+1), dodStart, "ok")
 
+			duration := workflow.Now(ctx).Sub(startTime)
+			notify("dod_pass", map[string]string{"duration": fmtDuration(duration), "cost": fmtCost(totalTokens.CostUSD)})
+			notify("complete", map[string]string{"duration": fmtDuration(duration), "cost": fmtCost(totalTokens.CostUSD)})
+
 			// ===== SUCCESS — RECORD OUTCOME =====
 			logger.Info(SharkPrefix+" DoD PASSED — recording outcome",
 				"TotalInputTokens", totalTokens.InputTokens,
@@ -309,11 +329,13 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 		allFailures = append(allFailures, fmt.Sprintf("Attempt %d DoD failed: %s", attempt+1, failureMsg))
 		plan.PreviousErrors = append(plan.PreviousErrors, "DoD check failures: "+failureMsg)
 
+		notify("dod_fail", map[string]string{"failures": failureMsg, "attempt": fmt.Sprintf("%d", attempt+1)})
 		logger.Warn(SharkPrefix+" DoD failed, retrying", "Attempt", attempt+1, "Failures", failureMsg)
 	}
 
 	// ===== ESCALATE — all retries exhausted =====
 	escalateStart := workflow.Now(ctx)
+	notify("escalate", map[string]string{"attempts": fmt.Sprintf("%d", maxDoDRetries)})
 	logger.Error(SharkPrefix + " All attempts exhausted, escalating to chief")
 
 	escalateCtx := workflow.WithActivityOptions(ctx, recordOpts)

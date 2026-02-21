@@ -39,6 +39,18 @@ func TacticalGroomWorkflow(ctx workflow.Context, req TacticalGroomRequest) error
 	}
 
 	logger.Info(RemoraPrefix+" TacticalGroom complete", "Applied", result.MutationsApplied, "Failed", result.MutationsFailed)
+
+	// Fire-and-forget notification.
+	notifyOpts := workflow.ActivityOptions{
+		StartToCloseTimeout: 5 * time.Second,
+		RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 1},
+	}
+	nCtx := workflow.WithActivityOptions(ctx, notifyOpts)
+	_ = workflow.ExecuteActivity(nCtx, a.NotifyActivity, NotifyRequest{
+		Event: "groom", TaskID: req.TaskID,
+		Extra: map[string]string{"applied": fmt.Sprintf("%d", result.MutationsApplied)},
+	}).Get(ctx, nil)
+
 	return nil
 }
 

@@ -2,12 +2,14 @@ package temporal
 
 import (
 	"log/slog"
+	"net/http"
 
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/worker"
 
 	"github.com/antigravity-dev/chum/internal/config"
 	"github.com/antigravity-dev/chum/internal/graph"
+	"github.com/antigravity-dev/chum/internal/matrix"
 	"github.com/antigravity-dev/chum/internal/store"
 )
 
@@ -31,7 +33,21 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 
 	w := worker.New(c, DefaultTaskQueue, worker.Options{})
 
-	acts := &Activities{Store: st, Tiers: tiers, DAG: dag}
+	// Wire Matrix notifications (nil sender = notifications disabled).
+	cfg := cfgMgr.Get()
+	var sender matrix.Sender
+	if cfg.Reporter.MatrixBotAccount != "" && cfg.Reporter.DefaultRoom != "" {
+		sender = matrix.NewHTTPSender(&http.Client{}, cfg.Reporter.MatrixBotAccount)
+		logger.Info("matrix notifications enabled", "account", cfg.Reporter.MatrixBotAccount, "room", cfg.Reporter.DefaultRoom)
+	}
+
+	acts := &Activities{
+		Store:       st,
+		Tiers:       tiers,
+		DAG:         dag,
+		Sender:      sender,
+		DefaultRoom: cfg.Reporter.DefaultRoom,
+	}
 	dispatchActs := &DispatchActivities{
 		CfgMgr: cfgMgr,
 		TC:     c,
@@ -62,6 +78,7 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 	w.RegisterActivity(acts.GroomBacklogActivity)
 	w.RegisterActivity(acts.GenerateQuestionsActivity)
 	w.RegisterActivity(acts.SummarizePlanActivity)
+	w.RegisterActivity(acts.NotifyActivity)
 
 	// --- Dispatcher Activities ---
 	w.RegisterActivity(dispatchActs.ScanCandidatesActivity)

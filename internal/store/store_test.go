@@ -1329,7 +1329,7 @@ func TestNewColumnsStorage(t *testing.T) {
 		"test prompt",
 		"/path/to/log.txt", // logPath
 		"feature-branch",   // branch
-		"tmux",             // backend
+		"headless_cli",     // backend
 	)
 	if err != nil {
 		t.Fatalf("RecordDispatch failed: %v", err)
@@ -1357,8 +1357,8 @@ func TestNewColumnsStorage(t *testing.T) {
 	if d.Branch != "feature-branch" {
 		t.Errorf("Branch mismatch: expected 'feature-branch', got '%s'", d.Branch)
 	}
-	if d.Backend != "tmux" {
-		t.Errorf("Backend mismatch: expected 'tmux', got '%s'", d.Backend)
+	if d.Backend != "headless_cli" {
+		t.Errorf("Backend mismatch: expected 'headless_cli', got '%s'", d.Backend)
 	}
 }
 

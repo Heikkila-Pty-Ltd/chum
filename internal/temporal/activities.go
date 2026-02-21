@@ -15,14 +15,17 @@ import (
 	"github.com/antigravity-dev/chum/internal/config"
 	"github.com/antigravity-dev/chum/internal/git"
 	"github.com/antigravity-dev/chum/internal/graph"
+	"github.com/antigravity-dev/chum/internal/matrix"
 	"github.com/antigravity-dev/chum/internal/store"
 )
 
 // Activities holds dependencies for Temporal activity methods.
 type Activities struct {
-	Store *store.Store
-	Tiers config.Tiers
-	DAG   *graph.DAG
+	Store       *store.Store
+	Tiers       config.Tiers
+	DAG         *graph.DAG
+	Sender      matrix.Sender // Matrix notification sender (nil = disabled)
+	DefaultRoom string        // Matrix room ID for notifications
 }
 // StructuredPlanActivity generates a structured plan from a task prompt.
 // The plan is gated — it must pass Validate() to enter the coding engine.

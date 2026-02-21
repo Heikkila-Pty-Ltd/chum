@@ -1,6 +1,7 @@
 package temporal
 
 import (
+	"fmt"
 	"time"
 
 	"go.temporal.io/sdk/temporal"
@@ -85,5 +86,17 @@ func ContinuousLearnerWorkflow(ctx workflow.Context, req LearnerRequest) error {
 		"Lessons", len(lessons),
 		"Rules", len(rules),
 	)
+
+	// Fire-and-forget notification.
+	notifyOpts := workflow.ActivityOptions{
+		StartToCloseTimeout: 5 * time.Second,
+		RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 1},
+	}
+	nCtx := workflow.WithActivityOptions(ctx, notifyOpts)
+	_ = workflow.ExecuteActivity(nCtx, a.NotifyActivity, NotifyRequest{
+		Event: "learner", TaskID: req.TaskID,
+		Extra: map[string]string{"lessons": fmt.Sprintf("%d", len(lessons))},
+	}).Get(ctx, nil)
+
 	return nil
 }

@@ -582,12 +582,10 @@ func ValidateDispatchConfig(cfg *Config) error {
 	}
 
 	knownBackends := map[string]struct{}{
-		"tmux":         {},
 		"headless_cli": {},
 		"openclaw":     {},
 	}
 	cliRequiredBackends := map[string]struct{}{
-		"tmux":         {},
 		"headless_cli": {},
 	}
 
@@ -626,8 +624,8 @@ func ValidateDispatchConfig(cfg *Config) error {
 		if _, ok := knownBackends[trimmed]; !ok {
 			validationErr.add(
 				fmt.Sprintf("dispatch.routing.%s_backend", tier),
-				fmt.Sprintf("invalid backend type %q (valid: tmux, headless_cli, openclaw)", backend),
-				"choose one of: tmux, headless_cli, openclaw",
+				fmt.Sprintf("invalid backend type %q (valid: headless_cli, openclaw)", backend),
+				"choose one of: headless_cli, openclaw",
 			)
 		}
 	}
@@ -656,7 +654,7 @@ func ValidateDispatchConfig(cfg *Config) error {
 			validationErr.add(
 				fmt.Sprintf("providers.%s.tier", providerName),
 				fmt.Sprintf("tier %q requires dispatch.routing.%s_backend to be configured", tier, tier),
-				fmt.Sprintf("set dispatch.routing.%s_backend to tmux, headless_cli, or openclaw", tier),
+				fmt.Sprintf("set dispatch.routing.%s_backend to headless_cli or openclaw", tier),
 			)
 			continue
 		}

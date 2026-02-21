@@ -20,13 +20,13 @@ var maxCLIArgSize = discoverMaxCLIArgSize()
 //go:embed openclaw_agent.sh
 var openclawAgentScript string
 
-// openclawShellScript is shared between PID and tmux dispatchers so model/provider
+// openclawShellScript is shared between PID dispatchers so model/provider
 // handling stays consistent. This script reads all parameters from files to avoid
 // shell parsing issues with special characters in user input.
 //
 // NOTE: This is a legacy openclaw execution path and intentionally retains
 // shell execution to preserve existing compatibility behavior.
-// CHUM hardening in chum-46d.7.3 explicitly targets CLI headless/tmux
+// CHUM hardening in chum-46d.7.3 explicitly targets CLI execution
 // command construction, not this legacy openclaw PID/legacy path.
 func openclawShellScript() string {
 	return openclawShellScriptWithPromptInlineLimit(maxCLIArgSize)
@@ -120,7 +120,7 @@ type DispatcherInterface interface {
 	IsAlive(handle int) bool
 	Kill(handle int) error
 	GetHandleType() string                   // "pid" or "session"
-	GetSessionName(handle int) string        // Returns session name for tmux dispatchers, empty for PID dispatchers
+	GetSessionName(handle int) string        // Returns session name for session-based dispatchers, empty for PID dispatchers
 	GetProcessState(handle int) ProcessState // Get detailed process state for completion logic
 }
 

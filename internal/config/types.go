@@ -210,7 +210,6 @@ type Dispatch struct {
 	Routing          DispatchRouting      `toml:"routing"`
 	Timeouts         DispatchTimeouts     `toml:"timeouts"`
 	Git              DispatchGit          `toml:"git"`
-	Tmux             DispatchTmux         `toml:"tmux"`
 	CostControl      DispatchCostControl  `toml:"cost_control"`
 	LogDir           string               `toml:"log_dir"`
 	LogRetentionDays int                  `toml:"log_retention_days"`
@@ -227,7 +226,7 @@ type CLIConfig struct {
 
 // DispatchRouting maps provider tiers to dispatch backends.
 type DispatchRouting struct {
-	FastBackend     string `toml:"fast_backend"` // "headless_cli", "tmux"
+	FastBackend     string `toml:"fast_backend"` // "headless_cli", "openclaw"
 	BalancedBackend string `toml:"balanced_backend"`
 	PremiumBackend  string `toml:"premium_backend"`
 	CommsBackend    string `toml:"comms_backend"`
@@ -247,12 +246,6 @@ type DispatchGit struct {
 	BranchCleanupDays       int    `toml:"branch_cleanup_days"`        // default 7
 	MergeStrategy           string `toml:"merge_strategy"`             // "merge", "squash", "rebase"
 	MaxConcurrentPerProject int    `toml:"max_concurrent_per_project"` // default 3
-}
-
-// DispatchTmux configures tmux session parameters for dispatch.
-type DispatchTmux struct {
-	HistoryLimit  int    `toml:"history_limit"`  // default 50000
-	SessionPrefix string `toml:"session_prefix"` // default "chum-"
 }
 
 // DispatchCostControl defines configurable dispatch policies to reduce expensive usage/churn.

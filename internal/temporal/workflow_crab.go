@@ -68,6 +68,19 @@ func CrabDecompositionWorkflow(ctx workflow.Context, req CrabDecompositionReques
 
 	var a *Activities
 
+	// Fire-and-forget notification helper.
+	notifyOpts := workflow.ActivityOptions{
+		StartToCloseTimeout: 5 * time.Second,
+		RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 1},
+	}
+	notify := func(event string, extra map[string]string) {
+		nCtx := workflow.WithActivityOptions(ctx, notifyOpts)
+		_ = workflow.ExecuteActivity(nCtx, a.NotifyActivity, NotifyRequest{
+			Event: event, TaskID: req.PlanID, Extra: extra,
+		}).Get(ctx, nil)
+	}
+	notify("crab_start", map[string]string{"plan_id": req.PlanID})
+
 	// ===== PHASE 1: PARSE =====
 	parseStart := workflow.Now(ctx)
 	logger.Info(CrabPrefix+" Phase 1: PARSE", "PlanID", req.PlanID)
@@ -196,6 +209,10 @@ func CrabDecompositionWorkflow(ctx workflow.Context, req CrabDecompositionReques
 		"FailedCount", emitResult.FailedCount,
 		"TotalDuration", workflow.Now(ctx).Sub(startTime).String(),
 	)
+	notify("crab_done", map[string]string{
+		"whales":  fmt.Sprintf("%d", len(emitResult.WhaleIDs)),
+		"morsels": fmt.Sprintf("%d", len(emitResult.MorselIDs)),
+	})
 
 	return &CrabDecompositionResult{
 		Status:         "completed",

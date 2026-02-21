@@ -2,6 +2,30 @@
 
 This project uses **bd** (beads) for issue tracking. Run `bd onboard` to get started.
 
+## Branch and Worktree Onboarding
+
+Before coding in CHUM, enforce the branch workflow:
+
+1. Install the local hook:
+   - `./scripts/hooks/install.sh`
+2. Start from clean `master`, then create one of:
+   - `feature/*`, `chore/*`, `fix/*`, `refactor/*`
+3. Optionally create a worktree when running multiple tasks:
+   - `git worktree add -b feature/your-feature ../chum-feature`
+4. Run the worktree training checkpoint in:
+   - `docs/development/GIT_WORKTREE_WORKFLOW.md`
+
+Team training checkpoint:
+
+- Confirm hook installation:
+  - `./scripts/hooks/install.sh`
+- Confirm branch guard behavior:
+  - Create and switch to `feature/*`, `chore/*`, `fix/*`, or `refactor/*` before first commit.
+- Confirm PR review enforcement:
+  - Open a draft PR and verify workflow check runs in CI.
+
+For all code changes, keep PRs on branches only (never direct `master` commits), and include reviewable commits before finishing a bead.
+
 ## Quick Reference
 
 ```bash
@@ -10,7 +34,7 @@ bd show <id>          # View issue details
 bd update <id> --status in_progress  # Claim work
 bd close <id>         # Complete work
 bd sync               # Sync with git
-scripts/test-safe.sh ./internal/learner/...  # Locked + timeout + JSON go test
+scripts/test-safe.sh ./internal/temporal/...  # Locked + timeout + JSON go test
 ```
 
 ## Landing the Plane (Session Completion)
@@ -112,7 +136,7 @@ Use `scripts/test-safe.sh` instead of raw `go test` in shared workspaces.
 
 If lock contention blocks a run, wait for the owning process to finish, then retry. Use a longer lock window on shared machines instead of rerunning immediately:
 ```bash
-TEST_SAFE_LOCK_WAIT_SEC=600 scripts/test-safe.sh ./internal/learner ./internal/coordination
+TEST_SAFE_LOCK_WAIT_SEC=600 scripts/test-safe.sh ./internal/temporal ./internal/coordination
 ```
 
 ### Best Practices
@@ -125,7 +149,7 @@ TEST_SAFE_LOCK_WAIT_SEC=600 scripts/test-safe.sh ./internal/learner ./internal/c
 
 ### OpenClaw Main: Creating Beads (Required Format)
 
-For `open`/`in_progress` beads, Cortex dispatch expects proper structure. Missing fields will block assignment.
+For `open`/`in_progress` beads, CHUM dispatch expects proper structure. Missing fields will block assignment.
 
 - Required before work can dispatch:
   - Clear scope in `description`
@@ -157,7 +181,7 @@ bd update <id> --parent <parent-id>
 
 # 4) Verify bead shape before leaving it open
 bd show <id>
-make lint-beads
+bd show <id>  # verify task shape
 ```
 
 Sizing guidance (minutes):

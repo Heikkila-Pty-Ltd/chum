@@ -2,14 +2,18 @@ package chief
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"log/slog"
 	"os"
 	"strings"
 	"testing"
 
-	"github.com/antigravity-dev/cortex/internal/config"
-	"github.com/antigravity-dev/cortex/internal/dispatch"
+	"github.com/antigravity-dev/chum/internal/config"
+	"github.com/antigravity-dev/chum/internal/dispatch"
+	"github.com/antigravity-dev/chum/internal/graph"
+
+	_ "modernc.org/sqlite"
 )
 
 type retrospectiveTestDispatcher struct {
@@ -35,6 +39,20 @@ func (d *retrospectiveTestDispatcher) GetProcessState(handle int) dispatch.Proce
 	return dispatch.ProcessState{}
 }
 
+func newTestRetroDAG(t *testing.T) *graph.DAG {
+	t.Helper()
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("open in-memory db: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+	dag := graph.NewDAG(db)
+	if err := dag.EnsureSchema(t.Context()); err != nil {
+		t.Fatalf("ensure schema: %v", err)
+	}
+	return dag
+}
+
 func TestRecordRetrospectiveResultsReturnsAggregatedErrors(t *testing.T) {
 	cfg := &config.Config{
 		Chief: config.Chief{
@@ -45,7 +63,7 @@ func TestRecordRetrospectiveResultsReturnsAggregatedErrors(t *testing.T) {
 			Fast: []string{"fast-provider"},
 		},
 		Projects: map[string]config.Project{
-			"cortex": {
+			"chum": {
 				Enabled:   true,
 				Workspace: t.TempDir(),
 			},
@@ -53,41 +71,27 @@ func TestRecordRetrospectiveResultsReturnsAggregatedErrors(t *testing.T) {
 	}
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-	callOrder := make([]string, 0, 4)
 	dispatcher := &retrospectiveTestDispatcher{
 		dispatchFn: func(ctx context.Context, agent, prompt, provider, thinkingLevel, workDir string) (int, error) {
-			callOrder = append(callOrder, "dispatch")
 			return 0, errors.New("matrix down")
 		},
 	}
 
-	rr := NewRetrospectiveRecorder(cfg, nil, dispatcher, logger)
-	rr.createIssue = func(ctx context.Context, beadsDir, title, issueType string, priority int, description string, deps []string) (string, error) {
-		callOrder = append(callOrder, "create")
-		return "", errors.New("bead create failed")
-	}
+	dag := newTestRetroDAG(t)
+	rr := NewRetrospectiveRecorder(cfg, nil, dag, dispatcher, logger)
 
 	output := `
 ## Action Items
-- [P1] Fix incident response playbook | project:cortex | owner:ops | why:gaps
-- [P2] Improve dependency SLAs | project:cortex | owner:chief | why:blocking
+- [P1] Fix incident response playbook | project:chum | owner:ops | why:gaps
+- [P2] Improve dependency SLAs | project:chum | owner:chief | why:blocking
 `
 
-	err := rr.RecordRetrospectiveResults(context.Background(), "ceremony-overall-1", output)
+	err := rr.RecordRetrospectiveResults(t.Context(), "ceremony-overall-1", output)
 	if err == nil {
 		t.Fatal("expected aggregated error, got nil")
 	}
 	if !strings.Contains(err.Error(), "dispatch retrospective matrix summary") {
 		t.Fatalf("expected matrix dispatch error in returned error, got %v", err)
-	}
-	if strings.Count(err.Error(), "bead create failed") != 2 {
-		t.Fatalf("expected both bead creation failures to be included, got %v", err)
-	}
-	if len(callOrder) != 3 {
-		t.Fatalf("expected 3 calls (1 dispatch + 2 create), got %d", len(callOrder))
-	}
-	if callOrder[0] != "dispatch" {
-		t.Fatalf("expected dispatch before bead creation, call order=%v", callOrder)
 	}
 }
 
@@ -101,7 +105,7 @@ func TestRecordRetrospectiveResultsDispatchesAndCreatesActionItems(t *testing.T)
 			Fast: []string{"fast-provider"},
 		},
 		Projects: map[string]config.Project{
-			"cortex": {
+			"chum": {
 				Enabled:   true,
 				Workspace: t.TempDir(),
 			},
@@ -109,12 +113,10 @@ func TestRecordRetrospectiveResultsDispatchesAndCreatesActionItems(t *testing.T)
 	}
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-	callOrder := make([]string, 0, 2)
 
 	dispatchCalled := false
 	dispatcher := &retrospectiveTestDispatcher{
 		dispatchFn: func(ctx context.Context, agent, prompt, provider, thinkingLevel, workDir string) (int, error) {
-			callOrder = append(callOrder, "dispatch")
 			dispatchCalled = true
 			if agent != "chief-sm" {
 				t.Fatalf("expected chief-sm agent, got %s", agent)
@@ -129,32 +131,30 @@ func TestRecordRetrospectiveResultsDispatchesAndCreatesActionItems(t *testing.T)
 		},
 	}
 
-	created := make([]string, 0, 1)
-	rr := NewRetrospectiveRecorder(cfg, nil, dispatcher, logger)
-	rr.createIssue = func(ctx context.Context, beadsDir, title, issueType string, priority int, description string, deps []string) (string, error) {
-		callOrder = append(callOrder, "create")
-		if priority != 0 {
-			t.Fatalf("expected normalized priority 0, got %d", priority)
-		}
-		created = append(created, title)
-		return "cortex-123", nil
-	}
+	dag := newTestRetroDAG(t)
+	rr := NewRetrospectiveRecorder(cfg, nil, dag, dispatcher, logger)
 
 	output := `
 ## Action Items
-- [P0] Stabilize matrix bridge retries | project:cortex | owner:ops | why:delivery failures
+- [P0] Stabilize matrix bridge retries | project:chum | owner:ops | why:delivery failures
 `
 
-	if err := rr.RecordRetrospectiveResults(context.Background(), "ceremony-overall-2", output); err != nil {
+	if err := rr.RecordRetrospectiveResults(t.Context(), "ceremony-overall-2", output); err != nil {
 		t.Fatalf("expected nil error, got %v", err)
 	}
 	if !dispatchCalled {
 		t.Fatal("expected matrix dispatch to be called")
 	}
-	if len(created) != 1 || created[0] != "Stabilize matrix bridge retries" {
-		t.Fatalf("expected one action item bead to be created, got %v", created)
+
+	// Verify the task was created in the DAG.
+	tasks, err := dag.ListTasks(t.Context(), "chum")
+	if err != nil {
+		t.Fatalf("ListTasks: %v", err)
 	}
-	if len(callOrder) != 2 || callOrder[0] != "dispatch" || callOrder[1] != "create" {
-		t.Fatalf("expected dispatch then create ordering, got %v", callOrder)
+	if len(tasks) != 1 {
+		t.Fatalf("expected 1 task created, got %d", len(tasks))
+	}
+	if tasks[0].Title != "Stabilize matrix bridge retries" {
+		t.Fatalf("expected title 'Stabilize matrix bridge retries', got %q", tasks[0].Title)
 	}
 }

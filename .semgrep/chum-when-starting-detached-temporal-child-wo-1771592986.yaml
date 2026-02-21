@@ -1,0 +1,50 @@
+rules:
+  - id: chum-detached-child-workflows-await-child-start
+    patterns:
+      - pattern-either:
+          - pattern: |
+              func spawnCHUMWorkflows(...) {
+                ...
+                $chumOpts := workflow.ChildWorkflowOptions{
+                  ...,
+                  ParentClosePolicy: $CHUM_POLICY,
+                  ...,
+                }
+                ...
+                learnerFut := workflow.ExecuteChildWorkflow($CTX, $chumOpts, ...)
+                ...
+                $groomOpts := workflow.ChildWorkflowOptions{
+                  ...,
+                  ParentClosePolicy: $GROOM_POLICY,
+                  ...,
+                }
+                ...
+                groomFut := workflow.ExecuteChildWorkflow($CTX, $groomOpts, ...)
+                ...
+              }
+      - metavariable-regex:
+          metavariable: $CHUM_POLICY
+          regex: PARENT_CLOSE_POLICY_ABANDON
+      - metavariable-regex:
+          metavariable: $GROOM_POLICY
+          regex: PARENT_CLOSE_POLICY_ABANDON
+      - pattern-either:
+          - pattern-not: |
+              func spawnCHUMWorkflows(...) {
+                ...
+                learnerFut.GetChildWorkflowExecution().Get($CTX)
+                ...
+              }
+          - pattern-not: |
+              func spawnCHUMWorkflows(...) {
+                ...
+                groomFut.GetChildWorkflowExecution().Get($CTX)
+                ...
+              }
+    message: |
+      In spawnCHUMWorkflows, child workflows started with ParentClosePolicy=ABANDON must be guarded with learnerFut.GetChildWorkflowExecution().Get(...) and groomFut.GetChildWorkflowExecution().Get(...) before returning, so the parent does not finish before children are started.
+    paths:
+      include:
+        - internal/temporal/workflow.go
+    languages: [go]
+    severity: WARNING

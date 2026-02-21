@@ -1,205 +1,112 @@
-# Cortex Project Structure
+# CHUM Project Structure
 
-Production-ready Go project following [Standard Go Project Layout](https://github.com/golang-standards/project-layout).
+Standard Go project layout with Temporal workflow engine at the core.
 
 ```
-cortex/
-├── README.md                 # Project overview and quick start
-├── docs/                     # Documentation (including AI agent instructions)
-├── Makefile                  # Build automation with helpful targets
-├── go.mod, go.sum            # Go module dependencies
-├── VERSION                   # Current version
-├── LICENSE                   # License file
-├── CODE_OF_CONDUCT.md        # Community guidelines
-├── CONTRIBUTING.md           # Contribution guidelines
+chum/
+├── cmd/                          # Application entry points
+│   ├── chum/                     # Main binary (API + Temporal worker + cron)
+│   │   ├── main.go               #   Entrypoint, config loading, worker/API bootstrap
+│   │   └── admin.go              #   Admin CLI commands (disable-anthropic, normalize-beads)
+│   ├── db-backup/                # Database backup utility
+│   └── db-restore/               # Database restore utility
 │
-├── api/                      # API definitions
-│   ├── proto/               # Protocol Buffer definitions
-│   └── openapi/             # OpenAPI/Swagger specs
+├── internal/                     # Private application code
+│   ├── temporal/                 # ⚡ Temporal workflows + activities (core engine)
+│   │   ├── workflow.go           #   CHUMAgentWorkflow — plan→gate→execute→review→DoD
+│   │   ├── workflow_groom.go     #   TacticalGroom + StrategicGroom workflows
+│   │   ├── workflow_learner.go   #   ContinuousLearner workflow
+│   │   ├── planning_workflow.go  #   PlanningCeremony interactive workflow
+│   │   ├── activities.go         #   Core activities (plan, execute, review, DoD, record)
+│   │   ├── agent_cli.go          #   Agent CLI command builders + runners
+│   │   ├── agent_parsers.go      #   Agent output JSON parsers (Claude, Codex, Gemini)
+│   │   ├── groom_activities.go   #   Groom activities (mutate, repo map, analysis, briefing)
+│   │   ├── learner_activities.go #   Learner activities (extract, store, semgrep rules)
+│   │   ├── planning_activities.go#   Planning ceremony activities
+│   │   ├── types.go              #   All request/response/domain types
+│   │   ├── worker.go             #   Worker bootstrap + workflow/activity registration
+│   │   └── workflow_test.go      #   Temporal workflow tests (5 test cases)
+│   ├── store/                    # SQLite persistence (domain-split)
+│   │   ├── store.go              #   Store struct, schema, Open, migrate, Close
+│   │   ├── dispatches.go         #   Dispatch CRUD, overflow queue, provider usage
+│   │   ├── safety.go             #   Safety blocks (throttling + coordination guards)
+│   │   ├── claims.go             #   Claim leases (bead ownership locks)
+│   │   ├── stages.go             #   BeadStage CRUD (workflow stage tracking)
+│   │   ├── metrics.go            #   Health events, tick metrics, quality scores, token usage
+│   │   └── store_test.go         #   Store tests
+│   ├── api/                      # HTTP API server
+│   ├── beads/                    # Beads DAG integration (CRUD, deps, queries)
+│   ├── config/                   # TOML config with hot-reload (SIGHUP)
+│   ├── dispatch/                 # Agent dispatch, rate limiting, cost control
+│   ├── git/                      # Git operations + DoD post-merge checks
+│   ├── chief/                    # Chief/scrum-master agent coordination
+│   ├── cost/                     # Cost tracking and budget controls
+│   ├── matrix/                   # Matrix messaging integration
+│   ├── portfolio/                # Multi-project portfolio management
+│   ├── team/                     # Team/agent management
 │
-├── assets/                   # Static assets and resources
-│   ├── migrations/          # Database migrations
-│   └── templates/           # Report/email templates
+├── configs/                      # Configuration examples
+│   ├── chum.runner.toml        #   Production runner config template
+│   ├── chum-interactive.toml   #   Interactive development config
+│   ├── trial-chum.toml           #   Trial/testing config
+│   └── slo-thresholds.json       #   Service Level Objective definitions
 │
-├── build/                    # Build scripts and outputs
-│   ├── dist/                # Distribution packages
-│   ├── package/             # Packaging (Docker, etc.)
-│   └── scripts/             # Build helper scripts
+├── deploy/                       # Deployment
+│   ├── docker/                   #   Docker compose files
+│   └── systemd/                  #   Systemd service unit files
 │
-├── cmd/                      # Application entry points
-│   ├── cortex/              # Main cortex binary
-│   ├── db-backup/           # Database backup tool
-│   ├── db-restore/          # Database restore tool
-│   └── ...                  # Other utility commands
+├── docs/                         # Documentation
+│   ├── architecture/             #   System architecture, CHUM backlog, config reference
+│   ├── api/                      #   API documentation
+│   ├── development/              #   Developer guides, AI agent onboarding
+│   └── operations/               #   Operational guides, scrum commands
 │
-├── configs/                  # Configuration examples
-│   └── *.toml               # Example configurations
+├── scripts/                      # Utility scripts
+│   ├── dev/                      #   Development helpers
+│   ├── hooks/                    #   Git hooks (branch guard, pre-commit)
+│   ├── ops/                      #   Operational maintenance scripts
+│   └── release/                  #   Release management scripts
 │
-├── deploy/                   # Deployment configurations
-│   ├── docker/              # Docker files
-│   ├── kubernetes/          # K8s manifests
-│   └── systemd/             # Systemd service files
+├── build/                        # Build outputs
+│   └── package/                  #   Container images
+│       ├── Dockerfile            #     Main container image
+│       └── Dockerfile.agent      #     Agent container image
+├── .beads/                       # Beads issue tracker data (gitignored runtime data)
+├── .openclaw/                    # OpenClaw agent personality files
 │
-├── docs/                     # Documentation
-│   ├── architecture/        # Architecture docs
-│   ├── api/                 # API documentation
-│   ├── development/         # Developer guides
-│   ├── operations/          # Operations guides
-│   └── runbooks/            # Operational runbooks
-│
-├── internal/                 # Private application code
-│   ├── api/                 # HTTP API implementation
-│   ├── beads/               # Beads integration
-│   ├── chief/               # Chief coordinator
-│   ├── config/              # Configuration management
-│   ├── coordination/        # Coordination logic
-│   ├── cost/                # Cost tracking
-│   ├── dispatch/            # Agent dispatching
-│   ├── git/                 # Git operations
-│   ├── health/              # Health monitoring
-│   ├── learner/             # Self-improvement learning
-│   ├── matrix/              # Matrix integration
-│   ├── monitoring/          # System monitoring
-│   ├── portfolio/           # Project portfolio
-│   ├── scheduler/           # Task scheduling
-│   ├── store/               # Data persistence
-│   ├── team/                # Team management
-│   ├── tmux/                # Tmux integration
-│   └── workflow/            # Workflow management
-│
-├── pkg/                      # Public library code (if any)
-│
-├── scripts/                  # Utility scripts
-│   ├── ci/                  # CI/CD scripts
-│   ├── dev/                 # Development scripts
-│   ├── hooks/               # Git hooks
-│   ├── ops/                 # Operational scripts
-│   └── release/             # Release scripts
-│
-├── test/                     # Test utilities and fixtures
-│   ├── fixtures/            # Test data
-│   ├── integration/         # Integration tests
-│   ├── mocks/               # Mock implementations
-│   └── DoD/                 # Definition of Done
-│
-├── web/                      # Web UI (if applicable)
-│   └── static/              # Static web assets
-│
-├── archive/                  # Historical artifacts
-│   ├── evidence/            # Old trial evidence
-│   ├── investigations/      # Past investigations
-│   ├── rollback-configs/    # Old rollback configs
-│   └── rollbacks/           # Previous rollback binaries
-│
-├── artifacts/                # Build and operational artifacts
-│   └── launch/              # Launch-related artifacts
-│
-├── evidence/                 # Current operational evidence
-│   └── *.md, *.json         # Safety trials, audits
-│
-├── release/                  # Release artifacts
-│
-├── rollback-config/          # Current rollback configuration
-│
-├── state/                    # Runtime state (gitignored)
-│
-└── .cortex/                  # Application runtime data (gitignored)
-    └── *.db, *.log
+├── Makefile                      # Build automation
+├── .golangci.yml                 # Linter config (30 linters, used by CI)
+├── go.mod / go.sum               # Go module dependencies
+├── VERSION                       # Current release version
+├── AGENTS.md                     # AI agent instructions
+├── CONTRIBUTING.md               # Contribution guidelines
+├── CODE_OF_CONDUCT.md            # Community guidelines
+└── LICENSE                       # MIT License
 ```
 
-## Directory Details
+## Key Architectural Decisions
 
-### `/api`
-API definitions and specifications:
-- `proto/` - Protocol Buffer definitions for gRPC APIs
-- `openapi/` - OpenAPI/Swagger specifications for REST APIs
-
-### `/assets`
-Static assets that are embedded or used by the application:
-- `migrations/` - Database schema migrations
-- `templates/` - Email, report, and notification templates
-
-### `/build`
-Build-related files and outputs:
-- `dist/` - Built distribution packages
-- `package/` - Packaging configurations (Dockerfiles, etc.)
-- `scripts/` - Build helper scripts
-
-### `/cmd`
-Main applications for this project. Each subdirectory is a separate binary:
-- `cortex/` - Main orchestrator daemon
-- `db-backup/` - Database backup utility
-- `db-restore/` - Database restore utility
-
-### `/configs`
-Configuration file templates and examples. Your actual config (`cortex.toml`) goes in the project root and is gitignored.
-
-### `/deploy`
-Deployment and infrastructure configurations:
-- `docker/` - Docker and docker-compose files
-- `kubernetes/` - Kubernetes manifests
-- `systemd/` - Systemd service unit files
-
-### `/docs`
-Comprehensive documentation organized by audience:
-- `architecture/` - System design and architecture docs
-- `api/` - API usage and reference
-- `development/` - Setup and contribution guides
-- `operations/` - Running and maintaining Cortex
-- `runbooks/` - Step-by-step operational procedures
-
-### `/internal`
-Private application code. Packages here are not intended for external use.
-
-### `/scripts`
-Utility scripts organized by purpose:
-- `ci/` - Continuous integration scripts
-- `dev/` - Development helper scripts
-- `ops/` - Operational/maintenance scripts
-- `release/` - Release management scripts
-
-### `/test`
-Test utilities, fixtures, and integration tests.
-
-## Key Files
-
-| File | Purpose |
-|------|---------|
-| `cortex.toml` | Your local configuration (gitignored) |
-| `slo-thresholds.json` | Service Level Objective definitions |
-| `VERSION` | Current release version |
-| `docs/development/AI_AGENTS.md` | Instructions for AI coding agents |
+| Decision | Rationale |
+|----------|-----------|
+| **Temporal over in-process scheduler** | Durable execution: if CHUM crashes mid-workflow, Temporal replays from exactly where it left off |
+| **Beads over Jira/Linear** | Git-backed, local-first, dependency-aware DAG. No external service dependency |
+| **Cross-model review** | Claude reviews Codex, Codex reviews Claude. Catches model-specific blind spots |
+| **CHUM as child workflows** | Fire-and-forget with `PARENT_CLOSE_POLICY_ABANDON`. Learning never blocks execution |
+| **SQLite FTS5 for lessons** | Full-text search over accumulated lessons. No external search infrastructure |
+| **Semgrep as immune system** | Learner generates `.semgrep/` rules from mistakes. Pre-filters catch repeat offenses for free |
 
 ## Make Targets
 
 ```bash
-make help              # Show all available targets
-make build             # Build cortex binary
+make build             # Build chum binary
 make build-all         # Build all binaries
-make test              # Run tests
-make test-race         # Run race detector tests
-make lint              # Run linters
-make lint-beads        # Validate bead quality
+make test              # Run all tests
+make test-race         # Run tests with race detector (10 packages)
+make test-race-ci      # CI test runner with timeout + artifacts
+make lint              # Run basic linters (fmt + vet)
+make lint-full         # Run full golangci-lint suite (30 linters)
+make test-coverage     # Run tests with coverage report
 make service-install   # Install systemd service
 make release           # Create a release
+make help              # Show all targets
 ```
-
-## Adding New Commands
-
-To add a new CLI command:
-
-1. Create a new directory under `cmd/`: `mkdir cmd/mycommand`
-2. Add `main.go` with your command implementation
-3. Update `Makefile` to include the new command in `build-all`
-4. Add documentation to `docs/`
-
-## Configuration
-
-Configuration follows a layered approach:
-
-1. **Defaults** - Hardcoded sensible defaults
-2. **Config file** - `cortex.toml` (version controlled example in `configs/`)
-3. **Environment variables** - Override config file settings
-4. **CLI flags** - Highest priority overrides
-
-See `configs/` for configuration examples.

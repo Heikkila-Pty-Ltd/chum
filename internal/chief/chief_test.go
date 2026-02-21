@@ -1,14 +1,13 @@
 package chief
 
 import (
-	"context"
 	"log/slog"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/antigravity-dev/cortex/internal/config"
+	"github.com/antigravity-dev/chum/internal/config"
 )
 
 func TestShouldRunCeremony(t *testing.T) {
@@ -21,7 +20,7 @@ func TestShouldRunCeremony(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 
 	// Test that New creates a valid Chief instance
-	chief := New(cfg, nil, nil, logger)
+	chief := New(cfg, nil, nil, nil, logger)
 	if chief == nil {
 		t.Fatal("Expected New to return a valid Chief instance")
 	}
@@ -40,7 +39,7 @@ func TestShouldNotRunCeremony_WrongDay(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 
 	// Test that New creates a valid Chief instance
-	chief := New(cfg, nil, nil, logger)
+	chief := New(cfg, nil, nil, nil, logger)
 	if chief == nil {
 		t.Fatal("Expected New to return a valid Chief instance")
 	}
@@ -58,7 +57,7 @@ func TestShouldNotRunCeremony_TooEarly(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 
 	// Test that New creates a valid Chief instance and test schedule parameters
-	chief := New(cfg, nil, nil, logger)
+	chief := New(cfg, nil, nil, nil, logger)
 	if chief == nil {
 		t.Fatal("Expected New to return a valid Chief instance")
 	}
@@ -83,7 +82,7 @@ func TestShouldNotRunCeremony_AlreadyRanToday(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 
 	// Test that New creates a valid Chief instance
-	chief := New(cfg, nil, nil, logger)
+	chief := New(cfg, nil, nil, nil, logger)
 	if chief == nil {
 		t.Fatal("Expected New to return a valid Chief instance")
 	}
@@ -92,17 +91,19 @@ func TestShouldNotRunCeremony_AlreadyRanToday(t *testing.T) {
 	now := time.Date(2024, 1, 8, 10, 0, 0, 0, time.UTC)    // Monday 10:00 AM
 	targetTime := time.Date(0, 1, 1, 9, 0, 0, 0, time.UTC) // 9:00 AM
 
+	lastRan := time.Date(2024, 1, 8, 9, 30, 0, 0, time.UTC) // Ran today at 9:30 AM
 	schedule := CeremonySchedule{
 		Type:        CeremonyMultiTeamPlanning,
 		DayOfWeek:   time.Monday,
 		TimeOfDay:   targetTime,
 		LastChecked: now.Add(-2 * time.Hour),
-		LastRan:     time.Date(2024, 1, 8, 9, 30, 0, 0, time.UTC), // Ran today at 9:30 AM
+		LastRan:     lastRan,
 	}
 
-	// Validate the schedule structure is correct
-	if schedule.LastRan.Hour() != 9 || schedule.LastRan.Minute() != 30 {
-		t.Errorf("Expected LastRan to be 9:30 AM, got %02d:%02d", schedule.LastRan.Hour(), schedule.LastRan.Minute())
+	// Validate that ShouldRunCeremony returns false (already ran today).
+	shouldRun := chief.ShouldRunCeremony(t.Context(), schedule)
+	if shouldRun {
+		t.Errorf("Expected ceremony NOT to run when already ran today")
 	}
 
 	t.Log("TestShouldNotRunCeremony_AlreadyRanToday: ceremony scheduling logic test (time mocking would be needed for full validation)")
@@ -116,7 +117,7 @@ func TestShouldNotRunCeremony_Disabled(t *testing.T) {
 	}
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-	chief := New(cfg, nil, nil, logger)
+	chief := New(cfg, nil, nil, nil, logger)
 
 	// Test that disabled config is respected
 	if cfg.Chief.Enabled {
@@ -133,7 +134,7 @@ func TestShouldNotRunCeremony_Disabled(t *testing.T) {
 	}
 
 	// With disabled config, ceremony should not run
-	shouldRun := chief.ShouldRunCeremony(context.Background(), schedule)
+	shouldRun := chief.ShouldRunCeremony(t.Context(), schedule)
 	if shouldRun {
 		t.Errorf("Expected ceremony NOT to run when Chief SM is disabled")
 	}
@@ -147,9 +148,9 @@ func TestBuildMultiTeamPlanningPrompt(t *testing.T) {
 	}
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-	chief := New(cfg, nil, nil, logger)
+	chief := New(cfg, nil, nil, nil, logger)
 
-	prompt := chief.buildMultiTeamPlanningPrompt(context.Background())
+	prompt := chief.buildMultiTeamPlanningPrompt(t.Context())
 
 	// Check that prompt contains key elements
 	expectedElements := []string{
@@ -175,7 +176,7 @@ func TestGetMultiTeamPlanningSchedule(t *testing.T) {
 	}
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-	chief := New(cfg, nil, nil, logger)
+	chief := New(cfg, nil, nil, nil, logger)
 
 	schedule := chief.GetMultiTeamPlanningSchedule()
 
@@ -205,7 +206,7 @@ func TestGetMultiTeamPlanningScheduleUsesCadenceOverrides(t *testing.T) {
 	}
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-	chief := New(cfg, nil, nil, logger)
+	chief := New(cfg, nil, nil, nil, logger)
 
 	schedule := chief.GetMultiTeamPlanningSchedule()
 
@@ -221,8 +222,7 @@ func TestGetMultiTeamPlanningScheduleUsesCadenceOverrides(t *testing.T) {
 }
 
 func TestWithMultiTeamPortfolioContext(t *testing.T) {
-	ctx := context.Background()
-	ctx = WithMultiTeamPortfolioContext(ctx, `{"foo":"bar"}`)
+	ctx := WithMultiTeamPortfolioContext(t.Context(), `{"foo":"bar"}`)
 
 	payload, ok := MultiTeamPortfolioContextFromContext(ctx)
 	if !ok {
@@ -240,9 +240,9 @@ func TestBuildMultiTeamPlanningPromptUsesInjectedContext(t *testing.T) {
 		},
 	}
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-	chief := New(cfg, nil, nil, logger)
+	chief := New(cfg, nil, nil, nil, logger)
 
-	ctx := WithMultiTeamPortfolioContext(context.Background(), `{"generated_at":"2026-02-18T00:00:00Z"}`)
+	ctx := WithMultiTeamPortfolioContext(t.Context(), `{"generated_at":"2026-02-18T00:00:00Z"}`)
 	prompt := chief.buildMultiTeamPlanningPrompt(ctx)
 
 	if !strings.Contains(prompt, "Authoritative, Scheduler-Prepared") {
@@ -254,8 +254,7 @@ func TestBuildMultiTeamPlanningPromptUsesInjectedContext(t *testing.T) {
 }
 
 func TestWithCrossProjectRetroContext(t *testing.T) {
-	ctx := context.Background()
-	ctx = WithCrossProjectRetroContext(ctx, `{"period":"2026-02-01 to 2026-02-14"}`)
+	ctx := WithCrossProjectRetroContext(t.Context(), `{"period":"2026-02-01 to 2026-02-14"}`)
 
 	payload, ok := CrossProjectRetroContextFromContext(ctx)
 	if !ok {
@@ -273,15 +272,15 @@ func TestBuildOverallRetrospectivePromptUsesInjectedContext(t *testing.T) {
 		},
 	}
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-	chief := New(cfg, nil, nil, logger)
+	chief := New(cfg, nil, nil, nil, logger)
 
-	ctx := WithCrossProjectRetroContext(context.Background(), `{"project_retro_reports":{"cortex":{"period":"7d"}}}`)
+	ctx := WithCrossProjectRetroContext(t.Context(), `{"project_retro_reports":{"chum":{"period":"7d"}}}`)
 	prompt := chief.buildOverallRetrospectivePrompt(ctx)
 
 	if !strings.Contains(prompt, "Overall Sprint Retrospective Ceremony") {
 		t.Fatalf("expected overall retrospective heading, got: %s", prompt)
 	}
-	if !strings.Contains(prompt, `"project_retro_reports":{"cortex":{"period":"7d"}}`) {
+	if !strings.Contains(prompt, `"project_retro_reports":{"chum":{"period":"7d"}}`) {
 		t.Fatalf("expected injected retrospective context, got: %s", prompt)
 	}
 	if !strings.Contains(prompt, "## Action Items") {
@@ -297,14 +296,14 @@ func TestParseRetrospectiveActionItems(t *testing.T) {
 - shared wins
 
 ## Action Items
-- [P1] Reduce retry churn on failing provider | project:cortex | owner:ops | why:high retry waste
+- [P1] Reduce retry churn on failing provider | project:chum | owner:ops | why:high retry waste
 - [P3] Clarify cross-team handoff checklist | project = api | owner = scrum | reason = ownership gaps
 `
 	items := parseRetrospectiveActionItems(output)
 	if len(items) != 2 {
 		t.Fatalf("expected 2 action items, got %d", len(items))
 	}
-	if items[0].Priority != 1 || items[0].ProjectName != "cortex" {
+	if items[0].Priority != 1 || items[0].ProjectName != "chum" {
 		t.Fatalf("unexpected first item parse: %+v", items[0])
 	}
 	if items[1].Priority != 3 || items[1].ProjectName != "api" {

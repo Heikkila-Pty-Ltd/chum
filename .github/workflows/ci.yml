@@ -7,6 +7,33 @@ on:
     branches: [ master, main ]
 
 jobs:
+  branch-policy:
+    name: Branch workflow policy
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate PR branch
+        shell: bash
+        run: |
+          echo "Validating pull-request branch '${GITHUB_HEAD_REF}'."
+
+          if [[ "$GITHUB_HEAD_REF" == "master" || "$GITHUB_HEAD_REF" == "main" ]]; then
+            echo "::error::PRs must not originate from master/main."
+            echo "::error::Branching workflow requires feature/*, chore/*, fix/*, or refactor/* source branches."
+            echo "::error::If this is a production hotfix, use a tracked `hotfix/*` PR path and include approval evidence."
+            echo "::error::See CONTRIBUTING.md for the full process and docs/development/GIT_WORKTREE_WORKFLOW.md."
+            exit 1
+          fi
+
+          if [[ ! "$GITHUB_HEAD_REF" =~ ^(feature|chore|fix|refactor|hotfix)/.+ ]]; then
+            echo "::error::Branch '$GITHUB_HEAD_REF' does not follow naming conventions."
+            echo "::error::Use feature/*, chore/*, fix/*, refactor/* (hotfix/* only for approved production hotfixes)."
+            echo "::error::See CONTRIBUTING.md and docs/development/GIT_WORKTREE_WORKFLOW.md."
+            exit 1
+          fi
+
+          echo "::notice::PR source branch '${GITHUB_HEAD_REF}' matches workflow policy."
+
   test:
     runs-on: ubuntu-latest
     steps:
@@ -44,8 +71,10 @@ jobs:
       with:
         go-version: '1.24'
 
-    - name: Run go vet
-      run: make vet
+    - name: Run golangci-lint
+      uses: golangci/golangci-lint-action@v6
+      with:
+        version: latest
 
     - name: Check formatting
       run: |
@@ -87,6 +116,6 @@ jobs:
         context: .
         file: ./build/package/Dockerfile
         push: false
-        tags: cortex:latest
+        tags: chum:latest
         cache-from: type=gha
         cache-to: type=gha,mode=max

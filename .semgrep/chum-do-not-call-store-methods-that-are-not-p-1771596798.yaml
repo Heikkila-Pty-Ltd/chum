@@ -1,0 +1,12 @@
+rules:
+  - id: chum-no-stale-storetokenusage-on-store
+    patterns:
+      - pattern-either:
+          - pattern: '$S.Store.StoreTokenUsage($...args)'
+    message: |
+      Stale API use: `StoreTokenUsage` is no longer part of `*store.Store`. Replace this call with the current Store API (or remove it) before build/test gating.
+    languages: [go]
+    severity: WARNING
+    paths:
+      include:
+        - "internal/temporal/activities.go"

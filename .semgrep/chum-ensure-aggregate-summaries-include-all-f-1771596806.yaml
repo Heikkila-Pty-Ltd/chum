@@ -1,0 +1,26 @@
+rules:
+  - id: chum-token-usage-summary-missing-cache-creation
+    message: |
+      `TokenUsageSummary` should include `cache_creation_tokens` in summary aggregation/scanning; add `SUM(cache_creation_tokens)` and map it to `TotalCacheCreationTokens` so summaries remain aligned with `token_usage` schema and usage model.
+    languages: [go]
+    severity: WARNING
+    paths:
+      include:
+        - internal/store/store.go
+    patterns:
+      - pattern-inside: |
+          func (s *Store) GetTokenUsageSummary(groupBy string, since time.Time) ([]TokenUsageSummary, error) {
+            ...
+          }
+      - pattern: |
+          rows.Scan(
+            ...,
+            &$S.TotalCacheReadTokens,
+            ...,
+          )
+      - pattern-not: |
+          rows.Scan(
+            ...,
+            &$S.TotalCacheCreationTokens,
+            ...,
+          )

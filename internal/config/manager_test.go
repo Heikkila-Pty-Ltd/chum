@@ -2,6 +2,8 @@ package config
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -23,11 +25,8 @@ func TestRWMutexManagerGetSet(t *testing.T) {
 	if got.General.LogLevel != "info" {
 		t.Fatalf("unexpected initial log level: %q", got.General.LogLevel)
 	}
-
-	// Get() returns an isolated snapshot; mutating it must not affect manager state.
-	got.General.LogLevel = "trace"
-	if after := mgr.Get(); after.General.LogLevel != "info" {
-		t.Fatalf("mutating snapshot leaked into manager state: %q", after.General.LogLevel)
+	if got != mgr.Get() {
+		t.Fatal("expected repeated Get to return same live snapshot")
 	}
 
 	next := &Config{General: General{LogLevel: "debug"}}
@@ -40,6 +39,12 @@ func TestRWMutexManagerGetSet(t *testing.T) {
 	}
 	if updated.General.LogLevel != "debug" {
 		t.Fatalf("expected updated config value, got %q", updated.General.LogLevel)
+	}
+	// Set should still isolate callers who mutate their source object.
+	next.General.LogLevel = "error"
+	updatedAfterMutation := mgr.Get()
+	if updatedAfterMutation.General.LogLevel != "debug" {
+		t.Fatalf("expected Set to keep its own snapshot: got %q", updatedAfterMutation.General.LogLevel)
 	}
 }
 
@@ -257,7 +262,11 @@ func BenchmarkRWMutexManagerReadMostly(b *testing.B) {
 }
 
 func BenchmarkRWMutexManagerReadMostlyWithReloads(b *testing.B) {
-	path := writeTestConfig(b, validConfig)
+	workdir := b.TempDir()
+	path := filepath.Join(workdir, "chum.toml")
+	if err := os.WriteFile(path, []byte(validConfig), 0644); err != nil {
+		b.Fatalf("seed config write failed: %v", err)
+	}
 	mgr := NewRWMutexManager(nil)
 	if err := mgr.Reload(path); err != nil {
 		b.Fatalf("initial reload failed: %v", err)
@@ -266,15 +275,28 @@ func BenchmarkRWMutexManagerReadMostlyWithReloads(b *testing.B) {
 	stop := make(chan struct{})
 	defer close(stop)
 
+	writeTicker := time.NewTicker(2 * time.Millisecond)
+	defer writeTicker.Stop()
 	ticker := time.NewTicker(2 * time.Millisecond)
+	defer ticker.Stop()
 	go func() {
-		defer ticker.Stop()
+		counter := 0
 		for i := 0; ; i++ {
 			select {
 			case <-ticker.C:
 				updated := strings.Replace(validConfig, "max_per_tick = 10", fmt.Sprintf("max_per_tick = %d", (i%20)+1), 1)
-				reloadedPath := writeTestConfig(b, updated)
-				_ = mgr.Reload(reloadedPath)
+				if err := os.WriteFile(path, []byte(updated), 0644); err != nil {
+					b.Error(err)
+					return
+				}
+				if err := mgr.Reload(path); err != nil {
+					counter++
+					if counter > 3 {
+						b.Error(err)
+						return
+					}
+				}
+				_ = writeTicker
 			case <-stop:
 				return
 			}

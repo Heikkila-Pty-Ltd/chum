@@ -1,0 +1,31 @@
+rules:
+  - id: chum-temporal-tier-resolver-ban-legacy-tiertoagent
+    patterns:
+      - pattern-either:
+          - pattern: tierToAgent($...ARGS)
+          - pattern: $PKG.tierToAgent($...ARGS)
+    message: |
+      Do not use tierToAgent. Use a single resolver path (ResolveTierAgent) across temporal activities.
+    languages: [go]
+    severity: ERROR
+    paths:
+      include:
+        - internal/temporal/planning_activities.go
+        - internal/temporal/learner_activities.go
+        - internal/temporal/groom_activities.go
+  - id: chum-temporal-tier-resolver-requires-trimspace-lower
+    patterns:
+      - pattern-either:
+          - pattern: ResolveTierAgent($TIER)
+          - pattern: $PKG.ResolveTierAgent($TIER)
+      - pattern-not: ResolveTierAgent(strings.ToLower(strings.TrimSpace($TIER)))
+      - pattern-not: $PKG.ResolveTierAgent(strings.ToLower(strings.TrimSpace($TIER)))
+    message: |
+      ResolveTierAgent inputs must be normalized with strings.ToLower(strings.TrimSpace(...)) before tier lookup so values like " fast " resolve correctly.
+    languages: [go]
+    severity: WARNING
+    paths:
+      include:
+        - internal/temporal/planning_activities.go
+        - internal/temporal/learner_activities.go
+        - internal/temporal/groom_activities.go

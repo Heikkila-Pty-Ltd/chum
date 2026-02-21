@@ -20,6 +20,7 @@ type Runner interface {
 // ExecRunner uses os/exec to run commands.
 type ExecRunner struct{}
 
+// Run executes a command and returns its combined output.
 func (ExecRunner) Run(ctx context.Context, name string, args ...string) ([]byte, error) {
 	return exec.CommandContext(ctx, name, args...).CombinedOutput()
 }

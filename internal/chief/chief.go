@@ -8,17 +8,18 @@ import (
 	"strings"
 	"time"
 
-	"github.com/antigravity-dev/cortex/internal/beads"
-	"github.com/antigravity-dev/cortex/internal/config"
-	"github.com/antigravity-dev/cortex/internal/dispatch"
-	"github.com/antigravity-dev/cortex/internal/portfolio"
-	"github.com/antigravity-dev/cortex/internal/store"
+	"github.com/antigravity-dev/chum/internal/config"
+	"github.com/antigravity-dev/chum/internal/dispatch"
+	"github.com/antigravity-dev/chum/internal/graph"
+	"github.com/antigravity-dev/chum/internal/portfolio"
+	"github.com/antigravity-dev/chum/internal/store"
 )
 
 // Chief handles multi-team sprint planning ceremonies
 type Chief struct {
 	cfg        *config.Config
 	store      *store.Store
+	dag        *graph.DAG
 	dispatcher dispatch.DispatcherInterface
 	logger     *slog.Logger
 	allocator  *AllocationRecorder
@@ -77,12 +78,13 @@ type CeremonySchedule struct {
 }
 
 // New creates a new Chief instance
-func New(cfg *config.Config, store *store.Store, dispatcher dispatch.DispatcherInterface, logger *slog.Logger) *Chief {
+func New(cfg *config.Config, store *store.Store, dag *graph.DAG, dispatcher dispatch.DispatcherInterface, logger *slog.Logger) *Chief {
 	allocator := NewAllocationRecorder(cfg, store, dispatcher, logger)
-	retroRecorder := NewRetrospectiveRecorder(cfg, store, dispatcher, logger)
+	retroRecorder := NewRetrospectiveRecorder(cfg, store, dag, dispatcher, logger)
 	return &Chief{
 		cfg:        cfg,
 		store:      store,
+		dag:        dag,
 		dispatcher: dispatcher,
 		logger:     logger,
 		allocator:  allocator,
@@ -197,7 +199,7 @@ func (c *Chief) monitorCeremonyCompletion(ctx context.Context, ceremonyID string
 	for {
 		select {
 		case <-ctx.Done():
-			c.logger.Info("ceremony monitoring cancelled", "ceremony_id", ceremonyID)
+			c.logger.Info("ceremony monitoring canceled", "ceremony_id", ceremonyID)
 			return
 		case <-timeout.C:
 			c.logger.Warn("ceremony monitoring timed out", "ceremony_id", ceremonyID)
@@ -280,13 +282,13 @@ func (c *Chief) processCeremonyResults(ctx context.Context, ceremonyID string, c
 	return nil
 }
 
-// createCeremonyBead creates a synthetic bead to track ceremony work
-func (c *Chief) createCeremonyBead(title string, ceremonySlug string) beads.Bead {
+// createCeremonyBead creates a synthetic task to track ceremony work
+func (c *Chief) createCeremonyBead(title, ceremonySlug string) graph.Task {
 	now := time.Now()
-	return beads.Bead{
+	return graph.Task{
 		ID:          fmt.Sprintf("ceremony-%s-%d", strings.TrimSpace(ceremonySlug), now.Unix()),
 		Title:       title,
-		Description: "Synthetic bead for tracking Chief SM ceremony dispatch",
+		Description: "Synthetic task for tracking Chief SM ceremony dispatch",
 		Type:        "task",
 		Status:      "open",
 		Priority:    1, // High priority for ceremonies
@@ -295,7 +297,7 @@ func (c *Chief) createCeremonyBead(title string, ceremonySlug string) beads.Bead
 }
 
 // dispatchChiefSM dispatches the Chief SM for a ceremony
-func (c *Chief) dispatchChiefSM(ctx context.Context, bead beads.Bead, promptTemplate string) (int64, error) {
+func (c *Chief) dispatchChiefSM(ctx context.Context, bead graph.Task, promptTemplate string) (int64, error) {
 	purpose := chiefPurpose(promptTemplate)
 	provider, tier := dispatch.SelectProviderForPurpose(c.cfg, purpose)
 	if provider == "" {
@@ -304,12 +306,12 @@ func (c *Chief) dispatchChiefSM(ctx context.Context, bead beads.Bead, promptTemp
 
 	agentID := c.cfg.Chief.AgentID
 	if agentID == "" {
-		agentID = "cortex-chief-scrum"
+		agentID = "chum-chief"
 	}
 
-	workspace := c.cfg.Projects["cortex"].Workspace
+	workspace := c.cfg.Projects["chum"].Workspace
 	if workspace == "" {
-		workspace = "~/projects/cortex" // fallback
+		workspace = "~/projects/chum" // fallback
 	}
 
 	prompt := c.buildCeremonyPrompt(ctx, promptTemplate)
@@ -317,7 +319,7 @@ func (c *Chief) dispatchChiefSM(ctx context.Context, bead beads.Bead, promptTemp
 	// Record the dispatch in the store first
 	dispatchID, err := c.store.RecordDispatch(
 		bead.ID,
-		"cortex", // project name
+		"chum", // project name
 		agentID,
 		provider,
 		tier,
@@ -335,7 +337,7 @@ func (c *Chief) dispatchChiefSM(ctx context.Context, bead beads.Bead, promptTemp
 	// Trigger the actual dispatch
 	handle, err := c.dispatcher.Dispatch(ctx, agentID, prompt, provider, "low", workspace)
 	if err != nil {
-		c.store.UpdateDispatchStatus(dispatchID, "failed", 1, 0)
+		c.store.UpdateDispatchStatus(dispatchID, "failed", 1, 0) //nolint:errcheck // best-effort status update before returning actual error
 		return 0, fmt.Errorf("failed to dispatch ceremony: %w", err)
 	}
 
@@ -405,7 +407,7 @@ Use this JSON as the source of truth for this ceremony. It already includes all 
 	// **GATHER PORTFOLIO CONTEXT** - This is the missing integration!
 	c.logger.Info("gathering portfolio context for multi-team planning")
 
-	portfolioData, err := portfolio.GatherPortfolioBacklogs(ctx, c.cfg, c.logger)
+	portfolioData, err := portfolio.GatherPortfolioBacklogs(ctx, c.cfg, c.dag, c.logger)
 	if err != nil {
 		c.logger.Error("failed to gather portfolio backlogs", "error", err)
 		// Continue with basic prompt if gathering fails
@@ -545,8 +547,8 @@ Use this JSON as the source of truth.
 3. Produce explicit follow-up action items in this exact section format:
    - `+"```"+`
 ## Action Items
-- [P1] Improve dependency handoff checklist | project:cortex | owner:chief-sm | why:handoff ambiguity caused delays
-- [P2] Rebalance provider usage for retries | project:cortex | owner:ops | why:failure concentration
+- [P1] Improve dependency handoff checklist | project:chum | owner:chief-sm | why:handoff ambiguity caused delays
+- [P2] Rebalance provider usage for retries | project:chum | owner:ops | why:failure concentration
 `+"```"+`
 4. Keep each action item concrete, scoped, and executable as a bead.
 `, injectedContext)
@@ -640,11 +642,11 @@ func (c *Chief) GetCrossProjectDependencies(ctx context.Context) ([]store.CrossP
 }
 
 // IsProjectCapacityAvailable checks if a project has available capacity for new work
-func (c *Chief) IsProjectCapacityAvailable(ctx context.Context, projectName string) (bool, float64, error) {
-	projectAlloc, err := c.GetProjectAllocation(ctx, projectName)
-	if err != nil {
+func (c *Chief) IsProjectCapacityAvailable(ctx context.Context, projectName string) (available bool, percent float64, err error) {
+	projectAlloc, allocErr := c.GetProjectAllocation(ctx, projectName)
+	if allocErr != nil {
 		// If no allocation exists, assume capacity is available
-		return true, 100.0, nil
+		return true, 100.0, nil //nolint:nilerr // fallback when no allocation exists
 	}
 
 	// Simple capacity check - in production this would consider current workload

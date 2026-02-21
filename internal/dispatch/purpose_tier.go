@@ -3,7 +3,7 @@ package dispatch
 import (
 	"strings"
 
-	"github.com/antigravity-dev/cortex/internal/config"
+	"github.com/antigravity-dev/chum/internal/config"
 )
 
 const (

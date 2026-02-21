@@ -19,13 +19,6 @@ if [[ ${#args[@]} -eq 0 ]]; then
   args=("./...")
 fi
 
-if [[ "${BD_LOCK_CLEANUP_DISABLED}" != "1" ]]; then
-  if [[ -x "${ROOT}/scripts/cleanup-bd-locks.sh" ]]; then
-    BD_LOCK_CLEANUP_REQUIRE_FORCE="${BD_LOCK_CLEANUP_REQUIRE_FORCE}" \
-      "${ROOT}/scripts/cleanup-bd-locks.sh" "${BD_LOCK_CLEANUP_MINUTES}"
-  fi
-fi
-
 exec 9>"$LOCK_FILE"
 if ! flock -w "$LOCK_WAIT_SEC" 9; then
   echo "test-safe: failed to acquire lock within ${LOCK_WAIT_SEC}s: $LOCK_FILE" >&2

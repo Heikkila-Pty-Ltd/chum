@@ -1,38 +1,75 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-# Prevent direct commits to master/main
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
 
-if [ "$BRANCH" = "master" ] || [ "$BRANCH" = "main" ]; then
-    echo ""
-    echo "════════════════════════════════════════════════════════════════"
-    echo "❌ ERROR: Direct commits to $BRANCH are not allowed!"
-    echo "════════════════════════════════════════════════════════════════"
-    echo ""
-    echo "Please create a feature branch instead:"
-    echo ""
-    echo "  git checkout -b feature/your-feature-name"
-    echo "  git commit -m \"your message\""
-    echo ""
-    echo "Or use a worktree for parallel work:"
-    echo ""
-    echo "  git worktree add ../cortex-feature feature/your-feature-name"
-    echo "  cd ../cortex-feature"
-    echo "  # work and commit here"
-    echo ""
-    echo "Branch naming conventions:"
-    echo "  feature/*  - New features"
-    echo "  fix/*      - Bug fixes"
-    echo "  chore/*    - Maintenance tasks"
-    echo "  refactor/* - Code refactoring"
-    echo ""
-    echo "To bypass this check (ONLY for emergencies):"
-    echo "  git commit --no-verify"
-    echo ""
-    echo "════════════════════════════════════════════════════════════════"
-    echo ""
-    exit 1
+if [[ "$BRANCH" == "HEAD" ]]; then
+  exit 0
 fi
 
-# Hook passed
+if [[ "$BRANCH" == "master" || "$BRANCH" == "main" ]]; then
+  if [[ "${CHUM_ALLOW_MASTER_HOTFIX:-}" == "1" ]]; then
+    echo ""
+    echo "════════════════════════════════════════════════════════════════"
+    echo "⚠️  Master commit allowed by explicit hotfix override."
+    echo "════════════════════════════════════════════════════════════════"
+    echo ""
+    echo "Use this only for approved production hotfixes."
+    echo "Record approval evidence in the related bead/PR before pushing."
+    echo ""
+    exit 0
+  fi
+
+  echo ""
+  echo "════════════════════════════════════════════════════════════════"
+  echo "❌ ERROR: Direct commits to $BRANCH are not allowed!"
+  echo "════════════════════════════════════════════════════════════════"
+  echo ""
+  echo "Create a branch first:"
+  echo "  git checkout -b feature/your-feature-name"
+  echo ""
+  echo "Or use a worktree for isolated parallel work:"
+  echo "  git worktree add ../chum-feature feature/your-feature-name"
+  echo "  # Use -b when creating a new branch:"
+  echo "  git worktree add -b feature/your-feature-name ../chum-feature"
+  echo "  cd ../chum-feature"
+  echo ""
+  echo "Branch naming conventions:"
+  echo "  feature/*  - New features"
+  echo "  chore/*    - Maintenance tasks"
+  echo "  fix/*      - Bug fixes"
+  echo "  refactor/* - Code refactoring"
+  echo ""
+  echo "If this is an approved production hotfix, set CHUM_ALLOW_MASTER_HOTFIX=1"
+  echo "with explicit approval recorded, then rerun:"
+  echo "  CHUM_ALLOW_MASTER_HOTFIX=1 git commit ..."
+  echo ""
+  echo "Install/update this hook with:"
+  echo "  ./scripts/hooks/install.sh"
+  echo ""
+  echo "════════════════════════════════════════════════════════════════"
+  echo ""
+  exit 1
+fi
+
+if [[ ! "$BRANCH" =~ ^(feature|chore|fix|refactor|hotfix)/.+ ]]; then
+  echo ""
+  echo "════════════════════════════════════════════════════════════════"
+  echo "❌ ERROR: Branch name '$BRANCH' does not follow workflow policy."
+  echo "════════════════════════════════════════════════════════════════"
+  echo ""
+  echo "Use one of these naming patterns:"
+  echo "  feature/*, chore/*, fix/*, refactor/*"
+  echo "  (hotfix/* is only for approved production hotfixes)"
+  echo "If your team has not installed the hook, run:"
+  echo "  ./scripts/hooks/install.sh"
+  echo ""
+  echo "Use a worktree for parallel work:"
+  echo "  git worktree add -b feature/your-feature-name ../chum-feature"
+  echo ""
+  echo "════════════════════════════════════════════════════════════════"
+  echo ""
+  exit 1
+fi
+
 exit 0

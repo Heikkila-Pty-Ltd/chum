@@ -60,7 +60,7 @@ check_tag_absent() {
 
 check_api_security_gate() {
   # Accept either explicit runtime config or implementation/docs evidence.
-  if rg -n "\\[api\\.security\\]" cortex.toml >/dev/null 2>&1; then
+  if rg -n "\\[api\\.security\\]" chum.toml >/dev/null 2>&1; then
     return 0
   fi
   rg -n "AllowedTokens|RequireLocalOnly|api-security" internal/config/config.go docs/api-security.md >/dev/null 2>&1
@@ -104,7 +104,7 @@ if [[ "$skip_build" -ne 1 ]]; then
 fi
 
 if [[ "$skip_tests" -ne 1 ]]; then
-  run_gate "tests" env GOCACHE=/tmp/go-build go test ./internal/beads ./internal/scheduler ./internal/health ./internal/api
+  run_gate "tests" env GOCACHE=/tmp/go-build go test ./internal/graph ./internal/health ./internal/api
 fi
 
 run_gate "api_security_controls_present" check_api_security_gate

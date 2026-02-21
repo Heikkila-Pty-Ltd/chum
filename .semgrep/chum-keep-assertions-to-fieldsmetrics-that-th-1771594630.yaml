@@ -1,0 +1,20 @@
+rules:
+  - id: chum-handle-endpoint-tests-stale-assertions
+    message: |
+      This endpoint test still asserts output fields/metrics that were removed from the API.
+      Update or remove these assertions in TestHandleStatus/TestHandleMetrics so they only validate values the endpoint currently emits.
+    patterns:
+      - pattern-either:
+          - pattern-inside: |
+              func TestHandleStatus(...){
+                ...
+              }
+          - pattern-inside: |
+              func TestHandleMetrics(...){
+                ...
+              }
+      - pattern-either:
+          - pattern-regex: '\["rate_limiter"\]'
+          - pattern-regex: 'strings\.Contains\([^\n]*"(?:chum_rate_limiter_usage_ratio|[^"]*claim[^"]*lease[^"]*|[^"]*gateway[^"]*failure[^"]*)"\)'
+    languages: [go]
+    severity: WARNING

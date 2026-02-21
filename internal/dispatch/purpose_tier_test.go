@@ -3,7 +3,7 @@ package dispatch
 import (
 	"testing"
 
-	"github.com/antigravity-dev/cortex/internal/config"
+	"github.com/antigravity-dev/chum/internal/config"
 )
 
 func TestPreferredTiersForPurpose(t *testing.T) {

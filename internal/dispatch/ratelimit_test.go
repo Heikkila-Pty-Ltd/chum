@@ -6,8 +6,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/antigravity-dev/cortex/internal/config"
-	"github.com/antigravity-dev/cortex/internal/store"
+	"github.com/antigravity-dev/chum/internal/config"
+	"github.com/antigravity-dev/chum/internal/store"
 )
 
 func tempStore(t *testing.T) *store.Store {

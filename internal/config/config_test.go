@@ -12,7 +12,7 @@ import (
 func writeTestConfig(tb testing.TB, content string) string {
 	tb.Helper()
 	dir := tb.TempDir()
-	path := filepath.Join(dir, "cortex.toml")
+	path := filepath.Join(dir, "chum.toml")
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		tb.Fatal(err)
 	}
@@ -26,7 +26,7 @@ max_per_tick = 3
 stuck_timeout = "30m"
 max_retries = 2
 log_level = "info"
-state_db = "/tmp/cortex-test.db"
+state_db = "/tmp/chum-test.db"
 
 [projects.test]
 enabled = true
@@ -124,6 +124,42 @@ func TestLoadValidConfig(t *testing.T) {
 	}
 	if cfg.API.Bind != "127.0.0.1:8900" {
 		t.Errorf("API.Bind = %q, want 127.0.0.1:8900", cfg.API.Bind)
+	}
+}
+
+func TestReloadAlias(t *testing.T) {
+	path := writeTestConfig(t, validConfig)
+	cfg, err := Reload(path)
+	if err != nil {
+		t.Fatalf("Reload failed: %v", err)
+	}
+	if cfg.General.TickInterval.Duration != 60*time.Second {
+		t.Errorf("expected tick interval from reload config, got %v", cfg.General.TickInterval)
+	}
+}
+
+func TestReloadCanBeCalledMultipleTimes(t *testing.T) {
+	path := writeTestConfig(t, validConfig)
+
+	first, err := Reload(path)
+	if err != nil {
+		t.Fatalf("initial reload failed: %v", err)
+	}
+	if first.General.LogLevel != "info" {
+		t.Fatalf("expected initial log_level info, got %q", first.General.LogLevel)
+	}
+
+	updated := strings.Replace(validConfig, `log_level = "info"`, `log_level = "debug"`, 1)
+	if err := os.WriteFile(path, []byte(updated), 0644); err != nil {
+		t.Fatalf("rewrite config failed: %v", err)
+	}
+
+	second, err := Reload(path)
+	if err != nil {
+		t.Fatalf("second reload failed: %v", err)
+	}
+	if second.General.LogLevel != "debug" {
+		t.Fatalf("expected log_level update to debug, got %q", second.General.LogLevel)
 	}
 }
 
@@ -240,7 +276,7 @@ auto_revert_on_failure = false
 func TestLoadNoEnabledProject(t *testing.T) {
 	cfg := `
 [general]
-state_db = "/tmp/cortex-test.db"
+state_db = "/tmp/chum-test.db"
 
 [projects.test]
 enabled = false
@@ -370,7 +406,7 @@ func TestLoadMatrixConfigEnabled(t *testing.T) {
 [matrix]
 enabled = true
 poll_interval = "45s"
-bot_user = "@cortex-bot:matrix.org"
+bot_user = "@chum-bot:matrix.org"
 read_limit = 40
 `
 	path := writeTestConfig(t, cfg)
@@ -385,8 +421,8 @@ read_limit = 40
 	if loaded.Matrix.PollInterval.Duration != 45*time.Second {
 		t.Fatalf("matrix.poll_interval = %v, want 45s", loaded.Matrix.PollInterval.Duration)
 	}
-	if loaded.Matrix.BotUser != "@cortex-bot:matrix.org" {
-		t.Fatalf("matrix.bot_user = %q, want @cortex-bot:matrix.org", loaded.Matrix.BotUser)
+	if loaded.Matrix.BotUser != "@chum-bot:matrix.org" {
+		t.Fatalf("matrix.bot_user = %q, want @chum-bot:matrix.org", loaded.Matrix.BotUser)
 	}
 	if loaded.Matrix.ReadLimit != 40 {
 		t.Fatalf("matrix.read_limit = %d, want 40", loaded.Matrix.ReadLimit)
@@ -413,7 +449,7 @@ read_limit = -1
 func TestLoadUnknownProviderInTier(t *testing.T) {
 	cfg := `
 [general]
-state_db = "/tmp/cortex-test.db"
+state_db = "/tmp/chum-test.db"
 
 [projects.test]
 enabled = true
@@ -701,7 +737,7 @@ func TestLoadChiefConfigValid(t *testing.T) {
 enabled = true
 matrix_room = "!coordination:matrix.org"
 model = "claude-opus-4-6"
-agent_id = "cortex-chief-scrum"
+agent_id = "chum-chief"
 `
 	path := writeTestConfig(t, cfg)
 	config, err := Load(path)
@@ -721,8 +757,8 @@ agent_id = "cortex-chief-scrum"
 		t.Errorf("expected model 'claude-opus-4-6', got %q", config.Chief.Model)
 	}
 
-	if config.Chief.AgentID != "cortex-chief-scrum" {
-		t.Errorf("expected agent_id 'cortex-chief-scrum', got %q", config.Chief.AgentID)
+	if config.Chief.AgentID != "chum-chief" {
+		t.Errorf("expected agent_id 'chum-chief', got %q", config.Chief.AgentID)
 	}
 }
 
@@ -743,8 +779,8 @@ matrix_room = "!coordination:matrix.org"
 		t.Errorf("expected default model 'claude-opus-4-6', got %q", config.Chief.Model)
 	}
 
-	if config.Chief.AgentID != "cortex-chief-scrum" {
-		t.Errorf("expected default agent_id 'cortex-chief-scrum', got %q", config.Chief.AgentID)
+	if config.Chief.AgentID != "chum-chief" {
+		t.Errorf("expected default agent_id 'chum-chief', got %q", config.Chief.AgentID)
 	}
 }
 
@@ -770,7 +806,7 @@ func TestLoadChiefConfigMissingMatrixRoom(t *testing.T) {
 
 [chief]
 enabled = true
-agent_id = "cortex-chief-scrum"
+agent_id = "chum-chief"
 `
 	path := writeTestConfig(t, cfg)
 	_, err := Load(path)
@@ -800,7 +836,7 @@ func TestLoadChiefConfigOptional(t *testing.T) {
 		t.Errorf("expected default model to be applied, got %q", config.Chief.Model)
 	}
 
-	if config.Chief.AgentID != "cortex-chief-scrum" {
+	if config.Chief.AgentID != "chum-chief" {
 		t.Errorf("expected default agent_id to be applied, got %q", config.Chief.AgentID)
 	}
 }
@@ -1755,18 +1791,18 @@ func TestLoadExpandsHomeInProjectPaths(t *testing.T) {
 func TestLoadExpandsHomeInStateDBPath(t *testing.T) {
 	tempHome := t.TempDir()
 	t.Setenv("HOME", tempHome)
-	if err := os.MkdirAll(filepath.Join(tempHome, ".local/share/cortex"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(tempHome, ".local/share/chum"), 0o755); err != nil {
 		t.Fatalf("mkdir state db dir: %v", err)
 	}
 
-	cfg := strings.Replace(validConfig, `state_db = "/tmp/cortex-test.db"`, `state_db = "~/.local/share/cortex/cortex.db"`, 1)
+	cfg := strings.Replace(validConfig, `state_db = "/tmp/chum-test.db"`, `state_db = "~/.local/share/chum/chum.db"`, 1)
 	path := writeTestConfig(t, cfg)
 	loaded, err := Load(path)
 	if err != nil {
 		t.Fatalf("Load failed: %v", err)
 	}
 
-	want := filepath.Join(tempHome, ".local/share/cortex/cortex.db")
+	want := filepath.Join(tempHome, ".local/share/chum/chum.db")
 	if loaded.General.StateDB != want {
 		t.Fatalf("state_db = %q, want %q", loaded.General.StateDB, want)
 	}

@@ -1,0 +1,80 @@
+# CHUM Agent Orchestrator — Example Configuration
+#
+# Copy to chum.toml and customize for your environment:
+#   cp configs/chum.example.toml chum.toml
+
+[general]
+tick_interval = "60s"
+max_per_tick = 3
+stuck_timeout = "30m"
+max_retries = 2
+log_level = "info"
+state_db = "~/.local/share/chum/chum.db"
+
+# --- Projects ---
+# Define one or more projects for CHUM to manage.
+[projects.my-project]
+enabled = true
+beads_dir = "~/projects/my-project/.beads"
+workspace = "~/projects/my-project"
+priority = 1
+
+[projects.my-project.dod]
+checks = [
+    "go build ./...",
+    "go test ./...",
+]
+
+# --- Providers ---
+# Configure LLM providers. Each provider maps to a CLI agent.
+[providers.claude]
+tier = "premium"
+authed = true
+model = "claude-sonnet-4-20250514"
+
+[providers.codex]
+tier = "fast"
+authed = true
+model = "codex"
+cli = "codex"
+
+# --- Tiers ---
+# Map tiers to provider lists. CHUM auto-downgrades when rate-limited.
+[tiers]
+fast = ["codex"]
+balanced = ["claude"]
+premium = ["claude"]
+
+# --- Rate Limits ---
+[rate_limits]
+window_5h_cap = 20
+weekly_cap = 200
+weekly_headroom_pct = 80
+
+# --- API ---
+[api]
+bind = "127.0.0.1:8900"
+
+# --- Health ---
+[health]
+check_interval = "2m"
+
+# --- Cost Control (optional) ---
+[dispatch.cost_control]
+enabled = false
+spark_first = false
+
+# --- CLI Configuration ---
+[dispatch.cli.claude]
+cmd = "claude"
+prompt_mode = "stdin"
+args = ["--print"]
+model_flag = "--model"
+approval_flags = ["--dangerously-skip-permissions"]
+
+[dispatch.cli.codex]
+cmd = "codex"
+prompt_mode = "stdin"
+args = ["exec", "--full-auto"]
+model_flag = "-m"
+approval_flags = []

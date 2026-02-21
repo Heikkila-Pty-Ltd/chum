@@ -1,0 +1,21 @@
+rules:
+  - id: chum-workflow-missing-plan-tokens-in-total
+    patterns:
+      - pattern-inside: |
+          func CHUMAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
+            ...
+            var $TOTAL TokenUsage
+            ...
+          }
+      - pattern: |
+          $TOTAL = TokenUsage{}
+      - pattern-not-inside: |
+          func CHUMAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
+            ...
+            $TOTAL.Add(plan.TokenUsage)
+            ...
+          }
+    message: |
+      `CHUMAgentWorkflow` resets `totalTokens` without composing the planning phase tokens into it, so plan usage is silently excluded from end-to-end accounting. Add plan tokens (for example `totalTokens.Add(plan.TokenUsage)`) before adding execute/review token usage.
+    languages: [go]
+    severity: WARNING

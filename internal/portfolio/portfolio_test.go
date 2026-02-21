@@ -1,60 +1,10 @@
 package portfolio
 
 import (
-	"context"
-	"log/slog"
-	"os"
 	"testing"
 
-	"github.com/antigravity-dev/cortex/internal/beads"
-	"github.com/antigravity-dev/cortex/internal/config"
+	"github.com/antigravity-dev/chum/internal/graph"
 )
-
-func TestGatherPortfolioBacklogs(t *testing.T) {
-	ctx := context.Background()
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-
-	// Create minimal test config
-	cfg := &config.Config{
-		Projects: map[string]config.Project{
-			"test-project": {
-				Enabled:   true,
-				Priority:  1,
-				BeadsDir:  "/tmp/non-existent", // Won't exist, but function should handle gracefully
-				Workspace: "/tmp",
-			},
-		},
-		RateLimits: config.RateLimits{
-			Budget: map[string]int{
-				"test-project": 60,
-			},
-		},
-	}
-
-	// Test that function doesn't crash with non-existent beads directory
-	portfolio, err := GatherPortfolioBacklogs(ctx, cfg, logger)
-	if err != nil {
-		t.Fatalf("GatherPortfolioBacklogs failed: %v", err)
-	}
-
-	if portfolio == nil {
-		t.Fatal("Expected portfolio to be non-nil")
-	}
-
-	// Verify structure is initialized
-	if portfolio.ProjectBacklogs == nil {
-		t.Error("Expected ProjectBacklogs to be initialized")
-	}
-
-	if portfolio.CapacityBudgets == nil {
-		t.Error("Expected CapacityBudgets to be initialized") 
-	}
-
-	// Verify capacity budget was copied
-	if portfolio.CapacityBudgets["test-project"] != 60 {
-		t.Errorf("Expected capacity budget 60, got %d", portfolio.CapacityBudgets["test-project"])
-	}
-}
 
 func TestPortfolioBacklogStructure(t *testing.T) {
 	// Test that all required fields exist and have correct types
@@ -83,13 +33,12 @@ func TestProjectBacklogStructure(t *testing.T) {
 	// Test ProjectBacklog struct can be created with expected fields
 	backlog := ProjectBacklog{
 		ProjectName:     "test",
-		BeadsDir:        "/tmp", 
 		Workspace:       "/tmp",
 		Priority:        1,
-		UnrefinedBeads:  []beads.Bead{},
-		RefinedBeads:    []beads.Bead{},
-		AllBeads:        []beads.Bead{},
-		ReadyToWork:     []beads.Bead{},
+		UnrefinedBeads:  []graph.Task{},
+		RefinedBeads:    []graph.Task{},
+		AllBeads:        []graph.Task{},
+		ReadyToWork:     []graph.Task{},
 		TotalEstimate:   0,
 		CapacityPercent: 50,
 	}
@@ -133,7 +82,7 @@ func TestGetHighPriorityProjects(t *testing.T) {
 
 	projects := GetHighPriorityProjects(portfolio)
 	expected := []string{"project-a", "project-b", "project-c"}
-	
+
 	if len(projects) != len(expected) {
 		t.Errorf("Expected %d projects, got %d", len(expected), len(projects))
 	}
@@ -151,13 +100,13 @@ func TestGetCrossProjectBlockersForProject(t *testing.T) {
 			{
 				SourceProject: "project-a",
 				SourceBeadID:  "a-1",
-				TargetProject: "project-b", 
+				TargetProject: "project-b",
 				TargetBeadID:  "b-1",
 				IsResolved:    false,
 			},
 			{
 				SourceProject: "project-a",
-				SourceBeadID:  "a-2", 
+				SourceBeadID:  "a-2",
 				TargetProject: "project-b",
 				TargetBeadID:  "b-2",
 				IsResolved:    true, // Resolved, should not be blocker
@@ -173,7 +122,7 @@ func TestGetCrossProjectBlockersForProject(t *testing.T) {
 	}
 
 	blockers := GetCrossProjectBlockersForProject(portfolio, "project-a")
-	
+
 	// Should only return unresolved blockers for project-a
 	if len(blockers) != 1 {
 		t.Errorf("Expected 1 blocker, got %d", len(blockers))
@@ -184,9 +133,9 @@ func TestGetCrossProjectBlockersForProject(t *testing.T) {
 	}
 }
 
-func TestFilterBeadsFunctions(t *testing.T) {
-	// Create test beads with various states
-	testBeads := []beads.Bead{
+func TestFilterTasksFunctions(t *testing.T) {
+	// Create test tasks with various states
+	testTasks := []graph.Task{
 		{
 			ID:              "open-refined",
 			Status:          "open",
@@ -194,7 +143,7 @@ func TestFilterBeadsFunctions(t *testing.T) {
 			EstimateMinutes: 30,
 		},
 		{
-			ID:              "open-unrefined", 
+			ID:              "open-unrefined",
 			Status:          "open",
 			Acceptance:      "",
 			EstimateMinutes: 0,
@@ -205,27 +154,27 @@ func TestFilterBeadsFunctions(t *testing.T) {
 		},
 		{
 			ID:              "open-with-design",
-			Status:          "open", 
+			Status:          "open",
 			Design:          "Has design notes",
 			EstimateMinutes: 0,
 		},
 	}
 
-	// Test filterOpenBeads
-	openBeads := filterOpenBeads(testBeads)
-	if len(openBeads) != 3 { // Should exclude the closed one
-		t.Errorf("Expected 3 open beads, got %d", len(openBeads))
+	// Test filterOpenTasks
+	openTasks := filterOpenTasks(testTasks)
+	if len(openTasks) != 3 { // Should exclude the closed one
+		t.Errorf("Expected 3 open tasks, got %d", len(openTasks))
 	}
 
-	// Test filterRefinedBeads
-	refinedBeads := filterRefinedBeads(openBeads)
-	if len(refinedBeads) != 2 { // open-refined and open-with-design
-		t.Errorf("Expected 2 refined beads, got %d", len(refinedBeads))
+	// Test filterRefinedTasks
+	refinedTasks := filterRefinedTasks(openTasks)
+	if len(refinedTasks) != 2 { // open-refined and open-with-design
+		t.Errorf("Expected 2 refined tasks, got %d", len(refinedTasks))
 	}
 
-	// Test filterUnrefinedBeads
-	unrefinedBeads := filterUnrefinedBeads(openBeads) 
-	if len(unrefinedBeads) != 1 { // Only open-unrefined
-		t.Errorf("Expected 1 unrefined bead, got %d", len(unrefinedBeads))
+	// Test filterUnrefinedTasks
+	unrefinedTasks := filterUnrefinedTasks(openTasks)
+	if len(unrefinedTasks) != 1 { // Only open-unrefined
+		t.Errorf("Expected 1 unrefined task, got %d", len(unrefinedTasks))
 	}
 }

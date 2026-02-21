@@ -4,7 +4,7 @@
 
 # Build artifacts
 build/dist/
-cortex
+chum
 *.test
 
 # Documentation
@@ -17,7 +17,7 @@ test/
 .github/
 
 # Local configs (may contain secrets)
-cortex.toml
+chum.toml
 .env
 
 # IDE
@@ -38,7 +38,7 @@ evidence/
 
 # Runtime data
 state/
-.cortex/
+.chum/
 .beads/
 
 # Release artifacts

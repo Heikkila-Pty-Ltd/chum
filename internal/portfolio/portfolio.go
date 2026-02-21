@@ -7,20 +7,19 @@ import (
 	"log/slog"
 	"sort"
 
-	"github.com/antigravity-dev/cortex/internal/beads"
-	"github.com/antigravity-dev/cortex/internal/config"
+	"github.com/antigravity-dev/chum/internal/config"
+	"github.com/antigravity-dev/chum/internal/graph"
 )
 
 // ProjectBacklog represents the backlog for a single project
 type ProjectBacklog struct {
 	ProjectName     string       `json:"project_name"`
-	BeadsDir        string       `json:"beads_dir"`
 	Workspace       string       `json:"workspace"`
 	Priority        int          `json:"priority"`
-	UnrefinedBeads  []beads.Bead `json:"unrefined_beads"`
-	RefinedBeads    []beads.Bead `json:"refined_beads"`
-	AllBeads        []beads.Bead `json:"all_beads"`
-	ReadyToWork     []beads.Bead `json:"ready_to_work"`
+	UnrefinedBeads  []graph.Task `json:"unrefined_beads"`
+	RefinedBeads    []graph.Task `json:"refined_beads"`
+	AllBeads        []graph.Task `json:"all_beads"`
+	ReadyToWork     []graph.Task `json:"ready_to_work"`
 	TotalEstimate   int          `json:"total_estimate_minutes"`
 	CapacityPercent int          `json:"capacity_percent"`
 }
@@ -57,7 +56,7 @@ type PortfolioSummary struct {
 }
 
 // GatherPortfolioBacklogs collects backlog data from all enabled projects for multi-team sprint planning
-func GatherPortfolioBacklogs(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*PortfolioBacklog, error) {
+func GatherPortfolioBacklogs(ctx context.Context, cfg *config.Config, dag *graph.DAG, logger *slog.Logger) (*PortfolioBacklog, error) {
 	logger.Info("gathering portfolio backlogs for multi-team sprint planning")
 
 	portfolio := &PortfolioBacklog{
@@ -71,32 +70,33 @@ func GatherPortfolioBacklogs(ctx context.Context, cfg *config.Config, logger *sl
 	}
 
 	// Build cross-project dependency graph
-	crossGraph, err := beads.BuildCrossProjectGraph(ctx, cfg.Projects)
-	if err != nil {
-		return nil, fmt.Errorf("building cross-project graph: %w", err)
-	}
-
-	// Gather backlogs from each enabled project
-	var projectNames []string
+	projectNames := make(map[string]string)
+	var enabledNames []string
 	for name, project := range cfg.Projects {
 		if !project.Enabled {
 			logger.Debug("skipping disabled project", "project", name)
 			continue
 		}
-		projectNames = append(projectNames, name)
+		projectNames[name] = name
+		enabledNames = append(enabledNames, name)
+	}
+
+	crossGraph, err := graph.BuildCrossProjectGraph(ctx, dag, projectNames)
+	if err != nil {
+		return nil, fmt.Errorf("building cross-project graph: %w", err)
 	}
 
 	// Sort projects by priority for consistent ordering
-	sort.Slice(projectNames, func(i, j int) bool {
-		return cfg.Projects[projectNames[i]].Priority < cfg.Projects[projectNames[j]].Priority
+	sort.Slice(enabledNames, func(i, j int) bool {
+		return cfg.Projects[enabledNames[i]].Priority < cfg.Projects[enabledNames[j]].Priority
 	})
 
-	for _, name := range projectNames {
+	for _, name := range enabledNames {
 		project := cfg.Projects[name]
 
-		logger.Debug("gathering backlog", "project", name, "beads_dir", project.BeadsDir)
+		logger.Debug("gathering backlog", "project", name)
 
-		backlog, err := gatherProjectBacklog(ctx, name, project, crossGraph, logger)
+		backlog, err := gatherProjectBacklog(ctx, name, project, dag, crossGraph, logger)
 		if err != nil {
 			logger.Error("failed to gather project backlog", "project", name, "error", err)
 			// Continue with other projects rather than failing completely
@@ -109,7 +109,7 @@ func GatherPortfolioBacklogs(ctx context.Context, cfg *config.Config, logger *sl
 	}
 
 	// Gather cross-project dependencies
-	portfolio.CrossProjectDeps = extractCrossProjectDependencies(crossGraph, cfg.Projects)
+	portfolio.CrossProjectDeps = extractCrossProjectDependencies(crossGraph)
 
 	// Generate summary statistics
 	portfolio.Summary = generatePortfolioSummary(portfolio)
@@ -123,45 +123,39 @@ func GatherPortfolioBacklogs(ctx context.Context, cfg *config.Config, logger *sl
 }
 
 // gatherProjectBacklog collects backlog data for a single project
-func gatherProjectBacklog(ctx context.Context, projectName string, project config.Project, crossGraph *beads.CrossProjectGraph, logger *slog.Logger) (*ProjectBacklog, error) {
-	beadsDir := config.ExpandHome(project.BeadsDir)
-
-	// List all beads for the project
-	allBeads, err := beads.ListBeadsCtx(ctx, beadsDir)
+func gatherProjectBacklog(ctx context.Context, projectName string, project config.Project, dag *graph.DAG, crossGraph *graph.CrossProjectGraph, logger *slog.Logger) (*ProjectBacklog, error) {
+	// List all tasks for the project
+	allTasks, err := dag.ListTasks(ctx, projectName)
 	if err != nil {
-		return nil, fmt.Errorf("listing beads for project %s: %w", projectName, err)
+		return nil, fmt.Errorf("listing tasks for project %s: %w", projectName, err)
 	}
 
-	// Enrich beads with detailed information (acceptance criteria, design, estimates)
-	beads.EnrichBeads(ctx, beadsDir, allBeads)
-
 	// Build local dependency graph for this project
-	localGraph := buildLocalDepGraph(allBeads)
+	localGraph := graph.BuildDepGraph(allTasks)
 
 	backlog := &ProjectBacklog{
 		ProjectName:     projectName,
-		BeadsDir:        beadsDir,
 		Workspace:       config.ExpandHome(project.Workspace),
 		Priority:        project.Priority,
-		AllBeads:        filterOpenBeads(allBeads),
+		AllBeads:        filterOpenTasks(allTasks),
 		CapacityPercent: 0, // Will be set from rate limits budget if available
 	}
 
-	// Categorize beads
-	backlog.RefinedBeads = filterRefinedBeads(backlog.AllBeads)
-	backlog.UnrefinedBeads = filterUnrefinedBeads(backlog.AllBeads)
+	// Categorize tasks
+	backlog.RefinedBeads = filterRefinedTasks(backlog.AllBeads)
+	backlog.UnrefinedBeads = filterUnrefinedTasks(backlog.AllBeads)
 
-	// Find beads ready to work (unblocked by dependencies)
-	backlog.ReadyToWork = beads.FilterUnblockedCrossProject(backlog.AllBeads, localGraph, crossGraph)
+	// Find tasks ready to work (unblocked by dependencies)
+	backlog.ReadyToWork = graph.FilterUnblockedCrossProject(backlog.AllBeads, localGraph, crossGraph)
 
 	// Calculate total estimate
-	for _, bead := range backlog.AllBeads {
-		backlog.TotalEstimate += bead.EstimateMinutes
+	for _, task := range backlog.AllBeads {
+		backlog.TotalEstimate += task.EstimateMinutes
 	}
 
 	logger.Debug("project backlog gathered",
 		"project", projectName,
-		"total_beads", len(backlog.AllBeads),
+		"total_tasks", len(backlog.AllBeads),
 		"refined", len(backlog.RefinedBeads),
 		"unrefined", len(backlog.UnrefinedBeads),
 		"ready_to_work", len(backlog.ReadyToWork),
@@ -170,74 +164,66 @@ func gatherProjectBacklog(ctx context.Context, projectName string, project confi
 	return backlog, nil
 }
 
-// buildLocalDepGraph creates a dependency graph from a list of beads
-func buildLocalDepGraph(allBeads []beads.Bead) *beads.DepGraph {
-	// Use the existing BuildDepGraph function from the beads package
-	return beads.BuildDepGraph(allBeads)
-}
-
-// filterOpenBeads returns only open beads (excludes closed, cancelled, etc.)
-func filterOpenBeads(allBeads []beads.Bead) []beads.Bead {
-	var open []beads.Bead
-	for _, bead := range allBeads {
-		if bead.Status == "open" {
-			open = append(open, bead)
+// filterOpenTasks returns only open tasks (excludes closed, cancelled, etc.)
+func filterOpenTasks(allTasks []graph.Task) []graph.Task {
+	var open []graph.Task
+	for _, task := range allTasks {
+		if task.Status == "open" {
+			open = append(open, task)
 		}
 	}
 	return open
 }
 
-// filterRefinedBeads returns beads that have acceptance criteria or design notes (considered refined)
-func filterRefinedBeads(openBeads []beads.Bead) []beads.Bead {
-	var refined []beads.Bead
-	for _, bead := range openBeads {
-		// Consider a bead refined if it has acceptance criteria, design notes, or an estimate
-		if bead.Acceptance != "" || bead.Design != "" || bead.EstimateMinutes > 0 {
-			refined = append(refined, bead)
+// filterRefinedTasks returns tasks that have acceptance criteria or design notes (considered refined)
+func filterRefinedTasks(openTasks []graph.Task) []graph.Task {
+	var refined []graph.Task
+	for _, task := range openTasks {
+		if task.Acceptance != "" || task.Design != "" || task.EstimateMinutes > 0 {
+			refined = append(refined, task)
 		}
 	}
 	return refined
 }
 
-// filterUnrefinedBeads returns beads that lack acceptance criteria and design notes
-func filterUnrefinedBeads(openBeads []beads.Bead) []beads.Bead {
-	var unrefined []beads.Bead
-	for _, bead := range openBeads {
-		// Consider a bead unrefined if it lacks acceptance criteria, design notes, and estimates
-		if bead.Acceptance == "" && bead.Design == "" && bead.EstimateMinutes == 0 {
-			unrefined = append(unrefined, bead)
+// filterUnrefinedTasks returns tasks that lack acceptance criteria and design notes
+func filterUnrefinedTasks(openTasks []graph.Task) []graph.Task {
+	var unrefined []graph.Task
+	for _, task := range openTasks {
+		if task.Acceptance == "" && task.Design == "" && task.EstimateMinutes == 0 {
+			unrefined = append(unrefined, task)
 		}
 	}
 	return unrefined
 }
 
 // extractCrossProjectDependencies finds all cross-project dependencies in the graph
-func extractCrossProjectDependencies(crossGraph *beads.CrossProjectGraph, projects map[string]config.Project) []CrossProjectDependency {
+func extractCrossProjectDependencies(crossGraph *graph.CrossProjectGraph) []CrossProjectDependency {
 	var deps []CrossProjectDependency
 
-	for projectName, projectBeads := range crossGraph.Projects {
-		for _, bead := range projectBeads {
-			if bead.Status != "open" {
-				continue // Only consider open beads
+	for projectName, projectTasks := range crossGraph.Projects {
+		for _, task := range projectTasks {
+			if task.Status != "open" {
+				continue // Only consider open tasks
 			}
 
-			for _, depID := range bead.DependsOn {
-				targetProject, targetBeadID, isCross := beads.ParseCrossDep(depID)
+			for _, depID := range task.DependsOn {
+				targetProject, targetBeadID, isCross := graph.ParseCrossDep(depID)
 				if !isCross {
 					continue // Skip local dependencies
 				}
 
-				// Get the target bead title if possible
+				// Get the target task title if possible
 				var beadTitle string
-				if targetProjectBeads, exists := crossGraph.Projects[targetProject]; exists {
-					if targetBead, exists := targetProjectBeads[targetBeadID]; exists {
-						beadTitle = targetBead.Title
+				if targetProjectTasks, exists := crossGraph.Projects[targetProject]; exists {
+					if targetTask, exists := targetProjectTasks[targetBeadID]; exists {
+						beadTitle = targetTask.Title
 					}
 				}
 
 				dep := CrossProjectDependency{
 					SourceProject: projectName,
-					SourceBeadID:  bead.ID,
+					SourceBeadID:  task.ID,
 					TargetProject: targetProject,
 					TargetBeadID:  targetBeadID,
 					BeadTitle:     beadTitle,

@@ -1,3 +1,5 @@
+// Package allocations manages budget tracking and recording.
+
 package chief
 
 import (
@@ -7,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/antigravity-dev/cortex/internal/config"
-	"github.com/antigravity-dev/cortex/internal/dispatch"
-	"github.com/antigravity-dev/cortex/internal/store"
+	"github.com/antigravity-dev/chum/internal/config"
+	"github.com/antigravity-dev/chum/internal/dispatch"
+	"github.com/antigravity-dev/chum/internal/store"
 )
 
 // AllocationRecorder handles recording and reporting of Chief SM allocation decisions
@@ -72,21 +74,21 @@ func (ar *AllocationRecorder) RecordAllocationDecision(ctx context.Context, cere
 }
 
 // completeActiveAllocations marks existing active allocations as completed
-func (ar *AllocationRecorder) completeActiveAllocations(ctx context.Context) error {
+func (ar *AllocationRecorder) completeActiveAllocations(_ context.Context) error {
 	// This is a simple implementation - could be made more sophisticated
 	// to handle overlapping sprint periods differently
 	
 	activeAllocation, err := ar.store.GetActiveAllocation()
 	if err != nil {
 		// If no active allocation exists, that's fine
-		return nil
+		return nil //nolint:nilerr // missing active allocation is expected
 	}
 
 	return ar.store.UpdateAllocationStatus(activeAllocation.ID, "completed")
 }
 
 // applyBudgetUpdates applies rate limit budget changes recommended by Chief SM
-func (ar *AllocationRecorder) applyBudgetUpdates(ctx context.Context, updates []store.BudgetUpdate) error {
+func (ar *AllocationRecorder) applyBudgetUpdates(_ context.Context, updates []store.BudgetUpdate) error { //nolint:unparam // NOTE: budget changes are persisted inside the AllocationDecision record; runtime config reload is not yet wired
 	ar.logger.Info("applying budget updates", "count", len(updates))
 
 	// In a real implementation, this would update the configuration
@@ -107,10 +109,9 @@ func (ar *AllocationRecorder) applyBudgetUpdates(ctx context.Context, updates []
 		}
 	}
 
-	// TODO: In a production system, this would:
-	// 1. Update the actual configuration
-	// 2. Trigger a configuration reload
-	// 3. Notify the scheduler of new budget allocations
+	// NOTE: Budget updates are currently logged and recorded as health events.
+	// Actual runtime config reload and scheduler notification are not yet wired;
+	// budget values are persisted as part of the AllocationDecision record.
 	
 	return nil
 }
@@ -125,7 +126,7 @@ func (ar *AllocationRecorder) sendUnifiedSprintPlan(ctx context.Context, decisio
 	// Send via agent dispatch to Matrix room
 	agentID := ar.cfg.Chief.AgentID
 	if agentID == "" {
-		agentID = "cortex-coordinator"
+		agentID = "chum-coordinator"
 	}
 
 	// Create a dispatch to send the message
@@ -251,7 +252,7 @@ func (ar *AllocationRecorder) GetCurrentAllocation(ctx context.Context) (*store.
 
 // ParseAllocationFromOutput parses Chief SM allocation output into structured data
 // This would be called after the Chief SM LLM completes its reasoning
-func (ar *AllocationRecorder) ParseAllocationFromOutput(ctx context.Context, ceremonyID string, chiefOutput string) (*store.AllocationDecision, error) {
+func (ar *AllocationRecorder) ParseAllocationFromOutput(_ context.Context, ceremonyID, chiefOutput string) (*store.AllocationDecision, error) {
 	// This is a simplified parser - in production this would be more sophisticated
 	// and potentially use structured output from the LLM
 	
@@ -268,20 +269,19 @@ func (ar *AllocationRecorder) ParseAllocationFromOutput(ctx context.Context, cer
 		Status:             "draft",
 	}
 
-	// TODO: Parse the actual LLM output to extract:
-	// - Project allocations with capacity percentages
-	// - Cross-project dependencies
-	// - Budget update recommendations
-	// - Structured reasoning
-	
-	// For now, create a basic allocation based on configured projects
+	// NOTE: LLM output parsing is not yet implemented. The function currently
+	// creates a uniform allocation across all enabled projects. When structured
+	// output parsing is added, it should extract per-project capacity percentages,
+	// cross-project dependencies, and budget update recommendations from chiefOutput.
+
+	// Create a basic allocation based on configured projects
 	totalProjects := len(ar.cfg.Projects)
 	if totalProjects > 0 {
 		basePercent := 100.0 / float64(totalProjects)
 		capacity := int(float64(decision.TotalCapacity) * basePercent / 100.0)
 		
-		for projectName, project := range ar.cfg.Projects {
-			if project.Enabled {
+		for projectName := range ar.cfg.Projects {
+			if ar.cfg.Projects[projectName].Enabled {
 				decision.ProjectAllocations[projectName] = store.ProjectAllocation{
 					Project:           projectName,
 					AllocatedCapacity: capacity,

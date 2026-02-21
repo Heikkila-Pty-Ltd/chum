@@ -1,0 +1,27 @@
+rules:
+  - id: chum-record-outcome-activity-per-phase-token-usage
+    paths:
+      include:
+        - internal/temporal/activities.go
+    patterns:
+      - pattern-inside: |
+          func ( $R *$S ) RecordOutcomeActivity($CTX context.Context, $OUTCOME OutcomeRecord) error {
+            ...
+          }
+      - pattern: |
+          $OUTCOME.ActivityTokens
+      - pattern: |
+          $R.Store.RecordDispatchCost(...)
+      - pattern-not-inside: |
+          func ( $R *$S ) RecordOutcomeActivity($CTX context.Context, $OUTCOME OutcomeRecord) error {
+            ...
+            $R.Store.StoreTokenUsage(...)
+            ...
+          }
+    message: |
+      RecordOutcomeActivity must persist per-activity/phase token usage at outcome write time.
+      If this path only writes dispatch aggregates (e.g., RecordDispatchCost) without calling
+      StoreTokenUsage for each outcome.ActivityTokens entry, downstream reporting bypasses token_usage
+      granularity.
+    languages: [go]
+    severity: WARNING

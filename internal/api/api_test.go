@@ -1,10 +1,8 @@
 package api
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -13,10 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/antigravity-dev/cortex/internal/config"
-	"github.com/antigravity-dev/cortex/internal/dispatch"
-	"github.com/antigravity-dev/cortex/internal/scheduler"
-	"github.com/antigravity-dev/cortex/internal/store"
+	"github.com/antigravity-dev/chum/internal/config"
+	"github.com/antigravity-dev/chum/internal/store"
 )
 
 func setupTestServer(t *testing.T) *Server {
@@ -32,18 +28,14 @@ func setupTestServer(t *testing.T) *Server {
 		Projects: map[string]config.Project{
 			"test-proj": {Enabled: true, BeadsDir: "/tmp/beads", Workspace: "/tmp/ws", Priority: 1},
 		},
-		RateLimits: config.RateLimits{Window5hCap: 20, WeeklyCap: 200, WeeklyHeadroomPct: 80},
-		API:        config.API{Bind: "127.0.0.1:0"},
+		API: config.API{Bind: "127.0.0.1:0"},
 		General: config.General{
 			TickInterval: config.Duration{Duration: 60 * time.Second},
 		},
 	}
 
-	rl := dispatch.NewRateLimiter(st, cfg.RateLimits)
-	d := dispatch.NewDispatcher()
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	sched := scheduler.New(cfg, st, rl, d, logger, false)
-	srv, err := NewServer(cfg, st, rl, sched, d, logger)
+	srv, err := NewServer(cfg, st, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,9 +60,6 @@ func TestHandleStatus(t *testing.T) {
 	json.NewDecoder(w.Body).Decode(&resp)
 	if _, ok := resp["uptime_s"]; !ok {
 		t.Fatal("missing uptime_s")
-	}
-	if _, ok := resp["rate_limiter"]; !ok {
-		t.Fatal("missing rate_limiter")
 	}
 }
 
@@ -147,28 +136,8 @@ func TestHandleHealth(t *testing.T) {
 func TestHandleMetrics(t *testing.T) {
 	srv := setupTestServer(t)
 
-	dispatchID, err := srv.store.RecordDispatch("metric-bead", "test-proj", "test-proj-coder", "claude-sonnet-4", "balanced", 777, "metric-sess", "prompt", "", "", "")
+	_, err := srv.store.RecordDispatch("metric-bead", "test-proj", "test-proj-coder", "claude-sonnet-4", "balanced", 777, "metric-sess", "prompt", "", "", "")
 	if err != nil {
-		t.Fatal(err)
-	}
-	if err := srv.store.UpsertClaimLease("metric-bead", "test-proj", "/tmp/beads", "test-proj-coder"); err != nil {
-		t.Fatal(err)
-	}
-	if err := srv.store.AttachDispatchToClaimLease("metric-bead", dispatchID); err != nil {
-		t.Fatal(err)
-	}
-	if err := srv.store.UpsertClaimLease("metric-unbound", "test-proj", "/tmp/beads", "test-proj-coder"); err != nil {
-		t.Fatal(err)
-	}
-
-	failID, err := srv.store.RecordDispatch("metric-fail", "test-proj", "test-proj-coder", "claude-sonnet-4", "balanced", 778, "metric-sess-fail", "prompt", "", "", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := srv.store.UpdateDispatchStatus(failID, "failed", 1, 1.0); err != nil {
-		t.Fatal(err)
-	}
-	if err := srv.store.UpdateFailureDiagnosis(failID, "gateway_closed", "gateway connect failed: Error: gateway closed (1000):"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -181,29 +150,120 @@ func TestHandleMetrics(t *testing.T) {
 	}
 
 	body := w.Body.String()
-	if !strings.Contains(body, "cortex_dispatches_total") {
-		t.Fatal("missing cortex_dispatches_total metric")
+	if !strings.Contains(body, "chum_dispatches_total") {
+		t.Fatal("missing chum_dispatches_total metric")
 	}
-	if !strings.Contains(body, "cortex_rate_limiter_usage_ratio") {
-		t.Fatal("missing cortex_rate_limiter_usage_ratio metric")
+	if !strings.Contains(body, "chum_uptime_seconds") {
+		t.Fatal("missing chum_uptime_seconds metric")
 	}
-	if !strings.Contains(body, "cortex_uptime_seconds") {
-		t.Fatal("missing cortex_uptime_seconds metric")
+}
+
+func TestHandleSafetyBlocks(t *testing.T) {
+	srv := setupTestServer(t)
+
+	// Empty — no active blocks.
+	req := httptest.NewRequest(http.MethodGet, "/safety/blocks", nil)
+	w := httptest.NewRecorder()
+	srv.handleSafetyBlocks(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
 	}
-	if !strings.Contains(body, "cortex_claim_leases_total") {
-		t.Fatal("missing cortex_claim_leases_total metric")
+
+	var resp map[string]any
+	json.NewDecoder(w.Body).Decode(&resp)
+	if resp["total"] != float64(0) {
+		t.Fatalf("expected total=0, got %v", resp["total"])
 	}
-	if !strings.Contains(body, "cortex_claim_leases_unbound_total") {
-		t.Fatal("missing cortex_claim_leases_unbound_total metric")
+
+	// Create blocks.
+	if err := srv.store.SetBlock("proj-a", "churn_block", time.Now().Add(5*time.Minute), "high failure rate"); err != nil {
+		t.Fatal(err)
 	}
-	if !strings.Contains(body, "cortex_claim_leases_running_dispatch_total") {
-		t.Fatal("missing cortex_claim_leases_running_dispatch_total metric")
+	if err := srv.store.SetBlock("bead-xyz", "quarantine", time.Now().Add(10*time.Minute), "consecutive failures"); err != nil {
+		t.Fatal(err)
 	}
-	if !strings.Contains(body, "cortex_claim_leases_terminal_dispatch_total") {
-		t.Fatal("missing cortex_claim_leases_terminal_dispatch_total metric")
+	if err := srv.store.SetBlockWithMetadata("system", "circuit_breaker", time.Now().Add(15*time.Minute), "gateway tripped", map[string]interface{}{"failures": 5}); err != nil {
+		t.Fatal(err)
 	}
-	if !strings.Contains(body, "cortex_gateway_closed_failures_2m") {
-		t.Fatal("missing cortex_gateway_closed_failures_2m metric")
+
+	// Query again.
+	req = httptest.NewRequest(http.MethodGet, "/safety/blocks", nil)
+	w = httptest.NewRecorder()
+	srv.handleSafetyBlocks(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	resp = nil
+	json.NewDecoder(w.Body).Decode(&resp)
+	if resp["total"] != float64(3) {
+		t.Fatalf("expected total=3, got %v", resp["total"])
+	}
+
+	countsByType, ok := resp["counts_by_type"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected counts_by_type map, got %T", resp["counts_by_type"])
+	}
+	if countsByType["churn_block"] != float64(1) {
+		t.Fatalf("expected 1 churn_block, got %v", countsByType["churn_block"])
+	}
+	if countsByType["quarantine"] != float64(1) {
+		t.Fatalf("expected 1 quarantine, got %v", countsByType["quarantine"])
+	}
+	if countsByType["circuit_breaker"] != float64(1) {
+		t.Fatalf("expected 1 circuit_breaker, got %v", countsByType["circuit_breaker"])
+	}
+
+	blocks, ok := resp["blocks"].([]any)
+	if !ok {
+		t.Fatalf("expected blocks array, got %T", resp["blocks"])
+	}
+	if len(blocks) != 3 {
+		t.Fatalf("expected 3 blocks, got %d", len(blocks))
+	}
+
+	// Method not allowed for POST.
+	req = httptest.NewRequest(http.MethodPost, "/safety/blocks", nil)
+	w = httptest.NewRecorder()
+	srv.handleSafetyBlocks(w, req)
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected 405 for POST, got %d", w.Code)
+	}
+}
+
+func TestHandleMetricsSafetyBlocks(t *testing.T) {
+	srv := setupTestServer(t)
+
+	// Create safety blocks.
+	if err := srv.store.SetBlock("proj-a", "churn_block", time.Now().Add(5*time.Minute), "high failure rate"); err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.store.SetBlock("bead-xyz", "quarantine", time.Now().Add(10*time.Minute), "consecutive failures"); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	w := httptest.NewRecorder()
+	srv.handleMetrics(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	body := w.Body.String()
+	if !strings.Contains(body, "chum_safety_blocks_active") {
+		t.Fatal("missing chum_safety_blocks_active metric")
+	}
+	if !strings.Contains(body, `chum_safety_blocks_active{block_type="churn_block"} 1`) {
+		t.Fatalf("missing churn_block metric in:\n%s", body)
+	}
+	if !strings.Contains(body, `chum_safety_blocks_active{block_type="quarantine"} 1`) {
+		t.Fatalf("missing quarantine metric in:\n%s", body)
+	}
+	if !strings.Contains(body, "chum_safety_blocks_total 2") {
+		t.Fatalf("missing chum_safety_blocks_total metric in:\n%s", body)
 	}
 }
 
@@ -224,268 +284,5 @@ func TestServerStartStop(t *testing.T) {
 	err := <-errCh
 	if err != nil {
 		t.Fatalf("server error: %v", err)
-	}
-}
-
-func TestHandleSchedulerPause(t *testing.T) {
-	srv := setupTestServer(t)
-
-	// Initially not paused
-	if srv.scheduler.IsPaused() {
-		t.Fatal("scheduler should not be paused initially")
-	}
-
-	// Pause
-	req := httptest.NewRequest(http.MethodPost, "/scheduler/pause", nil)
-	w := httptest.NewRecorder()
-	srv.handleSchedulerPause(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", w.Code)
-	}
-
-	var resp map[string]any
-	json.NewDecoder(w.Body).Decode(&resp)
-	if resp["paused"] != true {
-		t.Fatal("expected paused=true")
-	}
-
-	if !srv.scheduler.IsPaused() {
-		t.Fatal("scheduler should be paused")
-	}
-}
-
-func TestHandleSchedulerResume(t *testing.T) {
-	srv := setupTestServer(t)
-
-	// Pause first
-	srv.scheduler.Pause()
-	if !srv.scheduler.IsPaused() {
-		t.Fatal("scheduler should be paused")
-	}
-
-	// Resume
-	req := httptest.NewRequest(http.MethodPost, "/scheduler/resume", nil)
-	w := httptest.NewRecorder()
-	srv.handleSchedulerResume(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", w.Code)
-	}
-
-	var resp map[string]any
-	json.NewDecoder(w.Body).Decode(&resp)
-	if resp["paused"] != false {
-		t.Fatal("expected paused=false")
-	}
-
-	if srv.scheduler.IsPaused() {
-		t.Fatal("scheduler should not be paused")
-	}
-}
-
-func TestHandleSchedulerStatus(t *testing.T) {
-	srv := setupTestServer(t)
-
-	req := httptest.NewRequest(http.MethodGet, "/scheduler/status", nil)
-	w := httptest.NewRecorder()
-	srv.handleSchedulerStatus(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", w.Code)
-	}
-
-	var resp map[string]any
-	json.NewDecoder(w.Body).Decode(&resp)
-	if _, ok := resp["paused"]; !ok {
-		t.Fatal("missing paused field")
-	}
-	if _, ok := resp["tick_interval"]; !ok {
-		t.Fatal("missing tick_interval field")
-	}
-	if _, ok := resp["plan_gate"]; !ok {
-		t.Fatal("missing plan_gate field")
-	}
-}
-
-func TestHandleSchedulerPlanStatus(t *testing.T) {
-	srv := setupTestServer(t)
-
-	req := httptest.NewRequest(http.MethodGet, "/scheduler/plan", nil)
-	w := httptest.NewRecorder()
-	srv.handleSchedulerPlanStatus(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", w.Code)
-	}
-
-	var resp map[string]any
-	json.NewDecoder(w.Body).Decode(&resp)
-	if _, ok := resp["required"]; !ok {
-		t.Fatal("missing required field")
-	}
-	if _, ok := resp["active"]; !ok {
-		t.Fatal("missing active field")
-	}
-}
-
-func TestHandleSchedulerPlanActivateAndClear(t *testing.T) {
-	srv := setupTestServer(t)
-
-	activateBody := []byte(`{"plan_id":"plan-2026-02-18-main","approved_by":"test-user"}`)
-	req := httptest.NewRequest(http.MethodPost, "/scheduler/plan/activate", bytes.NewReader(activateBody))
-	w := httptest.NewRecorder()
-	srv.handleSchedulerPlanActivate(w, req)
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200 from activate, got %d body=%s", w.Code, w.Body.String())
-	}
-
-	active, plan, err := srv.store.HasActiveApprovedPlan()
-	if err != nil {
-		t.Fatalf("HasActiveApprovedPlan failed: %v", err)
-	}
-	if !active || plan == nil {
-		t.Fatalf("expected active plan after activation")
-	}
-	if plan.PlanID != "plan-2026-02-18-main" {
-		t.Fatalf("plan id = %q, want %q", plan.PlanID, "plan-2026-02-18-main")
-	}
-
-	req = httptest.NewRequest(http.MethodPost, "/scheduler/plan/clear", nil)
-	w = httptest.NewRecorder()
-	srv.handleSchedulerPlanClear(w, req)
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200 from clear, got %d body=%s", w.Code, w.Body.String())
-	}
-
-	active, plan, err = srv.store.HasActiveApprovedPlan()
-	if err != nil {
-		t.Fatalf("HasActiveApprovedPlan after clear failed: %v", err)
-	}
-	if active || plan != nil {
-		t.Fatalf("expected no active plan after clear")
-	}
-}
-
-func TestHandleDispatchCancel(t *testing.T) {
-	srv := setupTestServer(t)
-
-	// Create a running dispatch
-	id, err := srv.store.RecordDispatch("test-bead", "test-proj", "agent1", "claude-sonnet-4", "balanced", 12345, "sess-1", "test prompt", "", "", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Cancel it
-	req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/dispatches/%d/cancel", id), nil)
-	w := httptest.NewRecorder()
-	srv.handleDispatchCancel(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", w.Code)
-	}
-
-	var resp map[string]any
-	json.NewDecoder(w.Body).Decode(&resp)
-	if resp["status"] != "cancelled" {
-		t.Fatalf("expected status=cancelled, got %v", resp["status"])
-	}
-
-	// Verify in store
-	d, err := srv.store.GetDispatchByID(id)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if d.Status != "cancelled" {
-		t.Fatalf("expected cancelled status in store, got %s", d.Status)
-	}
-}
-
-func TestHandleDispatchCancelNotRunning(t *testing.T) {
-	srv := setupTestServer(t)
-
-	// Create a completed dispatch
-	id, err := srv.store.RecordDispatch("test-bead", "test-proj", "agent1", "claude-sonnet-4", "balanced", 12345, "sess-1", "test prompt", "", "", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	srv.store.UpdateDispatchStatus(id, "completed", 0, 1.0)
-
-	// Try to cancel it
-	req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/dispatches/%d/cancel", id), nil)
-	w := httptest.NewRecorder()
-	srv.handleDispatchCancel(w, req)
-
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", w.Code)
-	}
-
-	var resp map[string]any
-	json.NewDecoder(w.Body).Decode(&resp)
-	if !strings.Contains(resp["error"].(string), "not running") {
-		t.Fatalf("expected 'not running' error, got %v", resp["error"])
-	}
-}
-
-func TestHandleDispatchRetry(t *testing.T) {
-	srv := setupTestServer(t)
-
-	// Create a failed dispatch
-	id, err := srv.store.RecordDispatch("test-bead", "test-proj", "agent1", "claude-sonnet-4", "balanced", 12345, "sess-1", "test prompt", "", "", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	srv.store.UpdateDispatchStatus(id, "failed", 1, 1.0)
-
-	// Retry it
-	req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/dispatches/%d/retry", id), nil)
-	w := httptest.NewRecorder()
-	srv.handleDispatchRetry(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", w.Code)
-	}
-
-	var resp map[string]any
-	json.NewDecoder(w.Body).Decode(&resp)
-	if resp["status"] != "pending_retry" {
-		t.Fatalf("expected status=pending_retry, got %v", resp["status"])
-	}
-
-	// Verify in store
-	d, err := srv.store.GetDispatchByID(id)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if d.Status != "pending_retry" {
-		t.Fatalf("expected pending_retry status in store, got %s", d.Status)
-	}
-	if d.Retries != 1 {
-		t.Fatalf("expected retries=1, got %d", d.Retries)
-	}
-}
-
-func TestHandleDispatchRetryNotFailed(t *testing.T) {
-	srv := setupTestServer(t)
-
-	// Create a running dispatch
-	id, err := srv.store.RecordDispatch("test-bead", "test-proj", "agent1", "claude-sonnet-4", "balanced", 12345, "sess-1", "test prompt", "", "", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Try to retry it
-	req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/dispatches/%d/retry", id), nil)
-	w := httptest.NewRecorder()
-	srv.handleDispatchRetry(w, req)
-
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", w.Code)
-	}
-
-	var resp map[string]any
-	json.NewDecoder(w.Body).Decode(&resp)
-	if !strings.Contains(resp["error"].(string), "cannot be retried") {
-		t.Fatalf("expected 'cannot be retried' error, got %v", resp["error"])
 	}
 }

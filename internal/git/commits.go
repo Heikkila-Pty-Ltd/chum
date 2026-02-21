@@ -70,9 +70,9 @@ func GetRecentCommits(workspace string, days int) ([]Commit, error) {
 }
 
 // ExtractBeadIDs finds bead ID patterns in commit messages
-// Matches patterns like: cortex-abc, cortex-abc.1, project-def.2, hg-website-123.5, etc.
+// Matches patterns like: chum-abc, chum-abc.1, project-def.2, hg-website-123.5, etc.
 func ExtractBeadIDs(message string) []string {
-	// Pattern matches: word-word-...-word[.digits] (e.g., cortex-abc, hg-website-123.5, project-def.2)
+	// Pattern matches: word-word-...-word[.digits] (e.g., chum-abc, hg-website-123.5, project-def.2)
 	pattern := `\b([a-zA-Z][a-zA-Z0-9]*(?:-[a-zA-Z0-9]+)+(?:\.[0-9]+)?)\b`
 	re := regexp.MustCompile(pattern)
 	

@@ -1,3 +1,5 @@
+// Package store provides SQLite-backed persistence.
+
 package store
 
 import (

@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/antigravity-dev/cortex/internal/beads"
+	"github.com/antigravity-dev/chum/internal/graph"
 )
 
-// BacklogBead represents a bead in the backlog with metadata for sprint planning.
+// BacklogBead represents a task in the backlog with metadata for sprint planning.
 type BacklogBead struct {
-	*beads.Bead
+	*graph.Task
 	StageInfo       *BeadStage `json:"stage_info,omitempty"`
 	LastDispatchAt  *time.Time `json:"last_dispatch_at,omitempty"`
 	DispatchCount   int        `json:"dispatch_count"`
@@ -25,7 +25,7 @@ type SprintContext struct {
 	BacklogBeads      []*BacklogBead  `json:"backlog_beads"`
 	InProgressBeads   []*BacklogBead  `json:"in_progress_beads"`
 	RecentCompletions []*BacklogBead  `json:"recent_completions"`
-	DependencyGraph   *beads.DepGraph `json:"dependency_graph"`
+	DependencyGraph   *graph.DepGraph `json:"dependency_graph"`
 	SprintBoundary    *SprintBoundary `json:"current_sprint,omitempty"`
 	TotalBeadCount    int             `json:"total_bead_count"`
 	ReadyBeadCount    int             `json:"ready_bead_count"`
@@ -56,32 +56,23 @@ type SprintPlanningRecord struct {
 	TriggeredAt time.Time `json:"triggered_at"`
 }
 
-// GetBacklogBeads retrieves all beads that are in the backlog (no stage or stage:backlog).
-func (s *Store) GetBacklogBeads(project string, beadsDir string) ([]*BacklogBead, error) {
-	return s.GetBacklogBeadsCtx(context.Background(), project, beadsDir)
-}
-
-// GetBacklogBeadsCtx is the context-aware version of GetBacklogBeads.
-func (s *Store) GetBacklogBeadsCtx(ctx context.Context, project string, beadsDir string) ([]*BacklogBead, error) {
-	// Get all beads from beads system
-	allBeads, err := beads.ListBeadsCtx(ctx, beadsDir)
+// GetBacklogBeads retrieves all tasks that are in the backlog (no stage or stage:backlog).
+func (s *Store) GetBacklogBeads(ctx context.Context, dag *graph.DAG, project string) ([]*BacklogBead, error) {
+	allTasks, err := dag.ListTasks(ctx, project, "open")
 	if err != nil {
-		return nil, fmt.Errorf("failed to list beads: %w", err)
+		return nil, fmt.Errorf("failed to list tasks: %w", err)
 	}
 
 	var backlogBeads []*BacklogBead
 
-	for _, bead := range allBeads {
-		// Skip closed beads
-		if bead.Status == "closed" {
-			continue
-		}
+	for i := range allTasks {
+		task := &allTasks[i]
 
-		// Check if bead has stage label indicating it's not in backlog
+		// Check if task has stage label indicating it's not in backlog
 		hasStageLabel := false
 		isBacklog := false
 
-		for _, label := range bead.Labels {
+		for _, label := range task.Labels {
 			if label == "stage:backlog" {
 				isBacklog = true
 				hasStageLabel = true
@@ -96,10 +87,10 @@ func (s *Store) GetBacklogBeadsCtx(ctx context.Context, project string, beadsDir
 		// Include in backlog if: no stage label OR explicitly stage:backlog
 		if !hasStageLabel || isBacklog {
 			backlogBead := &BacklogBead{
-				Bead: &bead,
+				Task: task,
 			}
 
-			// Enrich with store data - don't skip bead if enrichment fails
+			// Enrich with store data - don't skip if enrichment fails
 			s.enrichBacklogBead(project, backlogBead) // ignore errors
 
 			backlogBeads = append(backlogBeads, backlogBead)
@@ -110,49 +101,38 @@ func (s *Store) GetBacklogBeadsCtx(ctx context.Context, project string, beadsDir
 }
 
 // GetSprintContext gathers comprehensive context for sprint planning.
-func (s *Store) GetSprintContext(project string, beadsDir string, daysBack int) (*SprintContext, error) {
-	return s.GetSprintContextCtx(context.Background(), project, beadsDir, daysBack)
-}
-
-// GetSprintContextCtx is the context-aware version of GetSprintContext.
-func (s *Store) GetSprintContextCtx(ctx context.Context, project string, beadsDir string, daysBack int) (*SprintContext, error) {
-	// Get backlog beads
-	backlogBeads, err := s.GetBacklogBeadsCtx(ctx, project, beadsDir)
+func (s *Store) GetSprintContext(ctx context.Context, dag *graph.DAG, project string, daysBack int) (*SprintContext, error) {
+	// Get backlog tasks
+	backlogBeads, err := s.GetBacklogBeads(ctx, dag, project)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get backlog beads: %w", err)
 	}
 
-	// Get in-progress beads
-	inProgressBeads, err := s.getInProgressBeadsCtx(ctx, project, beadsDir)
+	// Get in-progress tasks
+	inProgressBeads, err := s.getInProgressBeads(ctx, dag, project)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get in-progress beads: %w", err)
 	}
 
 	// Get recent completions
-	recentCompletions, err := s.getRecentCompletionsCtx(ctx, project, beadsDir, daysBack)
+	recentCompletions, err := s.getRecentCompletions(ctx, dag, project, daysBack)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get recent completions: %w", err)
 	}
 
 	// Build dependency graph
-	allBeads := append([]*beads.Bead{}, func() []*beads.Bead {
-		var result []*beads.Bead
-		for _, bb := range backlogBeads {
-			result = append(result, bb.Bead)
-		}
-		for _, bb := range inProgressBeads {
-			result = append(result, bb.Bead)
-		}
-		for _, bb := range recentCompletions {
-			result = append(result, bb.Bead)
-		}
-		return result
-	}()...)
-
-	depGraph, err := s.BuildDependencyGraph(allBeads)
-	if err != nil {
-		return nil, fmt.Errorf("failed to build dependency graph: %w", err)
+	var allTasks []graph.Task
+	for _, bb := range backlogBeads {
+		allTasks = append(allTasks, *bb.Task)
 	}
+	for _, bb := range inProgressBeads {
+		allTasks = append(allTasks, *bb.Task)
+	}
+	for _, bb := range recentCompletions {
+		allTasks = append(allTasks, *bb.Task)
+	}
+
+	depGraph := graph.BuildDepGraph(allTasks)
 
 	// Get current sprint boundary
 	currentSprint, _ := s.GetCurrentSprintBoundary()
@@ -172,13 +152,6 @@ func (s *Store) GetSprintContextCtx(ctx context.Context, project string, beadsDi
 	}, nil
 }
 
-// BuildDependencyGraph creates a dependency graph from the given beads.
-func (s *Store) BuildDependencyGraph(beadList []*beads.Bead) (*beads.DepGraph, error) {
-	// Since DepGraph fields are not exported, we return a simplified result
-	// In a real implementation, this would use the beads package's graph building functions
-	return s.buildDepGraphFromBeads(beadList)
-}
-
 // Helper functions
 
 func (s *Store) enrichBacklogBead(project string, backlogBead *BacklogBead) {
@@ -191,7 +164,6 @@ func (s *Store) enrichBacklogBead(project string, backlogBead *BacklogBead) {
 	// Get dispatch statistics - best effort
 	dispatches, err := s.GetDispatchesByBead(backlogBead.ID)
 	if err != nil {
-		// If we can't get dispatches, just set defaults
 		backlogBead.DispatchCount = 0
 		backlogBead.FailureCount = 0
 		return
@@ -215,24 +187,19 @@ func (s *Store) enrichBacklogBead(project string, backlogBead *BacklogBead) {
 	backlogBead.FailureCount = failureCount
 }
 
-func (s *Store) getInProgressBeadsCtx(ctx context.Context, project string, beadsDir string) ([]*BacklogBead, error) {
-	// Get all beads from beads system
-	allBeads, err := beads.ListBeadsCtx(ctx, beadsDir)
+func (s *Store) getInProgressBeads(ctx context.Context, dag *graph.DAG, project string) ([]*BacklogBead, error) {
+	allTasks, err := dag.ListTasks(ctx, project, "open")
 	if err != nil {
-		return nil, fmt.Errorf("failed to list beads: %w", err)
+		return nil, fmt.Errorf("failed to list tasks: %w", err)
 	}
 
 	var inProgressBeads []*BacklogBead
 
-	for _, bead := range allBeads {
-		// Skip closed beads
-		if bead.Status == "closed" {
-			continue
-		}
+	for i := range allTasks {
+		task := &allTasks[i]
 
-		// Check for in-progress stage labels
 		isInProgress := false
-		for _, label := range bead.Labels {
+		for _, label := range task.Labels {
 			if label == "stage:in_progress" || label == "stage:review" ||
 				label == "stage:testing" || label == "stage:development" {
 				isInProgress = true
@@ -241,12 +208,8 @@ func (s *Store) getInProgressBeadsCtx(ctx context.Context, project string, beads
 		}
 
 		if isInProgress {
-			backlogBead := &BacklogBead{
-				Bead: &bead,
-			}
-
+			backlogBead := &BacklogBead{Task: task}
 			s.enrichBacklogBead(project, backlogBead)
-
 			inProgressBeads = append(inProgressBeads, backlogBead)
 		}
 	}
@@ -254,25 +217,20 @@ func (s *Store) getInProgressBeadsCtx(ctx context.Context, project string, beads
 	return inProgressBeads, nil
 }
 
-func (s *Store) getRecentCompletionsCtx(ctx context.Context, project string, beadsDir string, daysBack int) ([]*BacklogBead, error) {
-	// Get all beads from beads system
-	allBeads, err := beads.ListBeadsCtx(ctx, beadsDir)
+func (s *Store) getRecentCompletions(ctx context.Context, dag *graph.DAG, project string, daysBack int) ([]*BacklogBead, error) {
+	allTasks, err := dag.ListTasks(ctx, project, "closed")
 	if err != nil {
-		return nil, fmt.Errorf("failed to list beads: %w", err)
+		return nil, fmt.Errorf("failed to list tasks: %w", err)
 	}
 
 	cutoff := time.Now().AddDate(0, 0, -daysBack)
 	var recentCompletions []*BacklogBead
 
-	for _, bead := range allBeads {
-		// Only include closed beads that were updated recently
-		if bead.Status == "closed" && bead.UpdatedAt.After(cutoff) {
-			backlogBead := &BacklogBead{
-				Bead: &bead,
-			}
-
+	for i := range allTasks {
+		task := &allTasks[i]
+		if task.UpdatedAt.After(cutoff) {
+			backlogBead := &BacklogBead{Task: task}
 			s.enrichBacklogBead(project, backlogBead)
-
 			recentCompletions = append(recentCompletions, backlogBead)
 		}
 	}
@@ -280,16 +238,7 @@ func (s *Store) getRecentCompletionsCtx(ctx context.Context, project string, bea
 	return recentCompletions, nil
 }
 
-func (s *Store) buildDepGraphFromBeads(beadList []*beads.Bead) (*beads.DepGraph, error) {
-	// Convert []*beads.Bead to []beads.Bead for the BuildDepGraph function
-	beadSlice := make([]beads.Bead, len(beadList))
-	for i, bead := range beadList {
-		beadSlice[i] = *bead
-	}
-	return beads.BuildDepGraph(beadSlice), nil
-}
-
-func (s *Store) calculateReadinessStats(backlogBeads []*BacklogBead, depGraph *beads.DepGraph) (readyCount, blockedCount int) {
+func (s *Store) calculateReadinessStats(backlogBeads []*BacklogBead, depGraph *graph.DepGraph) (readyCount, blockedCount int) {
 	for _, bead := range backlogBeads {
 		if s.isBeadBlocked(bead, depGraph) {
 			blockedCount++
@@ -303,35 +252,31 @@ func (s *Store) calculateReadinessStats(backlogBeads []*BacklogBead, depGraph *b
 	return readyCount, blockedCount
 }
 
-// isBeadBlocked checks if a bead is blocked by unresolved dependencies.
-func (s *Store) isBeadBlocked(bead *BacklogBead, graph *beads.DepGraph) bool {
-	if graph == nil {
-		// If no dependency graph, assume bead with dependencies is blocked
+func (s *Store) isBeadBlocked(bead *BacklogBead, depGraph *graph.DepGraph) bool {
+	if depGraph == nil {
 		return len(bead.DependsOn) > 0
 	}
 
 	for _, depID := range bead.DependsOn {
-		if dep, exists := graph.Nodes()[depID]; exists {
+		if dep, exists := depGraph.Nodes()[depID]; exists {
 			if dep.Status != "closed" {
 				return true
 			}
 		} else {
-			// Dependency doesn't exist in graph - consider blocked
 			return true
 		}
 	}
 	return false
 }
 
-// getBlockingReasons returns the IDs of dependencies that are blocking this bead.
-func (s *Store) getBlockingReasons(bead *BacklogBead, graph *beads.DepGraph) []string {
-	if graph == nil {
-		return bead.DependsOn // Return all dependencies as blocking reasons
+func (s *Store) getBlockingReasons(bead *BacklogBead, depGraph *graph.DepGraph) []string {
+	if depGraph == nil {
+		return bead.DependsOn
 	}
 
 	var blockingReasons []string
 	for _, depID := range bead.DependsOn {
-		if dep, exists := graph.Nodes()[depID]; exists {
+		if dep, exists := depGraph.Nodes()[depID]; exists {
 			if dep.Status != "closed" {
 				blockingReasons = append(blockingReasons, depID)
 			}
@@ -344,9 +289,9 @@ func (s *Store) getBlockingReasons(bead *BacklogBead, graph *beads.DepGraph) []s
 
 // GetCurrentSprintBoundary returns the current sprint boundary if one exists.
 func (s *Store) GetCurrentSprintBoundary() (*SprintBoundary, error) {
-	query := `SELECT id, sprint_number, sprint_start, sprint_end, created_at 
-			 FROM sprint_boundaries 
-			 WHERE sprint_start <= datetime('now') AND sprint_end >= datetime('now') 
+	query := `SELECT id, sprint_number, sprint_start, sprint_end, created_at
+			 FROM sprint_boundaries
+			 WHERE sprint_start <= datetime('now') AND sprint_end >= datetime('now')
 			 ORDER BY sprint_start DESC LIMIT 1`
 
 	var sb SprintBoundary

@@ -1,0 +1,163 @@
+# CHUM Agent Orchestrator Configuration
+
+[general]
+tick_interval = "60s"
+max_per_tick = 5
+stuck_timeout = "30m"
+max_retries = 2
+log_level = "info"
+state_db = "~/.local/share/chum/chum.db"
+
+[projects.chum]
+enabled = true
+beads_dir = "~/projects/chum/.beads"
+workspace = "~/projects/chum-runner"
+priority = 0
+
+[projects.chum.dod]
+checks = [
+    "go test ./...",
+    "go vet ./...",
+    "golangci-lint run --timeout=5m",
+]
+coverage_min = 70
+require_estimate = true
+require_acceptance = true
+
+[projects.hg-website]
+enabled = true
+beads_dir = "~/projects/hg-website/.beads"
+workspace = "~/projects/hg-website"
+priority = 1
+
+[rate_limits]
+window_5h_cap = 150
+weekly_cap = 2000
+weekly_headroom_pct = 70
+
+[providers.claude-max20]
+tier = "balanced"
+authed = true
+model = "claude-sonnet-4-20250514"
+
+[providers.openai-pro]
+tier = "balanced"
+authed = true
+model = "o4-mini"
+
+[providers.google-pro]
+tier = "premium"
+authed = true
+model = "gemini-2.5-pro"
+
+[providers.kimi]
+tier = "premium"
+authed = true
+model = "kimi-k2"
+
+[providers.codex-spark]
+tier = "fast"
+authed = true
+model = "gpt-5.3-codex-spark"
+cli = "codex"
+
+[providers.codex]
+tier = "balanced"
+authed = true
+model = "gpt-5.3-codex-spark"
+cli = "codex"
+
+[providers.codex-max]
+tier = "premium"
+authed = true
+model = "gpt-5.3-codex-spark"
+cli = "codex"
+
+[providers.cerebras]
+tier = "fast"
+authed = false
+model = "llama-4-scout"
+
+[providers.groq]
+tier = "fast"
+authed = false
+model = "llama-4-scout"
+
+[tiers]
+# Spark-only to conserve Pro/Max usage
+fast = ["codex-spark", "cerebras", "groq"]
+balanced = ["codex-spark"]
+premium = ["codex-spark"]
+
+[health]
+check_interval = "2m"
+gateway_unit = "openclaw-gateway.service"
+
+[reporter]
+channel = "matrix"
+agent_id = "main"
+daily_digest_time = "09:00"
+weekly_retro_day = "Monday"
+
+[api]
+bind = "127.0.0.1:8900"
+
+[dispatch.cli.claude]
+cmd = "claude"
+prompt_mode = "stdin"
+args = ["--print"]
+model_flag = "--model"
+approval_flags = ["--dangerously-skip-permissions"]
+
+[dispatch.cli.codex]
+cmd = "codex"
+prompt_mode = "stdin"
+args = ["exec", "--full-auto"]
+model_flag = "-m"
+approval_flags = []
+
+[dispatch.cli.aider]
+cmd = "aider"
+prompt_mode = "file"
+args = ["--yes-always"]
+model_flag = "--model"
+approval_flags = []
+
+[dispatch.routing]
+fast_backend = "headless_cli"
+balanced_backend = "tmux"
+premium_backend = "tmux"
+comms_backend = "headless_cli"
+retry_backend = "tmux"
+
+[dispatch.cost_control]
+enabled = true
+spark_first = true
+retry_escalation_attempt = 2
+complexity_escalation_minutes = 180
+risky_review_labels = ["risk:high", "security", "migration", "breaking-change", "database"]
+force_spark_at_weekly_usage_pct = 65
+per_bead_stage_attempt_limit = 2
+stage_attempt_window = "6h"
+stage_cooldown = "45m"
+
+[dispatch.timeouts]
+fast = "15m"
+balanced = "45m"
+premium = "120m"
+
+[dispatch.git]
+branch_prefix = "chum/"
+branch_cleanup_days = 7
+merge_strategy = "squash"
+max_concurrent_per_project = 3
+
+[dispatch.tmux]
+history_limit = 50000
+session_prefix = "chum-"
+
+[chief]
+enabled = true
+matrix_room = "#chum-coordination"
+model = "claude-sonnet-4-20250514"
+agent_id = "chum-chief-scrum"

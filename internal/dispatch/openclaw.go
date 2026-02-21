@@ -18,6 +18,7 @@ type OpenClawBackend struct {
 	logPath    map[int]string
 }
 
+// NewOpenClawBackend wraps an existing Dispatcher as a pluggable Backend.
 func NewOpenClawBackend(d *Dispatcher) *OpenClawBackend {
 	if d == nil {
 		d = NewDispatcher()
@@ -106,6 +107,7 @@ func (b *OpenClawBackend) Kill(handle Handle) error {
 	return b.dispatcher.Kill(handle.PID)
 }
 
+// Cleanup releases resources for a finished dispatch.
 func (b *OpenClawBackend) Cleanup(handle Handle) error {
 	pid := handle.PID
 	if pid <= 0 {

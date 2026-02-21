@@ -1,0 +1,104 @@
+rules:
+  - id: chum-runagent-return-type-string-helpers
+    patterns:
+      - pattern-either:
+          - pattern: |
+              $OUT := runAgent(...)
+              ...
+              extractJSON($OUT)
+          - pattern: |
+              $OUT = runAgent(...)
+              ...
+              extractJSON($OUT)
+          - pattern: |
+              var $OUT = runAgent(...)
+              ...
+              extractJSON($OUT)
+          - pattern: |
+              $OUT := runAgent(...)
+              ...
+              extractJSONArray($OUT)
+          - pattern: |
+              $OUT = runAgent(...)
+              ...
+              extractJSONArray($OUT)
+          - pattern: |
+              var $OUT = runAgent(...)
+              ...
+              extractJSONArray($OUT)
+          - pattern: |
+              $OUT := runAgent(...)
+              ...
+              truncate($OUT)
+          - pattern: |
+              $OUT = runAgent(...)
+              ...
+              truncate($OUT)
+          - pattern: |
+              var $OUT = runAgent(...)
+              ...
+              truncate($OUT)
+          - pattern: |
+              $OUT := runAgent(...)
+              ...
+              strings.TrimSpace($OUT)
+          - pattern: |
+              $OUT = runAgent(...)
+              ...
+              strings.TrimSpace($OUT)
+          - pattern: |
+              var $OUT = runAgent(...)
+              ...
+              strings.TrimSpace($OUT)
+          - pattern: |
+              $OUT := runAgent(...)
+              ...
+              strings.Contains($OUT, ...)
+          - pattern: |
+              $OUT = runAgent(...)
+              ...
+              strings.Contains($OUT, ...)
+          - pattern: |
+              var $OUT = runAgent(...)
+              ...
+              strings.Contains($OUT, ...)
+          - pattern: |
+              $OUT := runAgent(...)
+              ...
+              strings.HasPrefix($OUT, ...)
+          - pattern: |
+              $OUT = runAgent(...)
+              ...
+              strings.HasPrefix($OUT, ...)
+          - pattern: |
+              var $OUT = runAgent(...)
+              ...
+              strings.HasPrefix($OUT, ...)
+          - pattern: |
+              $OUT := runAgent(...)
+              ...
+              strings.Split($OUT, ...)
+          - pattern: |
+              $OUT = runAgent(...)
+              ...
+              strings.Split($OUT, ...)
+          - pattern: |
+              var $OUT = runAgent(...)
+              ...
+              strings.Split($OUT, ...)
+          - pattern: extractJSON(runAgent(...))
+          - pattern: extractJSONArray(runAgent(...))
+          - pattern: truncate(runAgent(...))
+          - pattern: strings.TrimSpace(runAgent(...))
+          - pattern: strings.Contains(runAgent(...), ...)
+          - pattern: strings.HasPrefix(runAgent(...), ...)
+          - pattern: strings.Split(runAgent(...), ...)
+    message: |
+      `runAgent` now returns `CLIResult` (not a plain string). Refactor call sites to use string fields like `agentResult.Output` (and `agentResult.ExitCode` when needed), e.g. `extractJSON(agentResult.Output)`.
+    languages: [go]
+    severity: WARNING
+    paths:
+      include:
+        - internal/temporal/planning_activities.go
+        - internal/temporal/groom_activities.go
+        - internal/temporal/learner_activities.go

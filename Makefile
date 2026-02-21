@@ -1,10 +1,10 @@
-# Cortex - Autonomous Agent Orchestrator
+# CHUM - Autonomous Agent Orchestrator
 # Makefile for development, build, and operations
 
 SHELL := /usr/bin/env bash
 
 # Build settings
-BINARY_NAME := cortex
+BINARY_NAME := chum
 BUILD_DIR := build
 DIST_DIR := $(BUILD_DIR)/dist
 VERSION := $(shell cat VERSION 2>/dev/null || echo "dev")
@@ -18,11 +18,15 @@ LDFLAGS := -ldflags "-X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main
 
 # Race test settings
 RACE_PACKAGES := \
-	./internal/scheduler/... \
 	./internal/store/... \
-	./internal/learner/... \
 	./internal/dispatch/... \
-	./internal/chief/...
+	./internal/chief/... \
+	./internal/temporal/... \
+	./internal/api/... \
+	./internal/config/... \
+	./internal/matrix/... \
+	./internal/graph/... \
+	./internal/git/...
 RACE_TIMEOUT ?= 10m
 RACE_LOCK_WAIT ?= 120
 RACE_JSON_OUT ?=
@@ -31,14 +35,6 @@ RACE_CI_LOCK_WAIT ?= 60
 RACE_CI_JSON_OUT := $(BUILD_DIR)/test-race.jsonl
 RACE_CI_LOG_OUT := $(BUILD_DIR)/test-race.log
 
-# BD lock cleanup settings
-BD_LOCK_CLEANUP_AGE_MINUTES ?= 5
-BD_LOCK_CLEANUP_FORCE ?= 0
-BD_LOCK_CLEANUP_REQUIRE_FORCE ?= 0
-BD_LOCK_CLEANUP_REPORT_TO_MATRIX ?= 0
-BD_LOCK_CLEANUP_MATRIX_ROOM ?=
-BD_LOCK_CLEANUP_MATRIX_ACCOUNT ?= duc
-
 # Scripts
 SCRIPT_DIR := scripts
 DEV_SCRIPTS := $(SCRIPT_DIR)/dev
@@ -46,10 +42,9 @@ RELEASE_SCRIPTS := $(SCRIPT_DIR)/release
 OPS_SCRIPTS := $(SCRIPT_DIR)/ops
 
 # Source files
-SRC_FILES := $(shell find . -type f -name '*.go' -not -path './vendor/*' -not -path './.beads/*')
+SRC_FILES := $(shell find . -type f -name '*.go' -not -path './vendor/*')
 
 .PHONY: all help build build-all install clean test test-race test-race-ci lint fmt vet
-.PHONY: lint-beads cleanup-bd-locks cleanup-bd-locks-escalation
 .PHONY: service-install service-start service-stop service-logs
 .PHONY: release snapshot docker
 
@@ -58,24 +53,19 @@ SRC_FILES := $(shell find . -type f -name '*.go' -not -path './vendor/*' -not -p
 ##@ Development
 
 help: ## Display this help message
-	@echo "Cortex $(VERSION) - Available targets:"
+	@echo "CHUM $(VERSION) - Available targets:"
 	@echo ""
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-build: $(SRC_FILES) ## Build cortex binary
-	$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BINARY_NAME) ./cmd/cortex/
+build: $(SRC_FILES) ## Build chum binary
+	$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BINARY_NAME) ./cmd/chum/
 
-build-all: ## Build all binaries (cortex + tools)
-	$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BINARY_NAME) ./cmd/cortex/
-	$(GO) build $(GOFLAGS) -o $(BUILD_DIR)/burnin-collector ./cmd/burnin-collector/
-	$(GO) build $(GOFLAGS) -o $(BUILD_DIR)/burnin-evidence ./cmd/burnin-evidence/
+build-all: ## Build all binaries (chum + tools)
+	$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BINARY_NAME) ./cmd/chum/
 	$(GO) build $(GOFLAGS) -o $(BUILD_DIR)/db-backup ./cmd/db-backup/
 	$(GO) build $(GOFLAGS) -o $(BUILD_DIR)/db-restore ./cmd/db-restore/
-	$(GO) build $(GOFLAGS) -o $(BUILD_DIR)/monitor-analysis ./cmd/monitor-analysis/
-	$(GO) build $(GOFLAGS) -o $(BUILD_DIR)/rollout-completion ./cmd/rollout-completion/
-	$(GO) build $(GOFLAGS) -o $(BUILD_DIR)/rollout-monitor ./cmd/rollout-monitor/
 
-install: build ## Build and install cortex to ~/.local/bin
+install: build ## Build and install chum to ~/.local/bin
 	mkdir -p ~/.local/bin
 	cp $(BINARY_NAME) ~/.local/bin/
 
@@ -100,15 +90,21 @@ fmt: ## Format Go code
 vet: ## Run go vet
 	$(GO) vet ./...
 
-lint-beads: ## Validate open/in-progress beads have acceptance criteria + DoD gates
-	$(DEV_SCRIPTS)/lint-beads.sh
+lint-full: ## Run full golangci-lint suite (uses .golangci.yml)
+	golangci-lint run ./...
+
+test-coverage: ## Run tests with coverage report
+	$(GO) test -coverprofile=$(BUILD_DIR)/coverage.out ./...
+	$(GO) tool cover -func=$(BUILD_DIR)/coverage.out | tail -1
+	@echo "Full report: go tool cover -html=$(BUILD_DIR)/coverage.out"
+
+lint-docs: ## Check markdown docs for broken internal references
+	@bash $(DEV_SCRIPTS)/docs-lint.sh
 
 ##@ Testing
 
 test-race: ## Run race tests for concurrency-critical packages
 	TEST_SAFE_GO_TEST_TIMEOUT=$(RACE_TIMEOUT) \
-	TEST_SAFE_BD_LOCK_CLEANUP_MINUTES=$(BD_LOCK_CLEANUP_AGE_MINUTES) \
-	TEST_SAFE_BD_LOCK_CLEANUP_REQUIRE_FORCE=$(BD_LOCK_CLEANUP_REQUIRE_FORCE) \
 	TEST_SAFE_LOCK_WAIT_SEC=$(RACE_LOCK_WAIT) \
 	TEST_SAFE_JSON_OUT="$(RACE_JSON_OUT)" \
 	$(DEV_SCRIPTS)/test-safe.sh -race $(RACE_PACKAGES)
@@ -117,46 +113,26 @@ test-race-ci: ## CI race entrypoint with timeout/log output
 	@mkdir -p $(BUILD_DIR)
 	@set -o pipefail; \
 	TEST_SAFE_GO_TEST_TIMEOUT=$(RACE_CI_TIMEOUT) \
-	TEST_SAFE_BD_LOCK_CLEANUP_MINUTES=$(BD_LOCK_CLEANUP_AGE_MINUTES) \
-	TEST_SAFE_BD_LOCK_CLEANUP_REQUIRE_FORCE=$(BD_LOCK_CLEANUP_REQUIRE_FORCE) \
 	TEST_SAFE_LOCK_WAIT_SEC=$(RACE_CI_LOCK_WAIT) \
 	TEST_SAFE_JSON_OUT="$(RACE_CI_JSON_OUT)" \
 	$(DEV_SCRIPTS)/test-safe.sh -race $(RACE_PACKAGES) 2>&1 | tee "$(RACE_CI_LOG_OUT)"
-
-##@ Operations
-
-cleanup-bd-locks: ## Remove stale bd lock files under .beads
-	BD_LOCK_CLEANUP_FORCE="$(BD_LOCK_CLEANUP_FORCE)" \
-	BD_LOCK_CLEANUP_REQUIRE_FORCE="$(BD_LOCK_CLEANUP_REQUIRE_FORCE)" \
-	BD_LOCK_CLEANUP_REPORT_TO_MATRIX="$(BD_LOCK_CLEANUP_REPORT_TO_MATRIX)" \
-	BD_LOCK_CLEANUP_MATRIX_ROOM="$(BD_LOCK_CLEANUP_MATRIX_ROOM)" \
-	BD_LOCK_CLEANUP_MATRIX_ACCOUNT="$(BD_LOCK_CLEANUP_MATRIX_ACCOUNT)" \
-	$(DEV_SCRIPTS)/cleanup-bd-locks.sh "$(BD_LOCK_CLEANUP_AGE_MINUTES)"
-
-cleanup-bd-locks-escalation: ## Require explicit force before removing stale bd locks
-	BD_LOCK_CLEANUP_REQUIRE_FORCE=1 \
-	BD_LOCK_CLEANUP_FORCE="$(BD_LOCK_CLEANUP_FORCE)" \
-	BD_LOCK_CLEANUP_REPORT_TO_MATRIX="$(BD_LOCK_CLEANUP_REPORT_TO_MATRIX)" \
-	BD_LOCK_CLEANUP_MATRIX_ROOM="$(BD_LOCK_CLEANUP_MATRIX_ROOM)" \
-	BD_LOCK_CLEANUP_MATRIX_ACCOUNT="$(BD_LOCK_CLEANUP_MATRIX_ACCOUNT)" \
-	$(DEV_SCRIPTS)/cleanup-bd-locks.sh "$(BD_LOCK_CLEANUP_AGE_MINUTES)"
 
 ##@ Systemd Service
 
 service-install: ## Install user systemd service
 	mkdir -p ~/.config/systemd/user/
-	cp deploy/systemd/cortex.service ~/.config/systemd/user/
+	cp deploy/systemd/chum.service ~/.config/systemd/user/
 	systemctl --user daemon-reload
 
 service-start: ## Start and enable user systemd service
-	systemctl --user enable --now cortex.service
+	systemctl --user enable --now chum.service
 
 service-stop: ## Stop and disable user systemd service
-	systemctl --user stop cortex.service
-	systemctl --user disable cortex.service
+	systemctl --user stop chum.service
+	systemctl --user disable chum.service
 
 service-logs: ## View systemd service logs
-	journalctl --user -u cortex.service -f
+	journalctl --user -u chum.service -f
 
 ##@ Release
 
@@ -177,10 +153,10 @@ dry-run: ## Dry run release process
 ##@ Docker
 
 docker-build: ## Build Docker image
-	docker build -t cortex:$(VERSION) -f build/package/Dockerfile .
+	docker build -t chum:$(VERSION) -f build/package/Dockerfile .
 
 docker-run: ## Run Docker container
-	docker run --rm -v $(PWD)/cortex.toml:/etc/cortex/cortex.toml cortex:$(VERSION)
+	docker run --rm -v $(PWD)/chum.toml:/etc/chum/chum.toml chum:$(VERSION)
 
 ##@ Utilities
 

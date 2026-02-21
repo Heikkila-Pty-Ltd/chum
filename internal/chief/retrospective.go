@@ -5,15 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
 
-	"github.com/antigravity-dev/cortex/internal/beads"
-	"github.com/antigravity-dev/cortex/internal/config"
-	"github.com/antigravity-dev/cortex/internal/dispatch"
-	"github.com/antigravity-dev/cortex/internal/store"
+	"github.com/antigravity-dev/chum/internal/config"
+	"github.com/antigravity-dev/chum/internal/dispatch"
+	"github.com/antigravity-dev/chum/internal/graph"
+	"github.com/antigravity-dev/chum/internal/store"
 )
 
 type retrospectiveActionItem struct {
@@ -26,21 +25,21 @@ type retrospectiveActionItem struct {
 
 // RetrospectiveRecorder handles post-processing for overall retrospective ceremonies.
 type RetrospectiveRecorder struct {
-	cfg         *config.Config
-	store       *store.Store
-	dispatcher  dispatch.DispatcherInterface
-	logger      *slog.Logger
-	createIssue func(context.Context, string, string, string, int, string, []string) (string, error)
+	cfg        *config.Config
+	store      *store.Store
+	dag        *graph.DAG
+	dispatcher dispatch.DispatcherInterface
+	logger     *slog.Logger
 }
 
 // NewRetrospectiveRecorder creates a recorder for overall retrospective outcomes.
-func NewRetrospectiveRecorder(cfg *config.Config, store *store.Store, dispatcher dispatch.DispatcherInterface, logger *slog.Logger) *RetrospectiveRecorder {
+func NewRetrospectiveRecorder(cfg *config.Config, store *store.Store, dag *graph.DAG, dispatcher dispatch.DispatcherInterface, logger *slog.Logger) *RetrospectiveRecorder {
 	return &RetrospectiveRecorder{
-		cfg:         cfg,
-		store:       store,
-		dispatcher:  dispatcher,
-		logger:      logger,
-		createIssue: beads.CreateIssueCtx,
+		cfg:        cfg,
+		store:      store,
+		dag:        dag,
+		dispatcher: dispatcher,
+		logger:     logger,
 	}
 }
 
@@ -108,7 +107,7 @@ func (rr *RetrospectiveRecorder) sendRetrospectiveSummaryToMatrix(ctx context.Co
 
 	agentID := strings.TrimSpace(rr.cfg.Chief.AgentID)
 	if agentID == "" {
-		agentID = "cortex-chief-scrum"
+		agentID = "chum-chief"
 	}
 
 	provider := ""
@@ -122,7 +121,7 @@ func (rr *RetrospectiveRecorder) sendRetrospectiveSummaryToMatrix(ctx context.Co
 	}
 
 	workspace := "/tmp"
-	if project, ok := rr.cfg.Projects["cortex"]; ok {
+	if project, ok := rr.cfg.Projects["chum"]; ok {
 		if resolved := strings.TrimSpace(config.ExpandHome(project.Workspace)); resolved != "" {
 			workspace = resolved
 		}
@@ -139,22 +138,15 @@ func (rr *RetrospectiveRecorder) createActionItemBead(ctx context.Context, cerem
 	if rr.cfg == nil {
 		return "", fmt.Errorf("retrospective config is nil")
 	}
+	if rr.dag == nil {
+		return "", fmt.Errorf("retrospective DAG is nil")
+	}
 	projectName := strings.TrimSpace(item.ProjectName)
 	if projectName == "" {
-		projectName = "cortex"
+		projectName = "chum"
 	}
-	projectCfg, ok := rr.cfg.Projects[projectName]
-	if !ok {
-		projectName, projectCfg = rr.defaultProject()
-	}
-
-	beadsDir := strings.TrimSpace(config.ExpandHome(projectCfg.BeadsDir))
-	if beadsDir == "" {
-		workspace := strings.TrimSpace(config.ExpandHome(projectCfg.Workspace))
-		if workspace == "" {
-			return "", fmt.Errorf("project %s has no workspace/beads_dir configured", projectName)
-		}
-		beadsDir = filepath.Join(workspace, ".beads")
+	if _, ok := rr.cfg.Projects[projectName]; !ok {
+		projectName, _ = rr.defaultProject()
 	}
 
 	title := strings.TrimSpace(item.Title)
@@ -171,26 +163,34 @@ func (rr *RetrospectiveRecorder) createActionItemBead(ctx context.Context, cerem
 		emptyFallback(item.Why, "not specified"),
 	)
 
-	createIssue := rr.createIssue
-	if createIssue == nil {
-		createIssue = beads.CreateIssueCtx
+	task := graph.Task{
+		Title:       title,
+		Type:        "task",
+		Priority:    normalizePriority(item.Priority),
+		Description: description,
+		Project:     projectName,
+		Status:      "open",
 	}
-	return createIssue(ctx, beadsDir, title, "task", normalizePriority(item.Priority), description, nil)
+	id, err := rr.dag.CreateTask(ctx, task)
+	if err != nil {
+		return "", fmt.Errorf("create retrospective action item: %w", err)
+	}
+	return id, nil
 }
 
 func (rr *RetrospectiveRecorder) defaultProject() (string, config.Project) {
-	if project, ok := rr.cfg.Projects["cortex"]; ok {
-		return "cortex", project
+	if project, ok := rr.cfg.Projects["chum"]; ok {
+		return "chum", project
 	}
-	for name, project := range rr.cfg.Projects {
-		if project.Enabled {
-			return name, project
+	for name := range rr.cfg.Projects {
+		if rr.cfg.Projects[name].Enabled {
+			return name, rr.cfg.Projects[name]
 		}
 	}
-	for name, project := range rr.cfg.Projects {
-		return name, project
+	for name := range rr.cfg.Projects {
+		return name, rr.cfg.Projects[name]
 	}
-	return "cortex", config.Project{}
+	return "chum", config.Project{}
 }
 
 func parseRetrospectiveActionItems(output string) []retrospectiveActionItem {
@@ -235,7 +235,7 @@ func parseActionItemLine(line string) (retrospectiveActionItem, bool) {
 		return retrospectiveActionItem{}, false
 	}
 
-	item := retrospectiveActionItem{Priority: 2, ProjectName: "cortex"}
+	item := retrospectiveActionItem{Priority: 2, ProjectName: "chum"}
 
 	if pri, remainder, ok := consumePriorityPrefix(raw); ok {
 		item.Priority = pri
@@ -273,7 +273,7 @@ func parseActionItemLine(line string) (retrospectiveActionItem, bool) {
 	return item, true
 }
 
-func consumePriorityPrefix(raw string) (int, string, bool) {
+func consumePriorityPrefix(raw string) (priority int, remainder string, ok bool) {
 	priorityRE := regexp.MustCompile(`^\[(P[0-4])\]\s*(.*)$`)
 	matches := priorityRE.FindStringSubmatch(strings.TrimSpace(raw))
 	if len(matches) != 3 {
@@ -286,7 +286,7 @@ func consumePriorityPrefix(raw string) (int, string, bool) {
 	return p, strings.TrimSpace(matches[2]), true
 }
 
-func splitKeyValue(field string) (string, string, bool) {
+func splitKeyValue(field string) (key, value string, ok bool) {
 	if idx := strings.Index(field, ":"); idx > 0 {
 		return strings.TrimSpace(field[:idx]), strings.TrimSpace(field[idx+1:]), true
 	}

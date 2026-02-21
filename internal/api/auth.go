@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/antigravity-dev/cortex/internal/config"
+	"github.com/antigravity-dev/chum/internal/config"
 )
 
 // AuthMiddleware provides authentication and authorization for API endpoints

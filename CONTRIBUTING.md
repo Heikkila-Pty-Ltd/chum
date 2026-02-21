@@ -1,6 +1,6 @@
-# Contributing to Cortex
+# Contributing to CHUM
 
-Thank you for your interest in contributing to Cortex! This document provides guidelines and instructions for contributing.
+Thank you for your interest in contributing to CHUM! This document provides guidelines and instructions for contributing.
 
 ## Development Setup
 
@@ -16,8 +16,8 @@ Thank you for your interest in contributing to Cortex! This document provides gu
 
 ```bash
 # Clone the repository
-git clone git@github.com:Heikkila-Pty-Ltd/cortex.git
-cd cortex
+git clone git@github.com:Heikkila-Pty-Ltd/chum.git
+cd chum
 
 # Build the project
 make build
@@ -51,24 +51,47 @@ bd create "Add feature X to Y"
 
 ### 2. Create a Branch
 
+Before starting any code changes:
+
 ```bash
+# Ensure you are on up-to-date master
+git checkout master
+git pull --rebase
+./scripts/hooks/install.sh
+
+# Create a feature workflow branch
 git checkout -b feature/your-feature-name
 ```
 
 Branch naming conventions:
-- `feature/description` - New features
-- `bugfix/description` - Bug fixes
-- `chore/description` - Maintenance tasks
-- `docs/description` - Documentation updates
+- `feature/<description>` - New features
+- `fix/<description>` - Bug fixes
+- `chore/<description>` - Maintenance tasks
+- `refactor/<description>` - Code refactoring
 
-### 3. Make Changes
+Hotfix exception:
+- `hotfix/<description>` is allowed only for approved production hotfixes.
+- Open a short-lived `hotfix/*` branch and use the normal PR path (no direct master commits).
+- Include approver signoff in the linked issue/PR before merging.
+
+### 3. Install local git hook (first-time / periodic)
+
+Install the branch policy hook so direct master commits are blocked locally:
+
+```bash
+./scripts/hooks/install.sh
+```
+
+### 4. Make Changes
+
+- Use branch-safe workflow commands (`git status`, `git add`, `git commit`) only on your working branch.
 
 - Write clear, concise commit messages
 - Follow Go best practices and idioms
 - Add tests for new functionality
 - Update documentation as needed
 
-### 4. Run Quality Checks
+### 5. Run Quality Checks
 
 ```bash
 # Format code
@@ -84,12 +107,42 @@ make test
 make test-race
 ```
 
-### 5. Submit a Pull Request
+### 6. Submit a Pull Request
 
 1. Push your branch: `git push origin feature/your-feature-name`
 2. Create a pull request on GitHub
 3. Fill out the PR template
 4. Request review from maintainers
+
+### 7. Worktree workflow (parallel features)
+
+Use isolated worktrees to avoid branch switching:
+
+```bash
+# From the main repository
+git checkout master
+git pull --rebase
+git worktree add -b feature/your-feature-name ../chum-feature-x
+cd ../chum-feature-x
+```
+
+Work each feature in its own worktree directory. Close worktrees when done:
+
+```bash
+git worktree remove ../chum-feature-x
+```
+
+Team training checkpoint:
+
+Before starting parallel work, complete this quick check:
+- Confirm hook is installed and blocks master commits:
+  `./scripts/hooks/install.sh`
+- Confirm branch checks trigger before the first push:
+  `git checkout master` and verify a commit attempt is blocked.
+- Open one isolated worktree and verify branch name checks on first commit.
+- Open a draft PR and confirm the PR branch-policy check runs in CI.
+
+For the full walkthrough, see [Git worktree workflow](docs/development/GIT_WORKTREE_WORKFLOW.md).
 
 ## Code Standards
 

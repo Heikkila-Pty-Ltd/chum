@@ -260,7 +260,7 @@ exit 5`
 // dispatchTestProcess is a helper that runs a shell script instead of openclaw.
 func (d *Dispatcher) dispatchTestProcess(ctx context.Context, scriptPath string) (int, error) {
 	// Create a dummy prompt file (not used by test scripts)
-	tmpFile, err := os.CreateTemp("", "cortex-test-prompt-*.txt")
+	tmpFile, err := os.CreateTemp("", "chum-test-prompt-*.txt")
 	if err != nil {
 		return 0, err
 	}
@@ -269,7 +269,7 @@ func (d *Dispatcher) dispatchTestProcess(ctx context.Context, scriptPath string)
 	tmpFile.Close()
 
 	// Create output capture file
-	outputFile, err := os.CreateTemp("", "cortex-test-output-*.log")
+	outputFile, err := os.CreateTemp("", "chum-test-output-*.log")
 	if err != nil {
 		os.Remove(tmpPath)
 		return 0, err

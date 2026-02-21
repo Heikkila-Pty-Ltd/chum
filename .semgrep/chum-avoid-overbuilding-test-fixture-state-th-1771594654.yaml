@@ -1,0 +1,29 @@
+rules:
+  - id: chum-testhandlemetrics-overbuilt-fixture
+    patterns:
+      - pattern-either:
+          - pattern: |
+              func TestHandleMetrics(t *testing.T) {
+                ...
+                $SRV := setupTestServer(t)
+                ...
+                ...$SRV.store.UpsertClaimLease(...)
+                ...
+                ...$SRV.store.RecordDispatch(...)
+                ...
+                ...$SRV.store.AttachDispatchToClaimLease(...)
+                ...
+                ...$SRV.store.UpdateDispatchStatus(..., "failed", ...)
+                ...
+                ...$SRV.store.UpdateFailureDiagnosis(...)
+                ...
+                ...httptest.NewRequest(http.MethodGet, "/metrics", nil)
+                ...
+              }
+    message: |
+      `TestHandleMetrics` is overbuilding fixture state. For `/metrics`, keep setup minimal and remove claim-lease creation, lease attachment, failed-status setup, and diagnosis setup so the test only validates endpoint behavior it needs.
+    paths:
+      include:
+        - internal/api/api_test.go
+    languages: [go]
+    severity: WARNING

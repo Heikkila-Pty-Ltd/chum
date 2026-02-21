@@ -1,6 +1,6 @@
-# Cortex Release Workflow
+# CHUM Release Workflow
 
-This document defines the operational release process for Cortex.
+This document defines the operational release process for CHUM.
 
 ## Scope
 
@@ -16,7 +16,7 @@ Required access:
 
 - Write access to repository and tags.
 - Access to deployment host/service controls.
-- Access to Cortex API and state DB backup paths.
+- Access to CHUM API and state DB backup paths.
 
 ## Release Phases
 
@@ -48,7 +48,7 @@ Validation commands:
 
 ```bash
 make build
-GOCACHE=/tmp/go-build go test ./internal/beads ./internal/scheduler ./internal/health ./internal/api
+GOCACHE=/tmp/go-build go test ./internal/graph ./internal/health ./internal/api
 ```
 
 ### 1.3 Security gate
@@ -61,7 +61,7 @@ Acceptance criteria:
 Validation commands:
 
 ```bash
-rg -n "\[api.security\]|enabled|allowed_tokens|require_local_only" cortex.toml
+rg -n "\[api.security\]|enabled|allowed_tokens|require_local_only" chum.toml
 GOCACHE=/tmp/go-build go test ./internal/config ./internal/api -run Auth
 ```
 
@@ -91,7 +91,7 @@ Validation commands:
 
 ```bash
 VERSION=vX.Y.Z
-git tag -a "$VERSION" -m "Cortex $VERSION"
+git tag -a "$VERSION" -m "CHUM $VERSION"
 git show "$VERSION" --no-patch
 ```
 
@@ -106,8 +106,9 @@ Validation commands:
 
 ```bash
 make build
-./scripts/prepare-rollback-assets.sh
-ls -la rollback-binary rollback-config
+cp build/chum build/chum.rollback
+cp chum.toml chum.toml.rollback
+ls -la build/chum.rollback chum.toml.rollback
 ```
 
 ### 2.3 Dry run
@@ -115,13 +116,12 @@ ls -la rollback-binary rollback-config
 Acceptance criteria:
 
 - Release flow executed in non-production mode.
-- Results captured to `release/dry-run-results.json`.
+- CHUM starts, passes health check, and shuts down cleanly.
 
 Validation commands:
 
 ```bash
-# Fill with project-specific dry-run command once automation is finalized.
-echo '{"status":"pending-command"}' > release/dry-run-results.json
+scripts/release/dry-run-release.sh
 ```
 
 ## 3. Post-Release Verification
@@ -184,8 +184,17 @@ Acceptance criteria:
 Validation commands:
 
 ```bash
-# See full runbook for exact rollback operations.
-sed -n '1,220p' docs/runbooks/ROLLBACK_RUNBOOK.md
+# Stop the running instance
+systemctl stop chum
+
+# Swap in the known-good binary and config
+cp build/chum.rollback build/chum
+cp chum.toml.rollback chum.toml
+
+# Restart and verify
+systemctl start chum
+curl -s http://127.0.0.1:8900/health
+curl -s http://127.0.0.1:8900/status
 ```
 
 ## Quality Gates Summary
@@ -202,14 +211,25 @@ If any gate fails, stop release and execute rollback/hotfix decision protocol.
 
 ## Required Evidence Artifacts
 
-- `release/process-definition.md`
-- `release/dry-run-results.json`
-- `release/rollback-procedures.md`
-- Release notes using `.github/RELEASE_TEMPLATE.md`
+- Dry-run output from `scripts/release/dry-run-release.sh`
+- Changelog from `scripts/release/generate-changelog.sh`
+- Rollback binary and config backups (`build/chum.rollback`, `chum.toml.rollback`)
+- Post-release health check outputs
+
+## Release Scripts
+
+All scripts live in `scripts/release/`:
+
+| Script | Purpose |
+|--------|---------|
+| `bump-version.sh` | Increment VERSION file |
+| `create-release-tag.sh` | Create annotated git tag |
+| `dry-run-release.sh` | Full pre-release validation |
+| `generate-changelog.sh` | Generate changelog from git log |
+| `validate-release.sh` | Post-release validation checks |
 
 ## Related Documents
 
-- `docs/ROLLBACK_RUNBOOK.md`
-- `docs/BACKUP_RESTORE_RUNBOOK.md`
-- `docs/api-security.md`
-- `scripts/release-checklist.md`
+- [api-security.md](../api/api-security.md)
+- [CONFIG.md](../architecture/CONFIG.md)
+- [CONTRIBUTING.md](../../CONTRIBUTING.md)

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/antigravity-dev/cortex/internal/config"
+	"github.com/antigravity-dev/chum/internal/config"
 )
 
 func TestHeadlessBackend_DispatchEchoHelloWorld(t *testing.T) {

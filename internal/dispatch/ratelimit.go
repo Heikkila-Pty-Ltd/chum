@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/antigravity-dev/cortex/internal/config"
-	"github.com/antigravity-dev/cortex/internal/store"
+	"github.com/antigravity-dev/chum/internal/config"
+	"github.com/antigravity-dev/chum/internal/store"
 )
 
 // RateLimiter enforces unified rate limits across all authed providers.
@@ -13,6 +13,13 @@ type RateLimiter struct {
 	store *store.Store
 	cfg   config.RateLimits
 	mu    sync.Mutex
+}
+
+// SetConfig swaps the in-memory rate limit configuration.
+func (r *RateLimiter) SetConfig(cfg config.RateLimits) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.cfg = cfg
 }
 
 type dispatchReserveResult int

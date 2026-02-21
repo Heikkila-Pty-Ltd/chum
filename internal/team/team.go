@@ -13,25 +13,57 @@ import (
 // roleDescriptions provides the ROLE.md content for each agent role.
 var roleDescriptions = map[string]string{
 	"scrum": `# Scrum Master Agent
+<!-- role-version: scrum-master-v4 -->
 
-You are the scrum master for this project. Your job is to refine incoming tasks.
+You are the scrum master and primary point of contact for this project.
 
-## Responsibilities
+## Communication (Primary)
+- You are the ONLY agent that communicates with humans
+- Report progress, blockers, and decisions via Matrix
+- When you receive a human message, determine intent and act:
+  - Status queries: gather state with ` + "`" + `bd list/show` + "`" + `, summarize
+  - Priority changes: reprioritize with ` + "`" + `bd update` + "`" + `
+  - Task creation: create beads with ` + "`" + `bd create` + "`" + `
+  - Guidance: update design notes on relevant beads
+  - Always confirm what you did
+
+## Daily Standup
+- Summarize: what completed yesterday, what's in progress, any blockers
+- Flag beads that have been in_progress for >24h
+- Highlight rate limit status if above 70%
+
+## Task Refinement
 - Review task descriptions for clarity and completeness
 - Add or improve acceptance criteria
-- Break large tasks into smaller, actionable sub-tasks
+- Break large tasks into sub-tasks
 - Estimate effort when missing
 
-## Bead Spec Minimum (before handoff)
-- Description has clear scope (what is in/out)
-- Acceptance includes a concrete test line
-- Acceptance includes a DoD line
-- Estimate is set in minutes (>0)
-
 ## Stage Workflow
-- You receive tasks at **stage:backlog**
-- When refinement is complete, transition to **stage:planning**
+- You receive tasks at stage:backlog
+- When refinement is complete, transition to stage:planning
 - Always unassign yourself after transitioning
+
+## Matrix Command Handling (manual control)
+- status
+- priority <bead-id> <p0|p1|p2|p3|p4>
+- cancel <dispatch-id>
+- create task "<title>" "<description>"
+
+### Command Templates
+- status
+  - Output: project summary with running bead count and recent completion count.
+- priority <bead-id> <p0|p1|p2|p3|p4>
+  - Output: Updated <bead-id> priority to <pX>.
+- cancel <dispatch-id>
+  - Output: Cancelled dispatch <dispatch-id> on success or an error reason on failure.
+- create task "<title>" "<description>"
+  - Output: Created new task <bead-id>.
+
+When confirming command responses, keep replies concise and include the result:
+- status -> project summary with running and completion metrics
+- priority -> confirmation of priority change
+- cancel -> cancellation confirmation or failure reason
+- create -> new bead id and confirmation
 `,
 	"planner": `# Planner Agent
 
@@ -115,23 +147,29 @@ func EnsureTeam(project, workspace, model string, roles []string, logger *slog.L
 		agentName := project + "-" + role
 		agentPath := filepath.Join(agentsDir, agentName)
 
+		existing := false
 		if _, err := os.Stat(agentPath); err == nil {
-			continue // agent already exists
+			existing = true
+		} else if !os.IsNotExist(err) {
+			logger.Error("failed to stat existing agent", "agent", agentName, "error", err)
+			continue
 		}
 
-		logger.Info("creating agent", "agent", agentName, "workspace", workspace, "model", model)
+		if !existing {
+			logger.Info("creating agent", "agent", agentName, "workspace", workspace, "model", model)
 
-		if err := createAgent(agentName, workspace, model); err != nil {
-			logger.Error("failed to create agent", "agent", agentName, "error", err)
-			continue
+			if err := createAgent(agentName, workspace, model); err != nil {
+				logger.Error("failed to create agent", "agent", agentName, "error", err)
+				continue
+			}
+
+			created = append(created, agentName)
+			logger.Info("agent created", "agent", agentName)
 		}
 
 		if err := writeRoleMD(agentPath, role); err != nil {
 			logger.Warn("agent created but failed to write ROLE.md", "agent", agentName, "error", err)
 		}
-
-		created = append(created, agentName)
-		logger.Info("agent created", "agent", agentName)
 	}
 
 	return created, nil
@@ -203,5 +241,19 @@ func writeRoleMD(agentDir, role string) error {
 	}
 
 	rolePath := filepath.Join(agentDir, "ROLE.md")
+	existing, err := os.ReadFile(rolePath)
+	if err == nil {
+		if bytes.Equal(existing, []byte(content)) {
+			return nil
+		}
+		if role == "scrum" && !bytes.Contains(existing, []byte("role-version: scrum-master-v4")) {
+			return os.WriteFile(rolePath, []byte(content), 0644)
+		}
+		return nil
+	}
+	if !os.IsNotExist(err) {
+		return err
+	}
+
 	return os.WriteFile(rolePath, []byte(content), 0644)
 }

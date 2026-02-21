@@ -235,7 +235,7 @@ func TestOpenclawShellScript_UsesExplicitSessionID(t *testing.T) {
 }
 
 func TestOpenclawCommandArgs_PassesSessionID(t *testing.T) {
-	args, tempFiles, err := openclawCommandArgs("/tmp/prompt.txt", "cortex-coder", "low", "gpt-5")
+	args, tempFiles, err := openclawCommandArgs("/tmp/prompt.txt", "chum-coder", "low", "gpt-5")
 	if err != nil {
 		t.Fatalf("openclawCommandArgs failed: %v", err)
 	}
@@ -265,8 +265,8 @@ func TestOpenclawCommandArgs_PassesSessionID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to read agent temp file: %v", err)
 	}
-	if string(agentContent) != "cortex-coder" {
-		t.Fatalf("expected agent file to contain 'cortex-coder', got %q", string(agentContent))
+	if string(agentContent) != "chum-coder" {
+		t.Fatalf("expected agent file to contain 'chum-coder', got %q", string(agentContent))
 	}
 
 	thinkingContent, err := os.ReadFile(args[5])
@@ -287,7 +287,7 @@ func TestOpenclawCommandArgs_PassesSessionID(t *testing.T) {
 }
 
 func TestOpenclawCommandArgs_IsLegacyShellExecutionShape(t *testing.T) {
-	args, _, err := openclawCommandArgs("/tmp/prompt.txt", "cortex-coder", "low", "gpt-5")
+	args, _, err := openclawCommandArgs("/tmp/prompt.txt", "chum-coder", "low", "gpt-5")
 	if err != nil {
 		t.Fatalf("openclawCommandArgs failed: %v", err)
 	}

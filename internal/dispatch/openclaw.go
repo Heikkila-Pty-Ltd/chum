@@ -107,6 +107,7 @@ func (b *OpenClawBackend) Kill(handle Handle) error {
 	return b.dispatcher.Kill(handle.PID)
 }
 
+// Cleanup releases resources for a finished dispatch.
 func (b *OpenClawBackend) Cleanup(handle Handle) error {
 	pid := handle.PID
 	if pid <= 0 {

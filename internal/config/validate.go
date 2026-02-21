@@ -523,6 +523,7 @@ type DispatchValidationError struct {
 	Issues []DispatchValidationIssue
 }
 
+// Error formats all validation issues into a multi-line string.
 func (e *DispatchValidationError) Error() string {
 	if e == nil || len(e.Issues) == 0 {
 		return ""

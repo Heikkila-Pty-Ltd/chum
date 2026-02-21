@@ -511,6 +511,7 @@ func (s *Store) RemoveOverflowItem(beadID string) (int64, error) {
 	}
 	return affected, nil
 }
+// ListOverflowQueue returns all pending items in the overflow queue ordered by priority.
 func (s *Store) ListOverflowQueue() ([]OverflowQueueItem, error) {
 	rows, err := s.db.Query(
 		`SELECT id, bead_id, project, role, agent_id, priority, enqueued_at, attempts, reason FROM overflow_queue ORDER BY priority ASC, enqueued_at ASC, bead_id ASC`,
@@ -683,6 +684,7 @@ func (s *Store) IsAgentBusy(project, agent string) (bool, error) {
 	}
 	return count > 0, nil
 }
+// RecordDispatchCost updates token counts and cost for a completed dispatch.
 func (s *Store) RecordDispatchCost(dispatchID int64, inputTokens, outputTokens int, costUSD float64) error {
 	_, err := s.db.Exec(
 		`UPDATE dispatches SET input_tokens = ?, output_tokens = ?, cost_usd = ? WHERE id = ?`,

@@ -9,132 +9,124 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// cliCommand — builds exec.Cmd for coding mode
+// cliCommand — builds exec.Cmd for coding mode (prompt piped via stdin)
 // ---------------------------------------------------------------------------
 
 func TestCliCommand_Claude(t *testing.T) {
-	cmd := cliCommand("claude", "implement the feature", "/tmp/work")
+	cmd := cliCommand("claude", "/tmp/work")
 
 	require.Equal(t, "claude", cmd.Path[len(cmd.Path)-len("claude"):])
 	require.Equal(t, []string{
 		"claude", "--print", "--output-format", "json", "--dangerously-skip-permissions",
-		"implement the feature",
 	}, cmd.Args)
 	require.Equal(t, "/tmp/work", cmd.Dir)
 }
 
 func TestCliCommand_Codex(t *testing.T) {
-	cmd := cliCommand("codex", "fix the bug", "/tmp/work")
+	cmd := cliCommand("codex", "/tmp/work")
 
 	require.Contains(t, cmd.Path, "codex")
 	require.Equal(t, []string{
-		"codex", "exec", "--full-auto", "--json", "fix the bug",
+		"codex", "exec", "--full-auto", "--json",
 	}, cmd.Args)
 	require.Equal(t, "/tmp/work", cmd.Dir)
 }
 
 func TestCliCommand_Gemini(t *testing.T) {
-	cmd := cliCommand("gemini", "refactor the module", "/tmp/work")
+	cmd := cliCommand("gemini", "/tmp/work")
 
 	require.Contains(t, cmd.Path, "gemini")
 	require.Equal(t, []string{
-		"gemini", "-p", "refactor the module", "--yolo", "-o", "json",
+		"gemini", "-p", "", "--yolo", "-o", "json",
 	}, cmd.Args)
 	require.Equal(t, "/tmp/work", cmd.Dir)
 }
 
 func TestCliCommand_UnknownDefaultsToClaude(t *testing.T) {
-	cmd := cliCommand("unknown-agent", "do stuff", "/tmp/work")
+	cmd := cliCommand("unknown-agent", "/tmp/work")
 
 	// Unknown agents fall through to the default (claude) branch
 	require.Equal(t, []string{
 		"claude", "--print", "--output-format", "json", "--dangerously-skip-permissions",
-		"do stuff",
 	}, cmd.Args)
 	require.Equal(t, "/tmp/work", cmd.Dir)
 }
 
 func TestCliCommand_CaseInsensitive(t *testing.T) {
 	// "CODEX" should match "codex" case
-	cmd := cliCommand("CODEX", "task", "/tmp/work")
+	cmd := cliCommand("CODEX", "/tmp/work")
 	require.Equal(t, []string{
-		"codex", "exec", "--full-auto", "--json", "task",
+		"codex", "exec", "--full-auto", "--json",
 	}, cmd.Args)
 }
 
 func TestCliCommand_EmptyAgentDefaultsToClaude(t *testing.T) {
-	cmd := cliCommand("", "prompt", "/tmp/work")
+	cmd := cliCommand("", "/tmp/work")
 	require.Equal(t, []string{
 		"claude", "--print", "--output-format", "json", "--dangerously-skip-permissions",
-		"prompt",
 	}, cmd.Args)
 }
 
 func TestCliCommand_WorkDirSet(t *testing.T) {
 	paths := []string{"/home/user/project", "/tmp/test-repo", "/var/data"}
 	for _, p := range paths {
-		cmd := cliCommand("claude", "test", p)
+		cmd := cliCommand("claude", p)
 		require.Equal(t, p, cmd.Dir)
 	}
 }
 
-func TestCliCommand_PromptWithSpecialChars(t *testing.T) {
-	prompt := `implement "quoted" feature with $pecial chars & pipes | stuff`
-	cmd := cliCommand("claude", prompt, "/tmp/work")
-	// The prompt should be passed as a single argument, preserving special characters
-	require.Equal(t, prompt, cmd.Args[len(cmd.Args)-1])
-}
-
-func TestCliCommand_MultilinePrompt(t *testing.T) {
-	prompt := "line one\nline two\nline three"
-	cmd := cliCommand("codex", prompt, "/tmp/work")
-	require.Equal(t, prompt, cmd.Args[len(cmd.Args)-1])
+func TestCliCommand_PromptNotInArgs(t *testing.T) {
+	// SECURITY: Prompts must never appear in CLI arguments.
+	// They are piped via stdin by runCLI instead.
+	cmd := cliCommand("claude", "/tmp/work")
+	for _, arg := range cmd.Args {
+		require.NotContains(t, arg, "implement", "prompt text must not appear in argv")
+	}
+	require.Nil(t, cmd.Stdin, "stdin should be nil — runCLI sets it later")
 }
 
 // ---------------------------------------------------------------------------
-// cliReviewCommand — builds exec.Cmd for review mode
+// cliReviewCommand — builds exec.Cmd for review mode (prompt piped via stdin)
 // ---------------------------------------------------------------------------
 
 func TestCliReviewCommand_Claude(t *testing.T) {
-	cmd := cliReviewCommand("claude", "review this code", "/tmp/work")
+	cmd := cliReviewCommand("claude", "/tmp/work")
 
 	require.Equal(t, []string{
 		"claude", "--print", "--output-format", "json", "--dangerously-skip-permissions",
-		"review this code",
 	}, cmd.Args)
 	require.Equal(t, "/tmp/work", cmd.Dir)
 }
 
 func TestCliReviewCommand_Codex(t *testing.T) {
-	cmd := cliReviewCommand("codex", "review the diff", "/tmp/work")
+	cmd := cliReviewCommand("codex", "/tmp/work")
 
 	require.Equal(t, []string{
-		"codex", "exec", "--full-auto", "review the diff",
+		"codex", "exec", "--full-auto",
 	}, cmd.Args)
 	require.Equal(t, "/tmp/work", cmd.Dir)
 }
 
 func TestCliReviewCommand_CodexNoJSON(t *testing.T) {
 	// Review mode for codex omits --json (unlike coding mode)
-	cmd := cliReviewCommand("codex", "review", "/tmp/work")
+	cmd := cliReviewCommand("codex", "/tmp/work")
 	for _, arg := range cmd.Args {
 		require.NotEqual(t, "--json", arg, "codex review should not include --json flag")
 	}
 }
 
 func TestCliReviewCommand_UnknownDefaultsToClaude(t *testing.T) {
-	cmd := cliReviewCommand("gemini", "review", "/tmp/work")
+	cmd := cliReviewCommand("gemini", "/tmp/work")
 	// gemini is not in the codex case, falls to default (claude)
 	require.Equal(t, []string{
 		"claude", "--print", "--output-format", "json", "--dangerously-skip-permissions",
-		"review",
 	}, cmd.Args)
 }
 
 func TestCliReviewCommand_CaseInsensitive(t *testing.T) {
-	cmd := cliReviewCommand("CODEX", "review", "/tmp/work")
+	cmd := cliReviewCommand("CODEX", "/tmp/work")
 	require.Equal(t, []string{
-		"codex", "exec", "--full-auto", "review",
+		"codex", "exec", "--full-auto",
 	}, cmd.Args)
 }
 
@@ -143,8 +135,8 @@ func TestCliReviewCommand_CaseInsensitive(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestCodingVsReviewMode_CodexArgDifferences(t *testing.T) {
-	codingCmd := cliCommand("codex", "prompt", "/tmp")
-	reviewCmd := cliReviewCommand("codex", "prompt", "/tmp")
+	codingCmd := cliCommand("codex", "/tmp")
+	reviewCmd := cliReviewCommand("codex", "/tmp")
 
 	// Coding mode has --json, review mode does not
 	codingHasJSON := false
@@ -166,8 +158,8 @@ func TestCodingVsReviewMode_CodexArgDifferences(t *testing.T) {
 
 func TestCodingVsReviewMode_ClaudeSameArgs(t *testing.T) {
 	// Claude uses the same flags for both modes — differentiation is in the prompt
-	codingCmd := cliCommand("claude", "same prompt", "/tmp")
-	reviewCmd := cliReviewCommand("claude", "same prompt", "/tmp")
+	codingCmd := cliCommand("claude", "/tmp")
+	reviewCmd := cliReviewCommand("claude", "/tmp")
 
 	require.Equal(t, codingCmd.Args, reviewCmd.Args)
 }

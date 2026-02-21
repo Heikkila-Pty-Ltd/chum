@@ -1,20 +1,20 @@
 version: '3.8'
 
 services:
-  cortex:
+  chum:
     build:
       context: ../..
       dockerfile: build/package/Dockerfile
-    container_name: cortex
+    container_name: chum
     restart: unless-stopped
     ports:
       - "127.0.0.1:8900:8900"
     volumes:
-      - ./cortex.toml:/etc/cortex/cortex.toml:ro
-      - cortex-data:/data
+      - ./chum.toml:/etc/chum/chum.toml:ro
+      - chum-data:/data
       - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
-      - CORTEX_DATA_DIR=/data
+      - CHUM_DATA_DIR=/data
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8900/health"]
       interval: 30s
@@ -22,28 +22,28 @@ services:
       retries: 3
       start_period: 10s
     networks:
-      - cortex-network
+      - chum-network
 
   # Optional: SQLite Web UI for debugging
   sqlite-web:
     image: coleifer/sqlite-web
-    container_name: cortex-sqlite-web
+    container_name: chum-sqlite-web
     restart: unless-stopped
     ports:
       - "127.0.0.1:8080:8080"
     volumes:
-      - cortex-data:/data:ro
+      - chum-data:/data:ro
     environment:
-      - SQLITE_DATABASE=/data/cortex.db
+      - SQLITE_DATABASE=/data/chum.db
     profiles:
       - debug
     networks:
-      - cortex-network
+      - chum-network
 
 volumes:
-  cortex-data:
+  chum-data:
     driver: local
 
 networks:
-  cortex-network:
+  chum-network:
     driver: bridge

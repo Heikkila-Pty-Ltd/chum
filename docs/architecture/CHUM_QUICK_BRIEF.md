@@ -1,4 +1,4 @@
-# Cortex — Quick Brief
+# CHUM — Quick Brief
 
 **One-liner:** Autonomous agent orchestrator that turns a Git-backed task DAG into reliable, self-improving code execution via Temporal workflows.
 
@@ -16,7 +16,7 @@
 
 ## Why It's Different
 
-| Feature | Typical AI Workflow | Cortex |
+| Feature | Typical AI Workflow | CHUM |
 |---------|-------------------|--------|
 | Task management | Manual prompt → agent → hope | Beads DAG with dependency resolution |
 | Durability | Script crashes = lost state | Temporal replays from failure point |
@@ -54,7 +54,7 @@ Beads DAG → Plan → Human Gate → Execute → Review → Semgrep → DoD
 
 | Doc | Purpose |
 |-----|---------|
-| [CORTEX_OVERVIEW.md](CORTEX_OVERVIEW.md) | Full design rationale with ADRs |
+| [CHUM_OVERVIEW.md](CHUM_OVERVIEW.md) | Full design rationale with ADRs |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Technical architecture with diagrams |
 | [CHUM_BACKLOG.md](CHUM_BACKLOG.md) | Strategic roadmap |
 | [CONFIG.md](CONFIG.md) | Configuration reference |

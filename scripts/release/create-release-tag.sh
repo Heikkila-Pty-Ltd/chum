@@ -15,7 +15,7 @@ Usage:
 Creates annotated git tag from VERSION file in form vX.Y.Z.
 
 Options:
-  --message TEXT  Tag annotation message (default: "Cortex vX.Y.Z")
+  --message TEXT  Tag annotation message (default: "CHUM vX.Y.Z")
   --dry-run       Validate only; do not create tag
   --sign          Create signed tag (-s)
   --allow-dirty   Permit dirty working tree
@@ -77,7 +77,7 @@ require_cmd git
 
 version="$(read_version)"
 tag="v${version}"
-[[ -n "$annotate_message" ]] || annotate_message="Cortex ${tag}"
+[[ -n "$annotate_message" ]] || annotate_message="CHUM ${tag}"
 
 if [[ "$allow_dirty" -ne 1 ]]; then
   git diff --quiet --ignore-submodules HEAD || die "Working tree is dirty. Commit/stash changes or pass --allow-dirty"

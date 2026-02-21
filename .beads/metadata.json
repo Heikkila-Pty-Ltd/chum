@@ -3,5 +3,5 @@
   "jsonl_export": "beads.jsonl",
   "backend": "dolt",
   "dolt_mode": "embedded",
-  "dolt_database": "beads_cortex"
+  "dolt_database": "beads_chum"
 }

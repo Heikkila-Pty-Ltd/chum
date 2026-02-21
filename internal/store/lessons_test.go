@@ -18,7 +18,7 @@ func TestLessonsStoreAndSearch(t *testing.T) {
 
 	// Store a lesson
 	id, err := st.StoreLesson(
-		"cortex-abc", "cortex", "antipattern",
+		"chum-abc", "chum", "antipattern",
 		"Always check error before using defer",
 		"When calling os.Open, the error must be checked before deferring Close, otherwise a nil file causes a panic.",
 		[]string{"internal/store/store.go", "internal/config/config.go"},
@@ -34,7 +34,7 @@ func TestLessonsStoreAndSearch(t *testing.T) {
 
 	// Store a second lesson
 	_, err = st.StoreLesson(
-		"cortex-def", "cortex", "pattern",
+		"chum-def", "chum", "pattern",
 		"Use context.WithTimeout for all external calls",
 		"All CLI subprocess calls should use context.WithTimeout to prevent hung processes.",
 		[]string{"internal/temporal/activities.go"},
@@ -46,7 +46,7 @@ func TestLessonsStoreAndSearch(t *testing.T) {
 	}
 
 	// Count
-	count, err := st.CountLessons("cortex")
+	count, err := st.CountLessons("chum")
 	if err != nil {
 		t.Fatalf("CountLessons: %v", err)
 	}
@@ -76,12 +76,12 @@ func TestLessonsStoreAndSearch(t *testing.T) {
 	}
 
 	// Get by bead
-	results, err = st.GetLessonsByBead("cortex-abc")
+	results, err = st.GetLessonsByBead("chum-abc")
 	if err != nil {
 		t.Fatalf("GetLessonsByBead: %v", err)
 	}
 	if len(results) != 1 {
-		t.Fatalf("expected 1 lesson for cortex-abc, got %d", len(results))
+		t.Fatalf("expected 1 lesson for chum-abc, got %d", len(results))
 	}
 	if len(results[0].FilePaths) != 2 {
 		t.Fatalf("expected 2 file paths, got %d", len(results[0].FilePaths))
@@ -91,7 +91,7 @@ func TestLessonsStoreAndSearch(t *testing.T) {
 	}
 
 	// Get recent
-	results, err = st.GetRecentLessons("cortex", 5)
+	results, err = st.GetRecentLessons("chum", 5)
 	if err != nil {
 		t.Fatalf("GetRecentLessons: %v", err)
 	}

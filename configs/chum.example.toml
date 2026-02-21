@@ -1,7 +1,7 @@
-# Cortex Agent Orchestrator — Example Configuration
+# CHUM Agent Orchestrator — Example Configuration
 #
-# Copy to cortex.toml and customize for your environment:
-#   cp configs/cortex.example.toml cortex.toml
+# Copy to chum.toml and customize for your environment:
+#   cp configs/chum.example.toml chum.toml
 
 [general]
 tick_interval = "60s"
@@ -9,10 +9,10 @@ max_per_tick = 3
 stuck_timeout = "30m"
 max_retries = 2
 log_level = "info"
-state_db = "~/.local/share/cortex/cortex.db"
+state_db = "~/.local/share/chum/chum.db"
 
 # --- Projects ---
-# Define one or more projects for Cortex to manage.
+# Define one or more projects for CHUM to manage.
 [projects.my-project]
 enabled = true
 beads_dir = "~/projects/my-project/.beads"
@@ -39,7 +39,7 @@ model = "codex"
 cli = "codex"
 
 # --- Tiers ---
-# Map tiers to provider lists. Cortex auto-downgrades when rate-limited.
+# Map tiers to provider lists. CHUM auto-downgrades when rate-limited.
 [tiers]
 fast = ["codex"]
 balanced = ["claude"]

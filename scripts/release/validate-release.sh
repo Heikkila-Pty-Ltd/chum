@@ -60,7 +60,7 @@ check_tag_absent() {
 
 check_api_security_gate() {
   # Accept either explicit runtime config or implementation/docs evidence.
-  if rg -n "\\[api\\.security\\]" cortex.toml >/dev/null 2>&1; then
+  if rg -n "\\[api\\.security\\]" chum.toml >/dev/null 2>&1; then
     return 0
   fi
   rg -n "AllowedTokens|RequireLocalOnly|api-security" internal/config/config.go docs/api-security.md >/dev/null 2>&1

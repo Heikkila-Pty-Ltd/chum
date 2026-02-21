@@ -121,7 +121,7 @@ func (rr *RetrospectiveRecorder) sendRetrospectiveSummaryToMatrix(ctx context.Co
 	}
 
 	workspace := "/tmp"
-	if project, ok := rr.cfg.Projects["cortex"]; ok {
+	if project, ok := rr.cfg.Projects["chum"]; ok {
 		if resolved := strings.TrimSpace(config.ExpandHome(project.Workspace)); resolved != "" {
 			workspace = resolved
 		}
@@ -143,7 +143,7 @@ func (rr *RetrospectiveRecorder) createActionItemBead(ctx context.Context, cerem
 	}
 	projectName := strings.TrimSpace(item.ProjectName)
 	if projectName == "" {
-		projectName = "cortex"
+		projectName = "chum"
 	}
 	if _, ok := rr.cfg.Projects[projectName]; !ok {
 		projectName, _ = rr.defaultProject()
@@ -179,8 +179,8 @@ func (rr *RetrospectiveRecorder) createActionItemBead(ctx context.Context, cerem
 }
 
 func (rr *RetrospectiveRecorder) defaultProject() (string, config.Project) {
-	if project, ok := rr.cfg.Projects["cortex"]; ok {
-		return "cortex", project
+	if project, ok := rr.cfg.Projects["chum"]; ok {
+		return "chum", project
 	}
 	for name := range rr.cfg.Projects {
 		if rr.cfg.Projects[name].Enabled {
@@ -190,7 +190,7 @@ func (rr *RetrospectiveRecorder) defaultProject() (string, config.Project) {
 	for name := range rr.cfg.Projects {
 		return name, rr.cfg.Projects[name]
 	}
-	return "cortex", config.Project{}
+	return "chum", config.Project{}
 }
 
 func parseRetrospectiveActionItems(output string) []retrospectiveActionItem {
@@ -235,7 +235,7 @@ func parseActionItemLine(line string) (retrospectiveActionItem, bool) {
 		return retrospectiveActionItem{}, false
 	}
 
-	item := retrospectiveActionItem{Priority: 2, ProjectName: "cortex"}
+	item := retrospectiveActionItem{Priority: 2, ProjectName: "chum"}
 
 	if pri, remainder, ok := consumePriorityPrefix(raw); ok {
 		item.Priority = pri

@@ -1,4 +1,4 @@
-# Git Hooks for Cortex
+# Git Hooks for CHUM
 
 ## Installation
 
@@ -20,7 +20,7 @@ Prevents direct commits to `master`/`main` and enforces approved branch naming.
 
 **Bypass (emergencies only):**
 ```bash
-export CORTEX_ALLOW_MASTER_HOTFIX=1
+export CHUM_ALLOW_MASTER_HOTFIX=1
 git commit --no-verify
 ```
 
@@ -49,19 +49,19 @@ Allowed branch naming for standard work:
 
 Hotfix handling:
 - `hotfix/*` is allowed only for approved production hotfixes.
-- If blocked by this hook during approved hotfix flow, use `CORTEX_ALLOW_MASTER_HOTFIX=1`.
+- If blocked by this hook during approved hotfix flow, use `CHUM_ALLOW_MASTER_HOTFIX=1`.
 
 ## Worktree Setup
 
 For parallel work, use `git worktree`:
 
 ```bash
-git worktree add ../cortex-feature feature/your-feature-name
-cd ../cortex-feature
+git worktree add ../chum-feature feature/your-feature-name
+cd ../chum-feature
 ```
 
 When done:
 
 ```bash
-git worktree remove ../cortex-feature
+git worktree remove ../chum-feature
 ```

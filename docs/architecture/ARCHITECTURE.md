@@ -1,12 +1,12 @@
-# Cortex Architecture
+# CHUM Architecture
 
-> Deep technical reference for the Cortex execution engine, CHUM learning loop, and Temporal workflow topology.
+> Deep technical reference for the CHUM execution engine, CHUM learning loop, and Temporal workflow topology.
 
 ---
 
 ## System Overview
 
-Cortex is a **durable, self-healing agent orchestrator** composed of three layers:
+CHUM is a **durable, self-healing agent orchestrator** composed of three layers:
 
 ```mermaid
 graph LR
@@ -49,7 +49,7 @@ graph LR
 
 ## Workflow Topology
 
-### CortexAgentWorkflow — "The Shark"
+### CHUMAgentWorkflow — "The Shark"
 
 The main execution loop. Implements a LeSS/SCRUM-inspired pipeline with deterministic DoD gating.
 
@@ -152,13 +152,13 @@ graph LR
 
 ### Task Queue
 
-All workflows run on `cortex-task-queue`. Single shared queue simplifies deployment.
+All workflows run on `chum-task-queue`. Single shared queue simplifies deployment.
 
 ### Child Workflow Policies
 
 | Workflow | Launch | Parent Policy | Scheduling |
 |----------|--------|---------------|------------|
-| `CortexAgentWorkflow` | API trigger | — | On-demand |
+| `CHUMAgentWorkflow` | API trigger | — | On-demand |
 | `PlanningCeremonyWorkflow` | API trigger | — | On-demand |
 | `ContinuousLearnerWorkflow` | Child of Shark | ABANDON | Per bead completion |
 | `TacticalGroomWorkflow` | Child of Shark | ABANDON | Per bead completion |
@@ -198,15 +198,15 @@ workspace/
 ├── .semgrep/                  # CHUM-generated rules
 │   ├── chum-nil-check-*.yaml  # Auto-generated from learner
 │   └── chum-error-wrap-*.yaml
-└── .cortex/                   # Runtime state (gitignored)
-    └── cortex.db              # SQLite state database
+└── .chum/                   # Runtime state (gitignored)
+    └── chum.db              # SQLite state database
 ```
 
 ---
 
 ## Security Model
 
-- **No sandbox by default.** Agents run with the same permissions as the Cortex process. Sandboxing is on the [roadmap](CHUM_BACKLOG.md).
+- **No sandbox by default.** Agents run with the same permissions as the CHUM process. Sandboxing is on the [roadmap](CHUM_BACKLOG.md).
 - **API binds to localhost.** No authentication on the HTTP API — do not expose.
 - **Human gate.** Nothing enters the coding engine without explicit signal approval.
 - **Semgrep enforcement.** Generated rules run before DoD, catching known-bad patterns.

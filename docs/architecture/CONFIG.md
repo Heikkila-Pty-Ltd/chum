@@ -6,12 +6,12 @@
 
 ## Configuration File Structure
 
-Cortex uses TOML format. Durations use Go notation (`60s`, `2m`, `24h`).
+CHUM uses TOML format. Durations use Go notation (`60s`, `2m`, `24h`).
 
 ```toml
 # Minimal working configuration
 [general]
-state_db = "~/.cortex/cortex.db"
+state_db = "~/.chum/chum.db"
 tick_interval = "60s"
 
 [projects.my-project]
@@ -52,7 +52,7 @@ premium  = ["claude"]
 
 ### Scheduler janitor (stale workflow cleanup)
 
-Cortex runs a janitor pass at the start of every scheduler tick to reclaim concurrency lanes from stale `CortexAgentWorkflow` executions before normal dispatch.
+CHUM runs a janitor pass at the start of every scheduler tick to reclaim concurrency lanes from stale `CHUMAgentWorkflow` executions before normal dispatch.
 
 Cleanup rules:
 
@@ -228,7 +228,7 @@ All provider names must exist in `[providers]`. Validation fails if a tier refer
 
 ### `[dispatch.cli.<name>]` — CLI Configuration
 
-How Cortex invokes each CLI tool.
+How CHUM invokes each CLI tool.
 
 ```toml
 [dispatch.cli.claude]
@@ -270,7 +270,7 @@ premium  = "120m"
 
 ```toml
 [dispatch.git]
-branch_prefix              = "cortex/"     # prefix for auto-created branches
+branch_prefix              = "chum/"     # prefix for auto-created branches
 branch_cleanup_days        = 7             # delete merged branches older than N days
 merge_strategy             = "squash"      # "merge", "squash", "rebase"
 max_concurrent_per_project = 3             # max parallel branches per project
@@ -281,7 +281,7 @@ max_concurrent_per_project = 3             # max parallel branches per project
 ```toml
 [dispatch.tmux]
 history_limit  = 50000                     # scrollback buffer per session
-session_prefix = "cortex-"                 # prefix for tmux session names
+session_prefix = "chum-"                 # prefix for tmux session names
 ```
 
 ### `[dispatch.cost_control]` — Cost and Churn Guards
@@ -317,7 +317,7 @@ token_waste_window           = "24h"
 
 ```toml
 [dispatch]
-log_dir            = "/var/log/cortex/dispatches"   # dispatch log directory
+log_dir            = "/var/log/chum/dispatches"   # dispatch log directory
 log_retention_days = 30                              # auto-purge after N days
 ```
 
@@ -346,7 +346,7 @@ weekly_cap           = 200       # max dispatches per week
 weekly_headroom_pct  = 80        # throttle above this % of weekly cap
 
 [rate_limits.budget]
-cortex      = 60                 # project gets 60% of weekly budget
+chum      = 60                 # project gets 60% of weekly budget
 other-project = 40               # project gets 40% of weekly budget
 ```
 
@@ -385,7 +385,7 @@ include_in_digest = false        # include learner stats in daily digest
 [matrix]
 enabled       = true
 poll_interval = "30s"            # polling frequency for new messages
-bot_user      = "@cortex:matrix.org"   # bot's Matrix user ID
+bot_user      = "@chum:matrix.org"   # bot's Matrix user ID
 read_limit    = 25               # max messages to read per poll
 ```
 
@@ -398,7 +398,7 @@ read_limit    = 25               # max messages to read per poll
 channel           = "matrix"           # notification channel
 agent_id          = "main"             # agent identifier for dispatch-based reporting
 matrix_bot_account = "hg-reporter-scrum"  # OpenClaw Matrix account for direct notifications
-default_room      = "#cortex-coordination"   # fallback room when project has no matrix_room
+default_room      = "#chum-coordination"   # fallback room when project has no matrix_room
 daily_digest_time = "09:00"            # time for daily digest
 weekly_retro_day  = "Monday"           # day for weekly retrospective
 ```
@@ -410,9 +410,9 @@ weekly_retro_day  = "Monday"           # day for weekly retrospective
 ```toml
 [chief]
 enabled              = true
-matrix_room          = "#cortex-coordination"
+matrix_room          = "#chum-coordination"
 model                = "claude-opus-4-6"               # defaults to premium
-agent_id             = "cortex-chief-scrum"
+agent_id             = "chum-chief-scrum"
 require_approved_plan = true                            # block dispatch without active plan
 ```
 
@@ -475,8 +475,8 @@ role = "coder"
 
 ```toml
 [general]
-state_db               = "~/.cortex/cortex.db"
-lock_file              = "~/.cortex/cortex.lock"
+state_db               = "~/.chum/chum.db"
+lock_file              = "~/.chum/chum.lock"
 tick_interval          = "60s"
 max_per_tick           = 3
 stuck_timeout          = "30m"
@@ -500,17 +500,17 @@ sprint_start_day  = "Monday"
 sprint_start_time = "09:00"
 timezone          = "Australia/Brisbane"
 
-[projects.cortex]
+[projects.chum]
 enabled       = true
 beads_dir     = ".beads"
-workspace     = "/home/user/projects/cortex"
+workspace     = "/home/user/projects/chum"
 priority      = 1
-matrix_room   = "#cortex-dev"
+matrix_room   = "#chum-dev"
 base_branch   = "master"
 use_branches  = true
 merge_method  = "squash"
 
-[projects.cortex.dod]
+[projects.chum.dod]
 checks = ["go build ./...", "go test ./...", "go vet ./..."]
 
 [rate_limits]
@@ -560,14 +560,14 @@ balanced = "45m"
 premium  = "120m"
 
 [dispatch.git]
-branch_prefix              = "cortex/"
+branch_prefix              = "chum/"
 branch_cleanup_days        = 7
 merge_strategy             = "squash"
 max_concurrent_per_project = 3
 
 [dispatch.tmux]
 history_limit  = 50000
-session_prefix = "cortex-"
+session_prefix = "chum-"
 
 [dispatch.cost_control]
 enabled                  = true
@@ -610,18 +610,18 @@ cycle_interval  = "6h"
 [matrix]
 enabled       = true
 poll_interval = "30s"
-bot_user      = "@cortex:matrix.org"
+bot_user      = "@chum:matrix.org"
 read_limit    = 25
 
 [reporter]
 channel           = "matrix"
 agent_id          = "main"
-default_room      = "#cortex-coordination"
+default_room      = "#chum-coordination"
 daily_digest_time = "09:00"
 weekly_retro_day  = "Monday"
 
 [chief]
 enabled              = true
-matrix_room          = "#cortex-coordination"
+matrix_room          = "#chum-coordination"
 require_approved_plan = true
 ```

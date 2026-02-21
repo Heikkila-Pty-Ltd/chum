@@ -1,10 +1,10 @@
-# Cortex Design Rationale
+# CHUM Design Rationale
 
-> _Why this architecture? Why these trade-offs? This doc explains the reasoning behind every major decision in Cortex._
+> _Why this architecture? Why these trade-offs? This doc explains the reasoning behind every major decision in CHUM._
 
 ---
 
-## Why Cortex Exists
+## Why CHUM Exists
 
 Most AI coding workflows are manual: pick a task, prompt an agent, review the output, commit, repeat. This works for one person on one project. It breaks when you want:
 
@@ -13,7 +13,7 @@ Most AI coding workflows are manual: pick a task, prompt an agent, review the ou
 - **Learning from mistakes** so the same bug category doesn't burn tokens twice
 - **Fault tolerance** when an agent hangs, crashes, or hallucinates `rm -rf /`
 
-Cortex is the orchestration layer that sits between your task backlog (Beads) and your agent runtimes (Claude, Codex, etc.) and makes all of the above automatic.
+CHUM is the orchestration layer that sits between your task backlog (Beads) and your agent runtimes (Claude, Codex, etc.) and makes all of the above automatic.
 
 ---
 
@@ -21,12 +21,12 @@ Cortex is the orchestration layer that sits between your task backlog (Beads) an
 
 ### ADR-001: Temporal over In-Process Scheduler
 
-**Context:** The original Cortex v0 used a tick-based in-process scheduler with SQLite state. Every 60 seconds, it would scan beads, dispatch agents, and reconcile. This worked but had a fatal flaw: if the process crashed mid-dispatch, state was lost.
+**Context:** The original CHUM v0 used a tick-based in-process scheduler with SQLite state. Every 60 seconds, it would scan beads, dispatch agents, and reconcile. This worked but had a fatal flaw: if the process crashed mid-dispatch, state was lost.
 
 **Decision:** Migrate the execution engine to Temporal workflows.
 
 **Rationale:**
-- **Durability.** If Cortex dies mid-workflow, Temporal replays from exactly where it left off. No state reconstruction needed.
+- **Durability.** If CHUM dies mid-workflow, Temporal replays from exactly where it left off. No state reconstruction needed.
 - **Visibility.** Temporal UI shows every workflow execution, activity attempt, and failure — free observability.
 - **Fan-out.** Temporal makes it trivial to run N parallel child workflows (future: Monte Carlo execution).
 - **Signals.** The human gate is a Temporal signal — clean, built-in, no polling.
@@ -49,10 +49,10 @@ Cortex is the orchestration layer that sits between your task backlog (Beads) an
 - **Local-first.** No network calls to read the backlog. Zero-latency task queries.
 - **Git-backed.** Issues are JSONL files in the repo. Full version history via `git log`. No vendor lock.
 - **Dependency DAG.** `bd` natively supports `blocks:`, `parent-child:`, `discovered-from:` edges. Cross-project deps work out of the box.
-- **Programmable.** The `beads` Go package lets Cortex query, create, update, and mutate beads programmatically — no REST API, no rate limits, no OAuth tokens.
+- **Programmable.** The `beads` Go package lets CHUM query, create, update, and mutate beads programmatically — no REST API, no rate limits, no OAuth tokens.
 
 **Trade-offs accepted:**
-- No web UI for non-technical stakeholders (acceptable: Cortex is a developer tool).
+- No web UI for non-technical stakeholders (acceptable: CHUM is a developer tool).
 - Merge conflicts on `issues.jsonl` in multi-agent environments (mitigated by bead ownership locks).
 
 ---
@@ -119,7 +119,7 @@ Cortex is the orchestration layer that sits between your task backlog (Beads) an
 
 ### ADR-007: SQLite over Postgres
 
-**Context:** Cortex needs a persistence layer for dispatches, outcomes, lessons, and health events.
+**Context:** CHUM needs a persistence layer for dispatches, outcomes, lessons, and health events.
 
 **Decision:** SQLite with WAL mode and FTS5 for full-text lesson search.
 
@@ -129,13 +129,13 @@ Cortex is the orchestration layer that sits between your task backlog (Beads) an
 - **FTS5 for lessons.** Full-text search over accumulated lessons without deploying Elasticsearch. `SELECT * FROM lessons_fts WHERE lessons_fts MATCH 'nil pointer'` just works.
 - **Backup is `cp`.** Copy the `.db` file. Done.
 
-**When to upgrade:** If Cortex ever needs multi-worker horizontal scaling, SQLite becomes the bottleneck. That day is not today.
+**When to upgrade:** If CHUM ever needs multi-worker horizontal scaling, SQLite becomes the bottleneck. That day is not today.
 
 ---
 
 ### ADR-008: Go over Python
 
-**Context:** Most AI tooling is Python-first. Why is Cortex in Go?
+**Context:** Most AI tooling is Python-first. Why is CHUM in Go?
 
 **Decision:** Go for the orchestrator, LLMs via CLI subprocesses.
 
@@ -169,24 +169,24 @@ This mirrors real Scrum: tactical grooming happens in standup (fast, narrow), st
 
 ---
 
-## Positioning: Cortex vs Everything Else
+## Positioning: CHUM vs Everything Else
 
 | System | Primary Role | Relationship |
 |--------|-------------|--------------|
-| **OpenClaw** | Agent runtime + gateway/control plane | Cortex executes work through it |
-| **Gas Town** | Multi-agent workspace/orchestration framework | Cortex focuses on policy/ops, not town topology |
-| **Beads** | Git-backed issue tracker + dependency DAG | Cortex's input layer |
-| **Temporal** | Durable workflow execution engine | Cortex's execution substrate |
-| **Cortex** | Autonomous dispatch policy + learning loop | Sits above all of the above |
+| **OpenClaw** | Agent runtime + gateway/control plane | CHUM executes work through it |
+| **Gas Town** | Multi-agent workspace/orchestration framework | CHUM focuses on policy/ops, not town topology |
+| **Beads** | Git-backed issue tracker + dependency DAG | CHUM's input layer |
+| **Temporal** | Durable workflow execution engine | CHUM's execution substrate |
+| **CHUM** | Autonomous dispatch policy + learning loop | Sits above all of the above |
 
 ---
 
 ## Non-Goals
 
-Cortex is explicitly **not** trying to be:
+CHUM is explicitly **not** trying to be:
 
 - A chatbot or assistant (that's OpenClaw)
 - A workspace management UI (that's Gas Town)
 - An issue tracker (that's Beads)
-- A CI/CD pipeline (Cortex triggers code-level work, not build/deploy)
+- A CI/CD pipeline (CHUM triggers code-level work, not build/deploy)
 - A replacement for human architects (the human gate exists for a reason)

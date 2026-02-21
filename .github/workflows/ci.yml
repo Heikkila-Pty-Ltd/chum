@@ -116,6 +116,6 @@ jobs:
         context: .
         file: ./build/package/Dockerfile
         push: false
-        tags: cortex:latest
+        tags: chum:latest
         cache-from: type=gha
         cache-to: type=gha,mode=max

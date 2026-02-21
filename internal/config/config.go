@@ -1,4 +1,4 @@
-// Package config loads and validates the Cortex TOML configuration.
+// Package config loads and validates the CHUM TOML configuration.
 package config
 
 import (
@@ -396,7 +396,7 @@ func cloneStringSlice(in []string) []string {
 	return out
 }
 
-// Load reads and validates a Cortex TOML configuration file.
+// Load reads and validates a CHUM TOML configuration file.
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -419,7 +419,7 @@ func Load(path string) (*Config, error) {
 	return &cfg, nil
 }
 
-// Reload reads and validates a Cortex TOML configuration file.
+// Reload reads and validates a CHUM TOML configuration file.
 //
 // This mirrors Load but is intentionally named to reflect runtime refresh paths.
 func Reload(path string) (*Config, error) {

@@ -13,7 +13,7 @@
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "targets": [
         {
-          "expr": "cortex_safety_blocks_total",
+          "expr": "chum_safety_blocks_total",
           "legendFormat": "Total",
           "refId": "A"
         }
@@ -48,7 +48,7 @@
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "targets": [
         {
-          "expr": "cortex_safety_blocks_active{block_type=\"churn_block\"}",
+          "expr": "chum_safety_blocks_active{block_type=\"churn_block\"}",
           "legendFormat": "Churn Blocks",
           "refId": "A"
         }
@@ -83,7 +83,7 @@
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "targets": [
         {
-          "expr": "cortex_safety_blocks_active{block_type=\"quarantine\"}",
+          "expr": "chum_safety_blocks_active{block_type=\"quarantine\"}",
           "legendFormat": "Quarantines",
           "refId": "A"
         }
@@ -118,7 +118,7 @@
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "targets": [
         {
-          "expr": "cortex_safety_blocks_active{block_type=\"circuit_breaker\"}",
+          "expr": "chum_safety_blocks_active{block_type=\"circuit_breaker\"}",
           "legendFormat": "Circuit Breaker",
           "refId": "A"
         }
@@ -156,17 +156,17 @@
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "targets": [
         {
-          "expr": "cortex_safety_blocks_active{block_type=\"churn_block\"}",
+          "expr": "chum_safety_blocks_active{block_type=\"churn_block\"}",
           "legendFormat": "Churn Blocks",
           "refId": "A"
         },
         {
-          "expr": "cortex_safety_blocks_active{block_type=\"quarantine\"}",
+          "expr": "chum_safety_blocks_active{block_type=\"quarantine\"}",
           "legendFormat": "Quarantines",
           "refId": "B"
         },
         {
-          "expr": "cortex_safety_blocks_active{block_type=\"circuit_breaker\"}",
+          "expr": "chum_safety_blocks_active{block_type=\"circuit_breaker\"}",
           "legendFormat": "Circuit Breaker",
           "refId": "C"
         }
@@ -200,7 +200,7 @@
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "targets": [
         {
-          "expr": "cortex_safety_blocks_total",
+          "expr": "chum_safety_blocks_total",
           "legendFormat": "Total Active",
           "refId": "A"
         }
@@ -235,12 +235,12 @@
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "targets": [
         {
-          "expr": "cortex_dispatches_running",
+          "expr": "chum_dispatches_running",
           "legendFormat": "Running Dispatches",
           "refId": "A"
         },
         {
-          "expr": "cortex_safety_blocks_total",
+          "expr": "chum_safety_blocks_total",
           "legendFormat": "Active Blocks",
           "refId": "B"
         }
@@ -275,7 +275,7 @@
     }
   ],
   "schemaVersion": 39,
-  "tags": ["cortex", "safety"],
+  "tags": ["chum", "safety"],
   "templating": {
     "list": [
       {
@@ -287,6 +287,6 @@
     ]
   },
   "time": { "from": "now-6h", "to": "now" },
-  "title": "Cortex Safety Blocks",
-  "uid": "cortex-safety-blocks"
+  "title": "CHUM Safety Blocks",
+  "uid": "chum-safety-blocks"
 }

@@ -274,13 +274,13 @@ func TestBuildOverallRetrospectivePromptUsesInjectedContext(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 	chief := New(cfg, nil, nil, nil, logger)
 
-	ctx := WithCrossProjectRetroContext(t.Context(), `{"project_retro_reports":{"cortex":{"period":"7d"}}}`)
+	ctx := WithCrossProjectRetroContext(t.Context(), `{"project_retro_reports":{"chum":{"period":"7d"}}}`)
 	prompt := chief.buildOverallRetrospectivePrompt(ctx)
 
 	if !strings.Contains(prompt, "Overall Sprint Retrospective Ceremony") {
 		t.Fatalf("expected overall retrospective heading, got: %s", prompt)
 	}
-	if !strings.Contains(prompt, `"project_retro_reports":{"cortex":{"period":"7d"}}`) {
+	if !strings.Contains(prompt, `"project_retro_reports":{"chum":{"period":"7d"}}`) {
 		t.Fatalf("expected injected retrospective context, got: %s", prompt)
 	}
 	if !strings.Contains(prompt, "## Action Items") {
@@ -303,7 +303,7 @@ func TestParseRetrospectiveActionItems(t *testing.T) {
 	if len(items) != 2 {
 		t.Fatalf("expected 2 action items, got %d", len(items))
 	}
-	if items[0].Priority != 1 || items[0].ProjectName != "cortex" {
+	if items[0].Priority != 1 || items[0].ProjectName != "chum" {
 		t.Fatalf("unexpected first item parse: %+v", items[0])
 	}
 	if items[1].Priority != 3 || items[1].ProjectName != "api" {

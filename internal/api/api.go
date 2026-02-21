@@ -1,4 +1,4 @@
-// Package api provides a lightweight HTTP API for querying Cortex state.
+// Package api provides a lightweight HTTP API for querying CHUM state.
 package api
 
 import (

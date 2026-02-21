@@ -117,7 +117,7 @@ func TestPollOnceRoutesMessagesAndSkipsBotSender(t *testing.T) {
 		responses: map[string]fakePollResponse{
 			"!room-a:matrix.org": {
 				messages: []InboundMessage{
-					{ID: "1", Room: "!room-a:matrix.org", Sender: "@cortex-bot:matrix.org", Body: "self-message"},
+					{ID: "1", Room: "!room-a:matrix.org", Sender: "@chum-bot:matrix.org", Body: "self-message"},
 					{ID: "2", Room: "!room-a:matrix.org", Sender: "@alice:matrix.org", Body: "hello from a"},
 				},
 				next: "cursor-a",
@@ -134,7 +134,7 @@ func TestPollOnceRoutesMessagesAndSkipsBotSender(t *testing.T) {
 
 	poller := NewPoller(PollerConfig{
 		Enabled: true,
-		BotUser: "@cortex-bot:matrix.org",
+		BotUser: "@chum-bot:matrix.org",
 		RoomToProject: map[string]string{
 			"!room-a:matrix.org": "project-a",
 			"!room-b:matrix.org": "project-b",
@@ -251,7 +251,7 @@ func TestPollOnceFallsBackToMainOnDispatchFailure(t *testing.T) {
 }
 
 func TestParseScrumCommandRecognizesSupportedCommands(t *testing.T) {
-	priorityCmd, isCommand, err := parseScrumCommand("priority cortex-1 P2")
+	priorityCmd, isCommand, err := parseScrumCommand("priority chum-1 P2")
 	if !isCommand {
 		t.Fatal("priority command not recognized")
 	}
@@ -264,8 +264,8 @@ func TestParseScrumCommandRecognizesSupportedCommands(t *testing.T) {
 	if priorityCmd.priority != 2 {
 		t.Fatalf("priority = %d, want 2", priorityCmd.priority)
 	}
-	if priorityCmd.beadID != "cortex-1" {
-		t.Fatalf("beadID = %q, want cortex-1", priorityCmd.beadID)
+	if priorityCmd.beadID != "chum-1" {
+		t.Fatalf("beadID = %q, want chum-1", priorityCmd.beadID)
 	}
 
 	if _, isCommand, err = parseScrumCommand("create task \"Refine docs\" \"Add docs for matrix\""); !isCommand || err != nil {
@@ -287,7 +287,7 @@ func TestParseScrumCommandReturnsSpecificGuidance(t *testing.T) {
 		want    string
 	}{
 		{"status now", "Usage: status"},
-		{"priority cortex-1", "Usage: priority <bead-id> <p0|p1|p2|p3|p4>"},
+		{"priority chum-1", "Usage: priority <bead-id> <p0|p1|p2|p3|p4>"},
 		{"cancel bad", "positive dispatch id"},
 		{"create task \"Only title\"", "create task command requires quoted title and description"},
 	}
@@ -310,11 +310,11 @@ func TestPollOnceRoutesScrumStatusCommandToMatrixSender(t *testing.T) {
 	sender := &fakeSender{}
 	store := &fakeStore{
 		running: []store.Dispatch{
-			{Project: "project-a", BeadID: "cortex-1"},
+			{Project: "project-a", BeadID: "chum-1"},
 		},
 		completed: []store.Dispatch{
-			{BeadID: "cortex-2", DispatchedAt: time.Now().UTC().Add(-time.Minute)},
-			{BeadID: "cortex-3", DispatchedAt: time.Now().UTC().Add(-2 * time.Minute)},
+			{BeadID: "chum-2", DispatchedAt: time.Now().UTC().Add(-time.Minute)},
+			{BeadID: "chum-3", DispatchedAt: time.Now().UTC().Add(-2 * time.Minute)},
 		},
 	}
 
@@ -330,7 +330,7 @@ func TestPollOnceRoutesScrumStatusCommandToMatrixSender(t *testing.T) {
 
 	poller := NewPoller(PollerConfig{
 		Enabled: true,
-		BotUser: "@cortex-bot:matrix.org",
+		BotUser: "@chum-bot:matrix.org",
 		RoomToProject: map[string]string{
 			"!room-a:matrix.org": "project-a",
 		},
@@ -390,7 +390,7 @@ func TestPollOnceRoutesScrumPriorityCommandToMatrixSender(t *testing.T) {
 
 	poller := NewPoller(PollerConfig{
 		Enabled: true,
-		BotUser: "@cortex-bot:matrix.org",
+		BotUser: "@chum-bot:matrix.org",
 		RoomToProject: map[string]string{
 			"!room-a:matrix.org": "project-a",
 		},
@@ -436,7 +436,7 @@ func TestPollOnceRoutesScrumCreateCommandToMatrixSender(t *testing.T) {
 
 	poller := NewPoller(PollerConfig{
 		Enabled: true,
-		BotUser: "@cortex-bot:matrix.org",
+		BotUser: "@chum-bot:matrix.org",
 		RoomToProject: map[string]string{
 			"!room-a:matrix.org": "project-a",
 		},
@@ -486,7 +486,7 @@ func TestPollOnceRoutesScrumCancelCommandToMatrixSender(t *testing.T) {
 
 	poller := NewPoller(PollerConfig{
 		Enabled: true,
-		BotUser: "@cortex-bot:matrix.org",
+		BotUser: "@chum-bot:matrix.org",
 		RoomToProject: map[string]string{
 			"!room-a:matrix.org": "project-a",
 		},
@@ -522,7 +522,7 @@ func TestPollOnceRejectsScrumCommandWithoutPermission(t *testing.T) {
 
 	poller := NewPoller(PollerConfig{
 		Enabled: true,
-		BotUser: "@cortex-bot:matrix.org",
+		BotUser: "@chum-bot:matrix.org",
 		RoomToProject: map[string]string{
 			"!room-a:matrix.org": "project-a",
 		},
@@ -547,7 +547,7 @@ func TestPollOnceRejectsMalformedScrumCommand(t *testing.T) {
 		responses: map[string]fakePollResponse{
 			"!room-a:matrix.org": {
 				messages: []InboundMessage{
-					{ID: "1", Room: "!room-a:matrix.org", Sender: "@alice:matrix.org", Body: "priority cortex-1"},
+					{ID: "1", Room: "!room-a:matrix.org", Sender: "@alice:matrix.org", Body: "priority chum-1"},
 				},
 			},
 		},
@@ -555,7 +555,7 @@ func TestPollOnceRejectsMalformedScrumCommand(t *testing.T) {
 
 	poller := NewPoller(PollerConfig{
 		Enabled: true,
-		BotUser: "@cortex-bot:matrix.org",
+		BotUser: "@chum-bot:matrix.org",
 		RoomToProject: map[string]string{
 			"!room-a:matrix.org": "project-a",
 		},

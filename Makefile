@@ -1,4 +1,4 @@
-# Cortex - Autonomous Agent Orchestrator
+# CHUM - Autonomous Agent Orchestrator
 # Makefile for development, build, and operations
 
 SHELL := /usr/bin/env bash
@@ -54,7 +54,7 @@ SRC_FILES := $(shell find . -type f -name '*.go' -not -path './vendor/*')
 ##@ Development
 
 help: ## Display this help message
-	@echo "Cortex $(VERSION) - Available targets:"
+	@echo "CHUM $(VERSION) - Available targets:"
 	@echo ""
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
@@ -122,18 +122,18 @@ test-race-ci: ## CI race entrypoint with timeout/log output
 
 service-install: ## Install user systemd service
 	mkdir -p ~/.config/systemd/user/
-	cp deploy/systemd/cortex.service ~/.config/systemd/user/
+	cp deploy/systemd/chum.service ~/.config/systemd/user/
 	systemctl --user daemon-reload
 
 service-start: ## Start and enable user systemd service
-	systemctl --user enable --now cortex.service
+	systemctl --user enable --now chum.service
 
 service-stop: ## Stop and disable user systemd service
-	systemctl --user stop cortex.service
-	systemctl --user disable cortex.service
+	systemctl --user stop chum.service
+	systemctl --user disable chum.service
 
 service-logs: ## View systemd service logs
-	journalctl --user -u cortex.service -f
+	journalctl --user -u chum.service -f
 
 ##@ Release
 
@@ -157,7 +157,7 @@ docker-build: ## Build Docker image
 	docker build -t chum:$(VERSION) -f build/package/Dockerfile .
 
 docker-run: ## Run Docker container
-	docker run --rm -v $(PWD)/cortex.toml:/etc/cortex/cortex.toml chum:$(VERSION)
+	docker run --rm -v $(PWD)/chum.toml:/etc/chum/chum.toml chum:$(VERSION)
 
 ##@ Utilities
 

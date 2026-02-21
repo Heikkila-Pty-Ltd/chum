@@ -309,7 +309,7 @@ func (c *Chief) dispatchChiefSM(ctx context.Context, bead graph.Task, promptTemp
 		agentID = "chum-chief"
 	}
 
-	workspace := c.cfg.Projects["cortex"].Workspace
+	workspace := c.cfg.Projects["chum"].Workspace
 	if workspace == "" {
 		workspace = "~/projects/chum" // fallback
 	}
@@ -319,7 +319,7 @@ func (c *Chief) dispatchChiefSM(ctx context.Context, bead graph.Task, promptTemp
 	// Record the dispatch in the store first
 	dispatchID, err := c.store.RecordDispatch(
 		bead.ID,
-		"cortex", // project name
+		"chum", // project name
 		agentID,
 		provider,
 		tier,

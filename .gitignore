@@ -1,13 +1,13 @@
 # Built binaries
-/cortex
+/chum
 /chum
 *.test
 
 # Local config (do not commit)
-cortex.toml
 chum.toml
-cortex-interactive.toml
-cortex.runner.toml
+chum.toml
+chum-interactive.toml
+chum.runner.toml
 
 # Local state
 *.db
@@ -17,7 +17,7 @@ cortex.runner.toml
 state/
 
 # Runtime data
-.cortex/
+.chum/
 
 # Beads runtime data
 .beads/*.log

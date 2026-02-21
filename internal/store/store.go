@@ -7,7 +7,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// Store provides SQLite-backed persistence for Cortex state.
+// Store provides SQLite-backed persistence for CHUM state.
 type Store struct {
 	db                  *sql.DB
 	dispatchPersistHook func(point string) error

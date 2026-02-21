@@ -1,6 +1,6 @@
-# Contributing to Cortex
+# Contributing to CHUM
 
-Thank you for your interest in contributing to Cortex! This document provides guidelines and instructions for contributing.
+Thank you for your interest in contributing to CHUM! This document provides guidelines and instructions for contributing.
 
 ## Development Setup
 
@@ -16,8 +16,8 @@ Thank you for your interest in contributing to Cortex! This document provides gu
 
 ```bash
 # Clone the repository
-git clone git@github.com:Heikkila-Pty-Ltd/cortex.git
-cd cortex
+git clone git@github.com:Heikkila-Pty-Ltd/chum.git
+cd chum
 
 # Build the project
 make build
@@ -122,14 +122,14 @@ Use isolated worktrees to avoid branch switching:
 # From the main repository
 git checkout master
 git pull --rebase
-git worktree add -b feature/your-feature-name ../cortex-feature-x
-cd ../cortex-feature-x
+git worktree add -b feature/your-feature-name ../chum-feature-x
+cd ../chum-feature-x
 ```
 
 Work each feature in its own worktree directory. Close worktrees when done:
 
 ```bash
-git worktree remove ../cortex-feature-x
+git worktree remove ../chum-feature-x
 ```
 
 Team training checkpoint:

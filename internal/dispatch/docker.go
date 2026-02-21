@@ -72,7 +72,7 @@ func (d *DockerDispatcher) Dispatch(ctx context.Context, agent string, prompt st
 			"ANTHROPIC_API_KEY=" + os.Getenv("ANTHROPIC_API_KEY"),
 			"OPENAI_API_KEY=" + os.Getenv("OPENAI_API_KEY"),
 			"GEMINI_API_KEY=" + os.Getenv("GEMINI_API_KEY"),
-			"CORTEX_TELEMETRY=" + os.Getenv("CORTEX_TELEMETRY"),
+			"CHUM_TELEMETRY=" + os.Getenv("CHUM_TELEMETRY"),
 		},
 	}
 

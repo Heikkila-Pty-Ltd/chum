@@ -9,10 +9,10 @@
 ### 1. Create a Feature Branch + Worktree
 
 ```bash
-cd /path/to/cortex                    # canonical workspace
+cd /path/to/chum                    # canonical workspace
 git checkout master
 git pull --rebase
-git worktree add -b feature/your-feature ../cortex-feature-your-feature master
+git worktree add -b feature/your-feature ../chum-feature-your-feature master
 ```
 
 ### 2. Install Branch Guards
@@ -29,7 +29,7 @@ This installs pre-commit hooks that:
 ### 3. Work in Isolation
 
 ```bash
-cd ../cortex-feature-your-feature
+cd ../chum-feature-your-feature
 
 # Normal development cycle
 git add .
@@ -40,30 +40,30 @@ git push -u origin feature/your-feature
 ### 4. Clean Up
 
 ```bash
-cd /path/to/cortex
-git worktree remove ../cortex-feature-your-feature
+cd /path/to/chum
+git worktree remove ../chum-feature-your-feature
 git branch -d feature/your-feature     # after merge
 ```
 
 ---
 
-## Cortex Agent Worktree Management
+## CHUM Agent Worktree Management
 
 When `use_branches = true` is configured, the scheduler automatically creates worktrees for each dispatched bead:
 
 ```
 /home/user/projects/
-├── cortex/                              # canonical workspace (master)
-├── cortex-cortex-bvnv/                  # auto-created for bead cortex-bvnv
-├── cortex-cortex-o4ni/                  # auto-created for bead cortex-o4ni
-└── cortex-cortex-w7dk/                  # auto-created for bead cortex-w7dk
+├── chum/                              # canonical workspace (master)
+├── chum-chum-bvnv/                  # auto-created for bead chum-bvnv
+├── chum-chum-o4ni/                  # auto-created for bead chum-o4ni
+└── chum-chum-w7dk/                  # auto-created for bead chum-w7dk
 ```
 
-**Branch naming convention:** `{branch_prefix}{bead-id}` (e.g., `feat/cortex-bvnv`).
+**Branch naming convention:** `{branch_prefix}{bead-id}` (e.g., `feat/chum-bvnv`).
 
 **Lifecycle:**
 1. Scheduler creates branch from `base_branch`
-2. Worktree is added at `../cortex-{project}-{bead-id}`
+2. Worktree is added at `../chum-{project}-{bead-id}`
 3. Agent is dispatched into the worktree
 4. On completion, PR is created via `merge_method`
 5. Post-merge checks run and worktree is cleaned up
@@ -78,7 +78,7 @@ When `use_branches = true` is configured, the scheduler automatically creates wo
 | `feat/{scope}` | Feature work |
 | `fix/{scope}` | Bug fixes |
 | `chore/{scope}` | Maintenance, docs, CI |
-| `cortex/{bead-id}` | Auto-created by scheduler |
+| `chum/{bead-id}` | Auto-created by scheduler |
 
 ---
 
@@ -97,8 +97,8 @@ When `use_branches = true` is configured, the scheduler automatically creates wo
 
 ```bash
 # If a worktree is locked (e.g., after a crash)
-git worktree unlock ../cortex-feature-your-feature
-git worktree remove ../cortex-feature-your-feature
+git worktree unlock ../chum-feature-your-feature
+git worktree remove ../chum-feature-your-feature
 ```
 
 ### Stale Worktree References
@@ -112,8 +112,8 @@ git worktree prune
 
 ```bash
 # If the branch from a previous dispatch wasn't cleaned up
-git branch -D cortex/cortex-bvnv
-git worktree add -b cortex/cortex-bvnv ../cortex-cortex-bvnv master
+git branch -D chum/chum-bvnv
+git worktree add -b chum/chum-bvnv ../chum-chum-bvnv master
 ```
 
 ### Pre-Commit Hook Not Installed
@@ -131,7 +131,7 @@ ls -la .git/hooks/pre-commit
 ## Configuration
 
 ```toml
-[projects.cortex]
+[projects.chum]
 base_branch   = "master"
 branch_prefix = "feat/"
 use_branches  = true
@@ -140,7 +140,7 @@ auto_revert_on_failure = true     # revert merge if post-merge checks fail
 post_merge_checks = ["go build ./...", "go test ./..."]
 
 [dispatch.git]
-branch_prefix              = "cortex/"
+branch_prefix              = "chum/"
 branch_cleanup_days        = 7
 merge_strategy             = "squash"
 max_concurrent_per_project = 3

@@ -1,6 +1,6 @@
-# Cortex Release Workflow
+# CHUM Release Workflow
 
-This document defines the operational release process for Cortex.
+This document defines the operational release process for CHUM.
 
 ## Scope
 
@@ -16,7 +16,7 @@ Required access:
 
 - Write access to repository and tags.
 - Access to deployment host/service controls.
-- Access to Cortex API and state DB backup paths.
+- Access to CHUM API and state DB backup paths.
 
 ## Release Phases
 
@@ -91,7 +91,7 @@ Validation commands:
 
 ```bash
 VERSION=vX.Y.Z
-git tag -a "$VERSION" -m "Cortex $VERSION"
+git tag -a "$VERSION" -m "CHUM $VERSION"
 git show "$VERSION" --no-patch
 ```
 
@@ -106,9 +106,9 @@ Validation commands:
 
 ```bash
 make build
-cp build/cortex build/cortex.rollback
+cp build/chum build/chum.rollback
 cp chum.toml chum.toml.rollback
-ls -la build/cortex.rollback chum.toml.rollback
+ls -la build/chum.rollback chum.toml.rollback
 ```
 
 ### 2.3 Dry run
@@ -116,7 +116,7 @@ ls -la build/cortex.rollback chum.toml.rollback
 Acceptance criteria:
 
 - Release flow executed in non-production mode.
-- Cortex starts, passes health check, and shuts down cleanly.
+- CHUM starts, passes health check, and shuts down cleanly.
 
 Validation commands:
 
@@ -185,14 +185,14 @@ Validation commands:
 
 ```bash
 # Stop the running instance
-systemctl stop cortex
+systemctl stop chum
 
 # Swap in the known-good binary and config
-cp build/cortex.rollback build/cortex
+cp build/chum.rollback build/chum
 cp chum.toml.rollback chum.toml
 
 # Restart and verify
-systemctl start cortex
+systemctl start chum
 curl -s http://127.0.0.1:8900/health
 curl -s http://127.0.0.1:8900/status
 ```
@@ -213,7 +213,7 @@ If any gate fails, stop release and execute rollback/hotfix decision protocol.
 
 - Dry-run output from `scripts/release/dry-run-release.sh`
 - Changelog from `scripts/release/generate-changelog.sh`
-- Rollback binary and config backups (`build/cortex.rollback`, `chum.toml.rollback`)
+- Rollback binary and config backups (`build/chum.rollback`, `chum.toml.rollback`)
 - Post-release health check outputs
 
 ## Release Scripts

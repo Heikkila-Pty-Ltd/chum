@@ -4,14 +4,14 @@ This project uses **bd** (beads) for issue tracking. Run `bd onboard` to get sta
 
 ## Branch and Worktree Onboarding
 
-Before coding in Cortex, enforce the branch workflow:
+Before coding in CHUM, enforce the branch workflow:
 
 1. Install the local hook:
    - `./scripts/hooks/install.sh`
 2. Start from clean `master`, then create one of:
    - `feature/*`, `chore/*`, `fix/*`, `refactor/*`
 3. Optionally create a worktree when running multiple tasks:
-   - `git worktree add -b feature/your-feature ../cortex-feature`
+   - `git worktree add -b feature/your-feature ../chum-feature`
 4. Run the worktree training checkpoint in:
    - `docs/development/GIT_WORKTREE_WORKFLOW.md`
 
@@ -149,7 +149,7 @@ TEST_SAFE_LOCK_WAIT_SEC=600 scripts/test-safe.sh ./internal/learner ./internal/c
 
 ### OpenClaw Main: Creating Beads (Required Format)
 
-For `open`/`in_progress` beads, Cortex dispatch expects proper structure. Missing fields will block assignment.
+For `open`/`in_progress` beads, CHUM dispatch expects proper structure. Missing fields will block assignment.
 
 - Required before work can dispatch:
   - Clear scope in `description`

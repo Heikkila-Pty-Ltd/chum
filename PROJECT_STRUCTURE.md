@@ -3,7 +3,7 @@
 Standard Go project layout with Temporal workflow engine at the core.
 
 ```
-cortex/
+chum/
 ├── cmd/                          # Application entry points
 │   ├── chum/                     # Main binary (API + Temporal worker + cron)
 │   │   ├── main.go               #   Entrypoint, config loading, worker/API bootstrap
@@ -13,7 +13,7 @@ cortex/
 │
 ├── internal/                     # Private application code
 │   ├── temporal/                 # ⚡ Temporal workflows + activities (core engine)
-│   │   ├── workflow.go           #   CortexAgentWorkflow — plan→gate→execute→review→DoD
+│   │   ├── workflow.go           #   CHUMAgentWorkflow — plan→gate→execute→review→DoD
 │   │   ├── workflow_groom.go     #   TacticalGroom + StrategicGroom workflows
 │   │   ├── workflow_learner.go   #   ContinuousLearner workflow
 │   │   ├── planning_workflow.go  #   PlanningCeremony interactive workflow
@@ -47,9 +47,9 @@ cortex/
 │   └── learner/                  # Legacy learner (migrated to temporal/learner_activities.go)
 │
 ├── configs/                      # Configuration examples
-│   ├── cortex.runner.toml        #   Production runner config template
-│   ├── cortex-interactive.toml   #   Interactive development config
-│   ├── cortex-learner-example.toml # Learner-focused config example
+│   ├── chum.runner.toml        #   Production runner config template
+│   ├── chum-interactive.toml   #   Interactive development config
+│   ├── chum-learner-example.toml # Learner-focused config example
 │   ├── trial-chum.toml           #   Trial/testing config
 │   └── slo-thresholds.json       #   Service Level Objective definitions
 │

@@ -15,6 +15,6 @@ rules:
               }
       - pattern-either:
           - pattern-regex: '\["rate_limiter"\]'
-          - pattern-regex: 'strings\.Contains\([^\n]*"(?:cortex_rate_limiter_usage_ratio|[^"]*claim[^"]*lease[^"]*|[^"]*gateway[^"]*failure[^"]*)"\)'
+          - pattern-regex: 'strings\.Contains\([^\n]*"(?:chum_rate_limiter_usage_ratio|[^"]*claim[^"]*lease[^"]*|[^"]*gateway[^"]*failure[^"]*)"\)'
     languages: [go]
     severity: WARNING

@@ -75,7 +75,7 @@ issues:
       linters:
         - forbidigo
     # Allow os.Exit in main
-    - path: cmd/cortex/main\.go
+    - path: cmd/chum/main\.go
       linters:
         - forbidigo
     # Test files can be more relaxed

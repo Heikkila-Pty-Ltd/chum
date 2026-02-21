@@ -1,10 +1,10 @@
 [Unit]
-Description=Cortex Agent Orchestrator
+Description=CHUM Agent Orchestrator
 After=openclaw-gateway.service
 
 [Service]
 Type=simple
-ExecStart=%h/projects/cortex/cortex --config %h/projects/cortex/cortex.toml
+ExecStart=%h/projects/chum/chum --config %h/projects/chum/chum.toml
 Restart=always
 RestartSec=10
 Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin

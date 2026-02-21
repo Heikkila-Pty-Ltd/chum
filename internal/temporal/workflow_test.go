@@ -242,7 +242,7 @@ func TestStrategicGroomWorkflowPipeline(t *testing.T) {
 		TotalFiles: 42,
 		TotalLines: 5000,
 		Packages: []PackageInfo{
-			{ImportPath: "github.com/example/cortex/internal/temporal", Name: "temporal"},
+			{ImportPath: "github.com/example/chum/internal/temporal", Name: "temporal"},
 		},
 	}, nil)
 

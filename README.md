@@ -1,9 +1,9 @@
 # CHUM (Continuous Hyper Utility Module)
 Architected to silently devour legacy paperwork industries with deterministic precision.
 
-[![CI](https://github.com/Heikkila-Pty-Ltd/cortex/actions/workflows/ci.yml/badge.svg)](https://github.com/Heikkila-Pty-Ltd/cortex/actions/workflows/ci.yml)
-[![Go Version](https://img.shields.io/github/go-mod/go-version/Heikkila-Pty-Ltd/cortex)](https://go.dev/)
-[![Go Report Card](https://goreportcard.com/badge/github.com/Heikkila-Pty-Ltd/cortex)](https://goreportcard.com/report/github.com/Heikkila-Pty-Ltd/cortex)
+[![CI](https://github.com/Heikkila-Pty-Ltd/chum/actions/workflows/ci.yml/badge.svg)](https://github.com/Heikkila-Pty-Ltd/chum/actions/workflows/ci.yml)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/Heikkila-Pty-Ltd/chum)](https://go.dev/)
+[![Go Report Card](https://goreportcard.com/badge/github.com/Heikkila-Pty-Ltd/chum)](https://goreportcard.com/report/github.com/Heikkila-Pty-Ltd/chum)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 > Ephemeral agents are dead. Welcome to Durable Execution.
@@ -104,7 +104,7 @@ The graph includes Temporal orchestration, activity workers, SQLite hot state, a
 - Build: `make build`
 - Test: `make test`
 - Lint: `make lint`
-- Execute: `./cortex --config <path> --dev`
+- Execute: `./chum --config <path> --dev`
 
 - Validate health through status endpoints and workflow histories before scaling worker count.
 - Use cold snapshots for incident replay.

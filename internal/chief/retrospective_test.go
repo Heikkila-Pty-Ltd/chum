@@ -63,7 +63,7 @@ func TestRecordRetrospectiveResultsReturnsAggregatedErrors(t *testing.T) {
 			Fast: []string{"fast-provider"},
 		},
 		Projects: map[string]config.Project{
-			"cortex": {
+			"chum": {
 				Enabled:   true,
 				Workspace: t.TempDir(),
 			},
@@ -105,7 +105,7 @@ func TestRecordRetrospectiveResultsDispatchesAndCreatesActionItems(t *testing.T)
 			Fast: []string{"fast-provider"},
 		},
 		Projects: map[string]config.Project{
-			"cortex": {
+			"chum": {
 				Enabled:   true,
 				Workspace: t.TempDir(),
 			},
@@ -147,7 +147,7 @@ func TestRecordRetrospectiveResultsDispatchesAndCreatesActionItems(t *testing.T)
 	}
 
 	// Verify the task was created in the DAG.
-	tasks, err := dag.ListTasks(t.Context(), "cortex")
+	tasks, err := dag.ListTasks(t.Context(), "chum")
 	if err != nil {
 		t.Fatalf("ListTasks: %v", err)
 	}

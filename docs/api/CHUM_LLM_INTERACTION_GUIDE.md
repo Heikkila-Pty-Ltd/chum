@@ -1,10 +1,10 @@
-# Cortex LLM Interaction Guide
+# CHUM LLM Interaction Guide
 
-This guide is for LLM agents operating Cortex safely and effectively.
+This guide is for LLM agents operating CHUM safely and effectively.
 
 ## Goal
 
-Use Cortex as the orchestration control plane for development work:
+Use CHUM as the orchestration control plane for development work:
 
 1. Observe system state.
 2. Control scheduler behavior.
@@ -14,7 +14,7 @@ Use Cortex as the orchestration control plane for development work:
 
 ## Operating Model
 
-Treat Cortex as:
+Treat CHUM as:
 
 - Source of execution truth: dispatch and health state in SQLite/API.
 - Not source of product truth: requirements and backlog remain in Beads.
@@ -22,16 +22,16 @@ Treat Cortex as:
 
 ## Fast Start
 
-### 1) Start Cortex
+### 1) Start CHUM
 
 ```bash
-./cortex --config chum.toml --dev
+./chum --config chum.toml --dev
 ```
 
 For a single cycle:
 
 ```bash
-./cortex --config chum.toml --once --dev
+./chum --config chum.toml --once --dev
 ```
 
 ### 2) Check Baseline Health
@@ -163,7 +163,7 @@ bd update <bead_id> --notes "triage findings"
 
 ## Prompting Guidance for External LLM Controllers
 
-When directing an LLM to operate Cortex, use explicit constraints:
+When directing an LLM to operate CHUM, use explicit constraints:
 
 - State objective and time horizon.
 - Require API evidence before each action.
@@ -174,7 +174,7 @@ When directing an LLM to operate Cortex, use explicit constraints:
 Example control prompt:
 
 ```
-Operate Cortex for 30 minutes as reliability steward.
+Operate CHUM for 30 minutes as reliability steward.
 Every action must cite current API evidence.
 Pause scheduler before risky changes.
 Update bead notes for all interventions.
@@ -183,7 +183,7 @@ Never retry the same failed dispatch more than once without new evidence.
 
 ## Launch-Oriented Usage (Later)
 
-When packaging Cortex for broader use:
+When packaging CHUM for broader use:
 
 1. Keep this guide as the default "LLM operator contract."
 2. Add a stable API version policy.

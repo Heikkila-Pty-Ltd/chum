@@ -13,7 +13,7 @@ Keep implementation costs low by moving decision-making into plan-space:
 - Chief Scrum Master: portfolio-level planning, dependency arbitration, cross-project sequencing.
 - Project Scrum Masters: project backlog refinement, readiness checks, and local prioritization.
 - Human Operator: approves execution plans and policy-impacting changes.
-- Cortex Scheduler: dispatches only when plan gate is open.
+- CHUM Scheduler: dispatches only when plan gate is open.
 
 ## Daily Workflow
 
@@ -24,8 +24,8 @@ Keep implementation costs low by moving decision-making into plan-space:
    - parallel execution waves,
    - readiness report and unresolved blockers.
 3. Human approves plan (`/plan approve` equivalent workflow).
-4. Activate plan in Cortex control plane.
-5. Cortex dispatches only from ready, unblocked frontier beads.
+4. Activate plan in CHUM control plane.
+5. CHUM dispatches only from ready, unblocked frontier beads.
 
 ## Readiness Definition
 
@@ -49,7 +49,7 @@ Invalid `stage:ready` beads are auto-reverted by scheduler preflight to `stage:p
 
 ## Execution Gate
 
-When `chief.require_approved_plan = true`, Cortex blocks implementation dispatch unless an active approved plan is set.
+When `chief.require_approved_plan = true`, CHUM blocks implementation dispatch unless an active approved plan is set.
 
 - Status endpoint: `GET /scheduler/plan`
 - Activate plan: `POST /scheduler/plan/activate` with JSON body:

@@ -26,7 +26,7 @@ max_per_tick = 3
 stuck_timeout = "30m"
 max_retries = 2
 log_level = "info"
-state_db = "/tmp/cortex-test.db"
+state_db = "/tmp/chum-test.db"
 
 [projects.test]
 enabled = true
@@ -276,7 +276,7 @@ auto_revert_on_failure = false
 func TestLoadNoEnabledProject(t *testing.T) {
 	cfg := `
 [general]
-state_db = "/tmp/cortex-test.db"
+state_db = "/tmp/chum-test.db"
 
 [projects.test]
 enabled = false
@@ -406,7 +406,7 @@ func TestLoadMatrixConfigEnabled(t *testing.T) {
 [matrix]
 enabled = true
 poll_interval = "45s"
-bot_user = "@cortex-bot:matrix.org"
+bot_user = "@chum-bot:matrix.org"
 read_limit = 40
 `
 	path := writeTestConfig(t, cfg)
@@ -421,8 +421,8 @@ read_limit = 40
 	if loaded.Matrix.PollInterval.Duration != 45*time.Second {
 		t.Fatalf("matrix.poll_interval = %v, want 45s", loaded.Matrix.PollInterval.Duration)
 	}
-	if loaded.Matrix.BotUser != "@cortex-bot:matrix.org" {
-		t.Fatalf("matrix.bot_user = %q, want @cortex-bot:matrix.org", loaded.Matrix.BotUser)
+	if loaded.Matrix.BotUser != "@chum-bot:matrix.org" {
+		t.Fatalf("matrix.bot_user = %q, want @chum-bot:matrix.org", loaded.Matrix.BotUser)
 	}
 	if loaded.Matrix.ReadLimit != 40 {
 		t.Fatalf("matrix.read_limit = %d, want 40", loaded.Matrix.ReadLimit)
@@ -449,7 +449,7 @@ read_limit = -1
 func TestLoadUnknownProviderInTier(t *testing.T) {
 	cfg := `
 [general]
-state_db = "/tmp/cortex-test.db"
+state_db = "/tmp/chum-test.db"
 
 [projects.test]
 enabled = true
@@ -1791,18 +1791,18 @@ func TestLoadExpandsHomeInProjectPaths(t *testing.T) {
 func TestLoadExpandsHomeInStateDBPath(t *testing.T) {
 	tempHome := t.TempDir()
 	t.Setenv("HOME", tempHome)
-	if err := os.MkdirAll(filepath.Join(tempHome, ".local/share/cortex"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(tempHome, ".local/share/chum"), 0o755); err != nil {
 		t.Fatalf("mkdir state db dir: %v", err)
 	}
 
-	cfg := strings.Replace(validConfig, `state_db = "/tmp/cortex-test.db"`, `state_db = "~/.local/share/cortex/cortex.db"`, 1)
+	cfg := strings.Replace(validConfig, `state_db = "/tmp/chum-test.db"`, `state_db = "~/.local/share/chum/chum.db"`, 1)
 	path := writeTestConfig(t, cfg)
 	loaded, err := Load(path)
 	if err != nil {
 		t.Fatalf("Load failed: %v", err)
 	}
 
-	want := filepath.Join(tempHome, ".local/share/cortex/cortex.db")
+	want := filepath.Join(tempHome, ".local/share/chum/chum.db")
 	if loaded.General.StateDB != want {
 		t.Fatalf("state_db = %q, want %q", loaded.General.StateDB, want)
 	}

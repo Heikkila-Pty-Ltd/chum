@@ -1,6 +1,6 @@
 # Scrum Master Commands
 
-> Cortex exposes a Matrix-based command interface for real-time project control. Commands are received via the Matrix poller and routed through `internal/matrix/poller.go`.
+> CHUM exposes a Matrix-based command interface for real-time project control. Commands are received via the Matrix poller and routed through `internal/matrix/poller.go`.
 
 ---
 
@@ -19,7 +19,7 @@ Returns a project summary: running dispatches, recent completions, open bead cou
 ```
 > status
 
-📊 cortex — 3 running, 12 completed (24h), 47 open beads
+📊 chum — 3 running, 12 completed (24h), 47 open beads
 Plan: plan-2026-02-20-main (active, approved by operator)
 Scheduler: RUNNING | Tick: 60s | Capacity: 8/40
 ```
@@ -31,9 +31,9 @@ Scheduler: RUNNING | Tick: 60s | Capacity: 8/40
 Updates a bead's priority. Lower numbers = higher priority.
 
 ```
-> priority cortex-o4ni p1
+> priority chum-o4ni p1
 
-✅ Updated cortex-o4ni priority to p1
+✅ Updated chum-o4ni priority to p1
 ```
 
 | Priority | Meaning |
@@ -55,7 +55,7 @@ Cancels a running dispatch by its numeric ID. This kills the agent session and m
 ```
 > cancel 1234
 
-✅ Cancelled dispatch 1234 (bead: cortex-bvnv, agent: claude)
+✅ Cancelled dispatch 1234 (bead: chum-bvnv, agent: claude)
 ```
 
 **Validation:** Dispatch ID must be a positive integer. Attempting to cancel an already-completed dispatch returns a descriptive error.
@@ -69,7 +69,7 @@ Creates a new task bead with default priority (p2).
 ```
 > create task "Fix login redirect loop" "The /auth/callback endpoint redirects back to /login when session cookie is set but expired"
 
-✅ Created new task cortex-x8k2: Fix login redirect loop
+✅ Created new task chum-x8k2: Fix login redirect loop
 ```
 
 **Validation:** Both title and description must be quoted. Missing quotes return usage guidance with the expected format.
@@ -109,7 +109,7 @@ The poller filters messages by `bot_user` mention, parses the command verb and a
 [matrix]
 enabled       = true
 poll_interval = "30s"
-bot_user      = "@cortex:matrix.org"
+bot_user      = "@chum:matrix.org"
 read_limit    = 25
 ```
 

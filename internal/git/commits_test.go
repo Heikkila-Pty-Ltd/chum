@@ -14,23 +14,23 @@ func TestExtractBeadIDs(t *testing.T) {
 	}{
 		{
 			name:     "simple bead ID",
-			message:  "fix(cortex-abc): implement new feature",
-			expected: []string{"cortex-abc"},
+			message:  "fix(chum-abc): implement new feature",
+			expected: []string{"chum-abc"},
 		},
 		{
 			name:     "bead ID with number suffix",
-			message:  "feat(cortex-abc.1): add tests for feature",
-			expected: []string{"cortex-abc.1"},
+			message:  "feat(chum-abc.1): add tests for feature",
+			expected: []string{"chum-abc.1"},
 		},
 		{
 			name:     "multiple bead IDs",
-			message:  "fix cortex-abc and cortex-def.2 issues",
-			expected: []string{"cortex-abc", "cortex-def.2"},
+			message:  "fix chum-abc and chum-def.2 issues",
+			expected: []string{"chum-abc", "chum-def.2"},
 		},
 		{
 			name:     "bead ID in middle of message",
-			message:  "Updated implementation for cortex-xyz according to requirements",
-			expected: []string{"cortex-xyz"},
+			message:  "Updated implementation for chum-xyz according to requirements",
+			expected: []string{"chum-xyz"},
 		},
 		{
 			name:     "no bead IDs",
@@ -59,8 +59,8 @@ func TestExtractBeadIDs(t *testing.T) {
 		},
 		{
 			name:     "duplicate bead IDs deduplicated",
-			message:  "fix cortex-xyz issue and update cortex-xyz tests for cortex-xyz",
-			expected: []string{"cortex-xyz"},
+			message:  "fix chum-xyz issue and update chum-xyz tests for chum-xyz",
+			expected: []string{"chum-xyz"},
 		},
 	}
 
@@ -82,7 +82,7 @@ func TestIsLikelyBeadID(t *testing.T) {
 	}{
 		{
 			name:      "valid bead ID",
-			candidate: "cortex-abc",
+			candidate: "chum-abc",
 			expected:  true,
 		},
 		{
@@ -92,7 +92,7 @@ func TestIsLikelyBeadID(t *testing.T) {
 		},
 		{
 			name:      "valid bead ID with suffix",
-			candidate: "cortex-abc.1",
+			candidate: "chum-abc.1",
 			expected:  true,
 		},
 		{
@@ -117,7 +117,7 @@ func TestIsLikelyBeadID(t *testing.T) {
 		},
 		{
 			name:      "no dash",
-			candidate: "cortex",
+			candidate: "chum",
 			expected:  false,
 		},
 		{
@@ -127,7 +127,7 @@ func TestIsLikelyBeadID(t *testing.T) {
 		},
 		{
 			name:      "second part too short",
-			candidate: "cortex-a",
+			candidate: "chum-a",
 			expected:  false,
 		},
 		{
@@ -151,14 +151,14 @@ func TestCommit_BeadIDs(t *testing.T) {
 	// Test that Commit struct properly extracts bead IDs
 	commit := Commit{
 		Hash:    "abc123",
-		Message: "feat(cortex-xyz): implement feature for cortex-abc.1",
+		Message: "feat(chum-xyz): implement feature for chum-abc.1",
 		Author:  "test@example.com",
 		Date:    time.Now(),
 	}
 	
 	commit.BeadIDs = ExtractBeadIDs(commit.Message)
 	
-	expected := []string{"cortex-xyz", "cortex-abc.1"}
+	expected := []string{"chum-xyz", "chum-abc.1"}
 	if !reflect.DeepEqual(commit.BeadIDs, expected) {
 		t.Errorf("Commit.BeadIDs = %v, expected %v", commit.BeadIDs, expected)
 	}
@@ -168,14 +168,14 @@ func TestCommit_BeadIDs(t *testing.T) {
 func TestParseCommitLine(t *testing.T) {
 	// This would be used to test the commit parsing logic
 	// For real testing, we'd need to set up a git repo with test commits
-	parts := []string{"abc123def456", "feat(cortex-xyz): implement feature", "John Doe", "2024-01-15 10:30:00 -0500"}
+	parts := []string{"abc123def456", "feat(chum-xyz): implement feature", "John Doe", "2024-01-15 10:30:00 -0500"}
 	
 	if len(parts) != 4 {
 		t.Errorf("Expected 4 parts in commit line, got %d", len(parts))
 	}
 	
 	beadIDs := ExtractBeadIDs(parts[1])
-	expected := []string{"cortex-xyz"}
+	expected := []string{"chum-xyz"}
 	if !reflect.DeepEqual(beadIDs, expected) {
 		t.Errorf("BeadIDs = %v, expected %v", beadIDs, expected)
 	}

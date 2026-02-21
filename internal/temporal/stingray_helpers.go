@@ -118,7 +118,7 @@ func formatCommand(name string, args ...string) string {
 	return strings.Join(parts, " ")
 }
 
-func parseGolangCILintOutput(raw string) (int, []string, []GolangCILintIssue, error) {
+func parseGolangCILintOutput(raw string) (count int, linters []string, issues []GolangCILintIssue, err error) {
 	var payload struct {
 		Issues []struct {
 			FromLinter string `json:"FromLinter"`
@@ -133,15 +133,15 @@ func parseGolangCILintOutput(raw string) (int, []string, []GolangCILintIssue, er
 	if strings.TrimSpace(raw) == "" {
 		return 0, nil, nil, nil
 	}
-	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
+	if err = json.Unmarshal([]byte(raw), &payload); err != nil {
 		return 0, nil, nil, err
 	}
 
-	linters := make(map[string]struct{})
-	parsed := make([]GolangCILintIssue, 0, len(payload.Issues))
+	seen := make(map[string]struct{})
+	issues = make([]GolangCILintIssue, 0, len(payload.Issues))
 	for _, issue := range payload.Issues {
-		linters[issue.FromLinter] = struct{}{}
-		parsed = append(parsed, GolangCILintIssue{
+		seen[issue.FromLinter] = struct{}{}
+		issues = append(issues, GolangCILintIssue{
 			Linter:  issue.FromLinter,
 			Message: issue.Text,
 			File:    issue.Pos.Filename,
@@ -149,19 +149,20 @@ func parseGolangCILintOutput(raw string) (int, []string, []GolangCILintIssue, er
 		})
 	}
 
-	linterList := make([]string, 0, len(linters))
-	for linter := range linters {
-		linterList = append(linterList, linter)
+	linters = make([]string, 0, len(seen))
+	for l := range seen {
+		linters = append(linters, l)
 	}
-	sort.Strings(linterList)
+	sort.Strings(linters)
 
-	return len(payload.Issues), linterList, parsed, nil
+	count = len(payload.Issues)
+	return
 }
 
-func parseCoverageTotal(raw string) (float64, string, error) {
+func parseCoverageTotal(raw string) (percent float64, line string, err error) {
 	sc := bufio.NewScanner(strings.NewReader(raw))
 	for sc.Scan() {
-		line := strings.TrimSpace(sc.Text())
+		line = strings.TrimSpace(sc.Text())
 		if !strings.HasPrefix(line, "total:") {
 			continue
 		}
@@ -170,13 +171,13 @@ func parseCoverageTotal(raw string) (float64, string, error) {
 			return 0, "", fmt.Errorf("unexpected total line: %q", line)
 		}
 		percentStr := strings.TrimSuffix(fields[len(fields)-1], "%")
-		value, err := strconv.ParseFloat(percentStr, 64)
+		percent, err = strconv.ParseFloat(percentStr, 64)
 		if err != nil {
 			return 0, "", fmt.Errorf("invalid coverage percentage %q: %w", fields[len(fields)-1], err)
 		}
-		return value, line, nil
+		return percent, line, nil
 	}
-	if err := sc.Err(); err != nil {
+	if err = sc.Err(); err != nil {
 		return 0, "", err
 	}
 	return 0, "", fmt.Errorf("coverage total line not found")
@@ -242,7 +243,7 @@ func stripModVersion(s string) string {
 	return s
 }
 
-func parseTODOOutput(raw string, baseDir string) []TODOHit {
+func parseTODOOutput(raw, baseDir string) []TODOHit {
 	if strings.TrimSpace(raw) == "" {
 		return nil
 	}

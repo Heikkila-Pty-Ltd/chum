@@ -40,7 +40,44 @@ const (
 	defaultStingrayTrendingMinRuns  = 2
 	stingrayFindingStatusOpen       = "open"
 	stingrayFindingStatusFiled      = "filed"
+	stingrayFindingStatusResolved   = "resolved"
+	stingrayFindingStatusWontFix    = "wont_fix"
+	stingrayFindingSeverityHigh     = "high"
+	stingrayFindingSeverityMedium   = "medium"
+	stingrayFindingSeverityLow      = "low"
+	stingrayFindingCategoryGodObject = "god_object"
+	stingrayFindingCategoryTechDebt  = "tech_debt"
+	stingrayFindingCategoryDepHealth = "dep_health"
+	stingrayFindingCategoryCoverage = "coverage"
+	stingrayFindingCategoryStructure = "structure"
+	stingrayFindingCategoryOSSRisk   = "oss_opportunity"
+	stingrayFindingCategoryCoupling  = "coupling"
+	stingrayFindingCategoryDocDrift = "doc_drift"
 )
+
+var validStingrayFindingStatuses = map[string]struct{}{
+	stingrayFindingStatusOpen:     {},
+	stingrayFindingStatusFiled:    {},
+	stingrayFindingStatusResolved: {},
+	stingrayFindingStatusWontFix:  {},
+}
+
+var validStingrayFindingSeverities = map[string]struct{}{
+	stingrayFindingSeverityHigh:   {},
+	stingrayFindingSeverityMedium: {},
+	stingrayFindingSeverityLow:    {},
+}
+
+var validStingrayFindingCategories = map[string]struct{}{
+	stingrayFindingCategoryGodObject:  {},
+	stingrayFindingCategoryTechDebt:   {},
+	stingrayFindingCategoryDepHealth:  {},
+	stingrayFindingCategoryCoverage:   {},
+	stingrayFindingCategoryStructure:  {},
+	stingrayFindingCategoryOSSRisk:    {},
+	stingrayFindingCategoryCoupling:   {},
+	stingrayFindingCategoryDocDrift:   {},
+}
 
 // RecordRun inserts a new Stingray run and returns its ID.
 func (s *Store) RecordRun(project string, findingsTotal, findingsNew, findingsResolved int, metricsJSON string) (int64, error) {
@@ -48,6 +85,7 @@ func (s *Store) RecordRun(project string, findingsTotal, findingsNew, findingsRe
 	if project == "" {
 		return 0, fmt.Errorf("store: record stingray run: project is required")
 	}
+	metricsJSON = strings.TrimSpace(metricsJSON)
 	if metricsJSON == "" {
 		metricsJSON = "{}"
 	}
@@ -67,7 +105,11 @@ func (s *Store) RecordRun(project string, findingsTotal, findingsNew, findingsRe
 	if err != nil {
 		return 0, fmt.Errorf("store: record stingray run: %w", err)
 	}
-	return res.LastInsertId()
+	runID, err := res.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("store: record stingray run: get insert id: %w", err)
+	}
+	return runID, nil
 }
 
 // RecordFinding inserts a new Stingray finding and returns its ID.
@@ -85,11 +127,27 @@ func (s *Store) RecordFinding(runID int64, project, category, severity, title, d
 	if runID <= 0 {
 		return 0, fmt.Errorf("store: record stingray finding: run ID must be > 0")
 	}
+	var runProject string
+	if err := s.db.QueryRow(`SELECT project FROM stingray_runs WHERE id = ?`, runID).Scan(&runProject); err != nil {
+		if err == sql.ErrNoRows {
+			return 0, fmt.Errorf("store: record stingray finding: run %d not found", runID)
+		}
+		return 0, fmt.Errorf("store: record stingray finding: lookup run %d: %w", runID, err)
+	}
+	if runProject != project {
+		return 0, fmt.Errorf("store: record stingray finding: run %d belongs to project %q", runID, runProject)
+	}
 	if category == "" {
 		return 0, fmt.Errorf("store: record stingray finding: category is required")
 	}
+	if _, ok := validStingrayFindingCategories[category]; !ok {
+		return 0, fmt.Errorf("store: record stingray finding: invalid category %q", category)
+	}
 	if severity == "" {
 		return 0, fmt.Errorf("store: record stingray finding: severity is required")
+	}
+	if _, ok := validStingrayFindingSeverities[severity]; !ok {
+		return 0, fmt.Errorf("store: record stingray finding: invalid severity %q", severity)
 	}
 	if title == "" {
 		return 0, fmt.Errorf("store: record stingray finding: title is required")
@@ -104,7 +162,11 @@ func (s *Store) RecordFinding(runID int64, project, category, severity, title, d
 	if err != nil {
 		return 0, fmt.Errorf("store: record stingray finding: %w", err)
 	}
-	return res.LastInsertId()
+	findingID, err := res.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("store: record stingray finding: get insert id: %w", err)
+	}
+	return findingID, nil
 }
 
 // GetRecentFindings returns the most recent findings for a project, ordered by last_seen descending.
@@ -143,21 +205,44 @@ func (s *Store) GetTrendingFindings(project string, minOccurrences int) ([]Sting
 		minOccurrences = defaultStingrayTrendingMinRuns
 	}
 	// Find persistent findings: same title+file_path appearing across multiple runs.
-	// We group by (title, file_path) and return the most recent finding row for each group.
+	// We group by (title, file_path) and return the most recent row for each group.
 	rows, err := s.db.Query(`
-		SELECT f.id, f.run_id, f.project, f.category, f.severity, f.title, f.detail,
-		       f.file_path, f.evidence, f.bead_id, f.status, f.first_seen, f.last_seen
-		FROM stingray_findings f
-		INNER JOIN (
-			SELECT title, file_path, MAX(id) AS max_id, COUNT(DISTINCT run_id) AS run_count
+		WITH active_findings AS (
+			SELECT title, file_path
 			FROM stingray_findings
 			WHERE project = ? AND status IN (?, ?)
 			GROUP BY title, file_path
-			HAVING run_count >= ?
-		) grouped ON f.id = grouped.max_id
-		WHERE f.status IN (?, ?)
-		ORDER BY f.last_seen DESC, f.id DESC
-	`, project, stingrayFindingStatusOpen, stingrayFindingStatusFiled, minOccurrences, stingrayFindingStatusOpen, stingrayFindingStatusFiled)
+			HAVING COUNT(DISTINCT run_id) >= ?
+		),
+		ranked_findings AS (
+			SELECT
+				f.id,
+				f.run_id,
+				f.project,
+				f.category,
+				f.severity,
+				f.title,
+				f.detail,
+				f.file_path,
+				f.evidence,
+				f.bead_id,
+				f.status,
+				f.first_seen,
+				f.last_seen,
+				ROW_NUMBER() OVER (
+					PARTITION BY f.title, f.file_path
+					ORDER BY f.last_seen DESC, f.id DESC
+				) AS rn
+			FROM stingray_findings f
+			INNER JOIN active_findings af ON af.title = f.title AND af.file_path = f.file_path
+			WHERE f.project = ? AND f.status IN (?, ?)
+		)
+		SELECT id, run_id, project, category, severity, title, detail,
+		       file_path, evidence, bead_id, status, first_seen, last_seen
+		FROM ranked_findings
+		WHERE rn = 1
+		ORDER BY last_seen DESC, id DESC
+	`, project, stingrayFindingStatusOpen, stingrayFindingStatusFiled, minOccurrences, project, stingrayFindingStatusOpen, stingrayFindingStatusFiled)
 	if err != nil {
 		return nil, fmt.Errorf("store: get trending stingray findings: %w", err)
 	}
@@ -167,6 +252,13 @@ func (s *Store) GetTrendingFindings(project string, minOccurrences int) ([]Sting
 
 // UpdateFindingStatus updates the status of a finding (open, filed, resolved, wont_fix).
 func (s *Store) UpdateFindingStatus(id int64, status string) error {
+	status = strings.TrimSpace(status)
+	if status == "" {
+		return fmt.Errorf("store: update stingray finding status: status is required")
+	}
+	if _, ok := validStingrayFindingStatuses[status]; !ok {
+		return fmt.Errorf("store: update stingray finding status: invalid status %q", status)
+	}
 	_, err := s.db.Exec(`UPDATE stingray_findings SET status = ? WHERE id = ?`, status, id)
 	if err != nil {
 		return fmt.Errorf("store: update stingray finding status: %w", err)
@@ -176,6 +268,7 @@ func (s *Store) UpdateFindingStatus(id int64, status string) error {
 
 // UpdateFindingBeadID links a finding to a filed bead.
 func (s *Store) UpdateFindingBeadID(id int64, beadID string) error {
+	beadID = strings.TrimSpace(beadID)
 	_, err := s.db.Exec(`UPDATE stingray_findings SET bead_id = ?, status = 'filed' WHERE id = ?`, beadID, id)
 	if err != nil {
 		return fmt.Errorf("store: update stingray finding bead_id: %w", err)
@@ -185,7 +278,14 @@ func (s *Store) UpdateFindingBeadID(id int64, beadID string) error {
 
 // UpdateFindingLastSeen bumps last_seen to now for a finding that reappears.
 func (s *Store) UpdateFindingLastSeen(id int64) error {
-	_, err := s.db.Exec(`UPDATE stingray_findings SET last_seen = datetime('now') WHERE id = ?`, id)
+	_, err := s.db.Exec(`
+		UPDATE stingray_findings
+		SET last_seen = CASE
+			WHEN datetime(last_seen) >= datetime('now') THEN datetime(last_seen, '+1 second')
+			ELSE datetime('now')
+		END
+		WHERE id = ?
+	`, id)
 	if err != nil {
 		return fmt.Errorf("store: update stingray finding last_seen: %w", err)
 	}

@@ -579,12 +579,14 @@ func TestOpenMigratesLegacyDBWithoutStingrayTables(t *testing.T) {
 	assertIndexesExist(t, s.DB(), "stingray_runs", []string{
 		"idx_stingray_runs_project",
 		"idx_stingray_runs_run_at",
+		"idx_stingray_runs_project_id",
 	})
 	assertIndexesExist(t, s.DB(), "stingray_findings", []string{
 		"idx_stingray_findings_run",
 		"idx_stingray_findings_project",
 		"idx_stingray_findings_status",
 		"idx_stingray_findings_category",
+		"idx_stingray_findings_project_status_run",
 		"idx_stingray_findings_project_status_title_file_path",
 		"idx_stingray_findings_project_last_seen",
 	})
@@ -596,6 +598,35 @@ func TestRecordRunValidatesProject(t *testing.T) {
 	_, err := s.RecordRun(" ", 1, 1, 0, "{}")
 	if err == nil {
 		t.Fatalf("expected error for blank project")
+	}
+}
+
+func TestRecordRunTrimsProjectAndMetricDefaultsAndClampsCounts(t *testing.T) {
+	s := tempStore(t)
+
+	id, err := s.RecordRun("  project-x  ", -5, -1, 3, "   ")
+	if err != nil {
+		t.Fatalf("RecordRun failed: %v", err)
+	}
+
+	run, err := s.GetLatestRun("project-x")
+	if err != nil {
+		t.Fatalf("GetLatestRun failed: %v", err)
+	}
+	if run == nil {
+		t.Fatalf("expected run, got nil")
+	}
+	if run.ID != id {
+		t.Fatalf("run ID = %d, want %d", run.ID, id)
+	}
+	if run.Project != "project-x" {
+		t.Fatalf("project = %q, want %q", run.Project, "project-x")
+	}
+	if run.FindingsTotal != 0 || run.FindingsNew != 0 || run.FindingsResolved != 3 {
+		t.Fatalf("counts = %d %d %d, want 0 0 3", run.FindingsTotal, run.FindingsNew, run.FindingsResolved)
+	}
+	if run.MetricsJSON != "{}" {
+		t.Fatalf("metrics_json = %q, want %q", run.MetricsJSON, "{}")
 	}
 }
 
@@ -615,6 +646,116 @@ func TestRecordFindingValidatesInputs(t *testing.T) {
 	_, err = s.RecordFinding(0, "proj", "coverage", "medium", "Bad title", "bad detail", "", "")
 	if err == nil {
 		t.Fatalf("expected error for invalid run ID")
+	}
+
+	_, err = s.RecordFinding(runID, "proj", "invalid_category", "medium", "Bad title", "bad detail", "", "")
+	if err == nil {
+		t.Fatalf("expected error for invalid category")
+	}
+
+	_, err = s.RecordFinding(runID, "proj", "coverage", "invalid_severity", "Bad title", "bad detail", "", "")
+	if err == nil {
+		t.Fatalf("expected error for invalid severity")
+	}
+}
+
+func TestUpdateFindingStatusRejectsInvalidStatus(t *testing.T) {
+	s := tempStore(t)
+
+	runID, err := s.RecordRun("proj", 1, 1, 0, "{}")
+	if err != nil {
+		t.Fatalf("RecordRun failed: %v", err)
+	}
+
+	fID, err := s.RecordFinding(runID, "proj", "coverage", "low", "Low coverage", "23%", "pkg", "")
+	if err != nil {
+		t.Fatalf("RecordFinding failed: %v", err)
+	}
+
+	if err := s.UpdateFindingStatus(fID, "invalid"); err == nil {
+		t.Fatalf("expected error for invalid status")
+	}
+}
+
+func TestUpdateFindingBeadIDTrimsWhitespace(t *testing.T) {
+	s := tempStore(t)
+
+	runID, err := s.RecordRun("proj", 1, 1, 0, "{}")
+	if err != nil {
+		t.Fatalf("RecordRun failed: %v", err)
+	}
+	fID, err := s.RecordFinding(runID, "proj", "coverage", "low", "trim", "case", "", "")
+	if err != nil {
+		t.Fatalf("RecordFinding failed: %v", err)
+	}
+	if err := s.UpdateFindingBeadID(fID, "  bead-whitespace  "); err != nil {
+		t.Fatalf("UpdateFindingBeadID failed: %v", err)
+	}
+
+	finding, err := s.GetFindingByTitleAndFile("proj", "trim", "")
+	if err != nil {
+		t.Fatalf("GetFindingByTitleAndFile failed: %v", err)
+	}
+	if finding == nil {
+		t.Fatal("expected finding")
+	}
+	if finding.BeadID != "bead-whitespace" {
+		t.Fatalf("bead_id = %q, want %q", finding.BeadID, "bead-whitespace")
+	}
+}
+
+func TestRecordFindingRequiresExistingRun(t *testing.T) {
+	s := tempStore(t)
+
+	_, err := s.RecordFinding(99999, "proj", "coverage", "medium", "No run", "should fail", "", "")
+	if err == nil {
+		t.Fatalf("expected error for missing run")
+	}
+}
+
+func TestRecordFindingRequiresMatchingProjectAndTrimsText(t *testing.T) {
+	s := tempStore(t)
+
+	runA, err := s.RecordRun("project-a", 1, 1, 0, "{}")
+	if err != nil {
+		t.Fatalf("RecordRun failed: %v", err)
+	}
+	runB, err := s.RecordRun("project-b", 1, 1, 0, "{}")
+	if err != nil {
+		t.Fatalf("RecordRun failed: %v", err)
+	}
+
+	_, err = s.RecordFinding(runA, "  project-b  ", "coverage", "medium", "  Title  ", "  Detail  ", "  path/to/file.go  ", "  evidence  ")
+	if err == nil {
+		t.Fatalf("expected project mismatch error")
+	}
+
+	_, err = s.RecordFinding(runB, "project-b", "coverage", "medium", "  Title  ", "  Detail  ", "  path/to/file.go  ", "  evidence  ")
+	if err != nil {
+		t.Fatalf("RecordFinding failed: %v", err)
+	}
+	runID, _ := s.GetLatestRun("project-b")
+	if runID == nil || runID.ID <= 0 {
+		t.Fatalf("expected latest run")
+	}
+
+	var title, filePath, evidence string
+	if err := s.DB().QueryRow(`
+		SELECT title, file_path, evidence
+		FROM stingray_findings
+		WHERE run_id = ? AND project = 'project-b'
+		LIMIT 1
+	`, runB).Scan(&title, &filePath, &evidence); err != nil {
+		t.Fatalf("query finding failed: %v", err)
+	}
+	if title != "Title" {
+		t.Errorf("title = %q, want %q", title, "Title")
+	}
+	if filePath != "path/to/file.go" {
+		t.Errorf("file_path = %q, want %q", filePath, "path/to/file.go")
+	}
+	if evidence != "evidence" {
+		t.Errorf("evidence = %q, want %q", evidence, "evidence")
 	}
 }
 
@@ -778,6 +919,31 @@ func TestGetTrendingFindingsReopenAndStatusTransitions(t *testing.T) {
 	}
 	if run == nil || run.ID != openRun2ID {
 		t.Fatalf("expected latest open/filed finding %d, got %+v", openRun2ID, run)
+	}
+}
+
+func TestGetTrendingFindingsUsesLastSeenToSelectRow(t *testing.T) {
+	s := tempStore(t)
+
+	r1, _ := s.RecordRun("proj", 1, 1, 0, "{}")
+	f1, _ := s.RecordFinding(r1, "proj", "tech_debt", "low", "API drift", "first", "api.go", "")
+
+	r2, _ := s.RecordRun("proj", 1, 1, 0, "{}")
+	_, _ = s.RecordFinding(r2, "proj", "tech_debt", "low", "API drift", "second", "api.go", "")
+
+	if err := s.UpdateFindingLastSeen(f1); err != nil {
+		t.Fatalf("UpdateFindingLastSeen failed: %v", err)
+	}
+
+	trending, err := s.GetTrendingFindings("proj", 2)
+	if err != nil {
+		t.Fatalf("GetTrendingFindings failed: %v", err)
+	}
+	if len(trending) != 1 {
+		t.Fatalf("expected 1 trending finding, got %d", len(trending))
+	}
+	if trending[0].ID != f1 {
+		t.Fatalf("expected latest finding ID %d by last_seen, got %d", f1, trending[0].ID)
 	}
 }
 
@@ -977,12 +1143,14 @@ func TestStingraySchemaMatchesDesignDefaultsAndIndexes(t *testing.T) {
 	assertIndexesExist(t, s.DB(), "stingray_runs", []string{
 		"idx_stingray_runs_project",
 		"idx_stingray_runs_run_at",
+		"idx_stingray_runs_project_id",
 	})
 	assertIndexesExist(t, s.DB(), "stingray_findings", []string{
 		"idx_stingray_findings_run",
 		"idx_stingray_findings_project",
 		"idx_stingray_findings_status",
 		"idx_stingray_findings_category",
+		"idx_stingray_findings_project_status_run",
 		"idx_stingray_findings_project_status_title_file_path",
 		"idx_stingray_findings_project_last_seen",
 	})
@@ -1037,7 +1205,7 @@ func TestGetRecentFindingsDefaultLimitAndOrder(t *testing.T) {
 
 	runID, _ := s.RecordRun("proj", 0, 0, 0, "{}")
 	for i := 0; i < 25; i++ {
-		title := "finding-" + string('a'+i)
+		title := fmt.Sprintf("finding-%c", 'a'+rune(i))
 		_, err := s.RecordFinding(runID, "proj", "tech_debt", "low", title, "detail", "", "")
 		if err != nil {
 			t.Fatalf("RecordFinding %d failed: %v", i, err)

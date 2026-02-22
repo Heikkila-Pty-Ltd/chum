@@ -18,7 +18,9 @@ CREATE TABLE IF NOT EXISTS stingray_runs (
 
 const stingrayRunsIndexes = `
 CREATE INDEX IF NOT EXISTS idx_stingray_runs_project ON stingray_runs(project);
-CREATE INDEX IF NOT EXISTS idx_stingray_runs_run_at ON stingray_runs(run_at);`
+CREATE INDEX IF NOT EXISTS idx_stingray_runs_run_at ON stingray_runs(run_at);
+CREATE INDEX IF NOT EXISTS idx_stingray_runs_project_id ON stingray_runs(project, id);
+`
 
 const stingrayFindingsTableSchema = `
 CREATE TABLE IF NOT EXISTS stingray_findings (
@@ -40,6 +42,7 @@ CREATE TABLE IF NOT EXISTS stingray_findings (
 const stingrayFindingsIndexes = `
 CREATE INDEX IF NOT EXISTS idx_stingray_findings_run ON stingray_findings(run_id);
 CREATE INDEX IF NOT EXISTS idx_stingray_findings_project ON stingray_findings(project);
+CREATE INDEX IF NOT EXISTS idx_stingray_findings_project_status_run ON stingray_findings(project, status, run_id);
 CREATE INDEX IF NOT EXISTS idx_stingray_findings_status ON stingray_findings(status);
 CREATE INDEX IF NOT EXISTS idx_stingray_findings_category ON stingray_findings(category);
 CREATE INDEX IF NOT EXISTS idx_stingray_findings_project_status_title_file_path

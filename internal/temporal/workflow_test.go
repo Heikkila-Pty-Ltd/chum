@@ -177,6 +177,13 @@ func TestChumAgentWorkflowUpsertsSearchAttributesAtLifecycleStages(t *testing.T)
 
 	stubActivities(env)
 	var captured []map[string]interface{}
+	var a *Activities
+
+	// Ensure optional CHUM child workflows are mocked to avoid environment
+	// child-workflow registration issues when using testsuite with minimal mocks.
+	env.OnWorkflow(ContinuousLearnerWorkflow, mock.Anything, mock.Anything).Return(nil)
+	env.OnWorkflow(TacticalGroomWorkflow, mock.Anything, mock.Anything).Return(nil)
+
 	original := upsertChumSearchAttributesFn
 	t.Cleanup(func() {
 		upsertChumSearchAttributesFn = original
@@ -233,7 +240,7 @@ func TestBuildOpenAgentWorkflowQueryFiltersByProject(t *testing.T) {
 
 func TestListOpenAgentWorkflowsUsesProjectFilter(t *testing.T) {
 	fakeTC := &fakeWorkflowListClient{}
-	_, err := listOpenAgentWorkflows(context.Background(), fakeTC, "alpha-proj")
+	_, err := listOpenAgentWorkflows(t.Context(), fakeTC, "alpha-proj")
 	require.NoError(t, err)
 	require.Len(t, fakeTC.queries, 1)
 	require.Equal(t, 1, len(fakeTC.queries))

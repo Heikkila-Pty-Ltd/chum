@@ -34,7 +34,7 @@ const (
 	chumWorkflowStatusEscalated = "escalated"
 )
 
-var upsertChumSearchAttributesFn = workflow.UpsertSearchAttributes
+var upsertChumSearchAttributesFn = workflow.UpsertSearchAttributes //nolint:staticcheck
 
 func chumSearchAttributeDefs() map[string]enumspb.IndexedValueType {
 	return map[string]enumspb.IndexedValueType{

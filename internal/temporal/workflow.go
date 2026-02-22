@@ -110,7 +110,9 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 	req.TaskTitle = normalizeTaskTitle(req.TaskID, req.TaskTitle, req.Prompt)
 	searchMetadata := req
 
-	_ = upsertChumWorkflowSearchAttributes(ctx, searchMetadata, chumWorkflowStatusPlan)
+	if err := upsertChumWorkflowSearchAttributes(ctx, searchMetadata, chumWorkflowStatusPlan); err != nil {
+		logger.Warn(SharkPrefix+" Failed to set workflow search attributes to plan", "error", err)
+	}
 	drainSignal := workflow.GetSignalChannel(ctx, ChumAgentDrainSignalName)
 	resumeSignal := workflow.GetSignalChannel(ctx, ChumAgentResumeSignalName)
 
@@ -208,7 +210,9 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 		"Files", len(plan.FilesToModify),
 	)
 	notify("plan", map[string]string{"title": plan.Summary, "agent": req.Agent})
-	_ = upsertChumWorkflowSearchAttributes(ctx, searchMetadata, chumWorkflowStatusGate)
+	if err := upsertChumWorkflowSearchAttributes(ctx, searchMetadata, chumWorkflowStatusGate); err != nil {
+		logger.Warn(SharkPrefix+" Failed to set workflow search attributes to gate", "error", err)
+	}
 
 	// ===== PHASE 2: HUMAN GATE =====
 	// Pre-planned work (has acceptance criteria) skips the gate.

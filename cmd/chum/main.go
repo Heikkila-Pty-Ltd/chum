@@ -113,37 +113,38 @@ func (a *adminBatchOpsRunner) Terminate(ctx context.Context, query string) (stri
 	return a.terminate(ctx, query)
 }
 
-func parseAdminSubcommand(args []string, defaultQuery string) (string, string, error) {
+func parseAdminSubcommand(args []string, defaultQuery string) (command string, query string, err error) {
 	if len(args) < 2 {
 		return "", "", fmt.Errorf("admin requires a subcommand: drain | resume | reset | terminate")
 	}
 
-	subcommand := strings.ToLower(strings.TrimSpace(args[1]))
-	switch subcommand {
+	command = strings.ToLower(strings.TrimSpace(args[1]))
+	switch command {
 	case "drain", "resume", "reset", "terminate":
 	default:
-		return "", "", fmt.Errorf("unknown admin command %q", subcommand)
+		return "", "", fmt.Errorf("unknown admin command %q", command)
 	}
 
-	fs := flag.NewFlagSet(fmt.Sprintf("admin %s", subcommand), flag.ContinueOnError)
+	fs := flag.NewFlagSet(fmt.Sprintf("admin %s", command), flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
-	query := fs.String("query", "", "visibility query")
+	q := fs.String("query", "", "visibility query")
 	if err := fs.Parse(args[2:]); err != nil {
 		return "", "", err
 	}
 	if fs.NArg() > 0 {
-		return "", "", fmt.Errorf("unexpected arguments for admin %s: %v", subcommand, fs.Args())
+		return "", "", fmt.Errorf("unexpected arguments for admin %s: %v", command, fs.Args())
 	}
 
-	q := strings.TrimSpace(*query)
-	if (subcommand == "reset" || subcommand == "terminate") && q == "" {
-		return "", "", fmt.Errorf("--query is required for %s", subcommand)
+	qry := strings.TrimSpace(*q)
+	if (command == "reset" || command == "terminate") && qry == "" {
+		return "", "", fmt.Errorf("--query is required for %s", command)
 	}
-	if q == "" {
-		q = defaultQuery
+	if qry == "" {
+		qry = defaultQuery
 	}
 
-	return subcommand, q, nil
+	query = qry
+	return command, query, nil
 }
 
 func runAdminAction(ctx context.Context, command, query string, ops adminBatchOps) (string, error) {
@@ -317,8 +318,8 @@ func main() {
 	}
 
 	temporalNamespace := strings.TrimSpace(os.Getenv("TEMPORAL_NAMESPACE"))
-	if err := registerTemporalSearchAttributes(context.Background(), cfg.General.TemporalHostPort, temporalNamespace, logger); err != nil {
-		logger.Error("failed to register temporal search attributes", "host", cfg.General.TemporalHostPort, "namespace", temporalNamespace, "error", err)
+	if registerErr := registerTemporalSearchAttributes(context.Background(), cfg.General.TemporalHostPort, temporalNamespace, logger); registerErr != nil {
+		logger.Error("failed to register temporal search attributes", "host", cfg.General.TemporalHostPort, "namespace", temporalNamespace, "error", registerErr)
 		os.Exit(1)
 	}
 

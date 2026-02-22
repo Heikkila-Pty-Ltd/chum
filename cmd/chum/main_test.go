@@ -226,7 +226,7 @@ func TestRunAdminActionRoutesToCorrectRunner(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			ops := &fakeAdminBatchOps{}
-			operationID, err := runAdminAction(context.Background(), tc.command, tc.query, ops)
+			operationID, err := runAdminAction(t.Context(), tc.command, tc.query, ops)
 			require.NoError(t, err)
 			require.False(t, operationID == "")
 
@@ -240,7 +240,7 @@ func TestRunAdminActionRoutesToCorrectRunner(t *testing.T) {
 
 	t.Run("unknown command returns error", func(t *testing.T) {
 		ops := &fakeAdminBatchOps{}
-		_, err := runAdminAction(context.Background(), "invalid", "q", ops)
+		_, err := runAdminAction(t.Context(), "invalid", "q", ops)
 		require.ErrorContains(t, err, "unknown admin command")
 	})
 }

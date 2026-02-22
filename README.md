@@ -114,7 +114,14 @@ The graph includes Temporal orchestration, activity workers, SQLite hot state, a
 - `docs/architecture/ARCHITECTURE.md`
 - `docs/architecture/CONFIG.md`
 - `docs/architecture/CHUM_BACKLOG.md`
-- `docs/api/api-security.md`
+- `docs/architecture/CHUM_OVERVIEW.md` — high-level architecture and design rationale
+- `docs/architecture/DOCKER_DISPATCHER.md` — container dispatcher design and runtime caveats.
+- `docs/architecture/STINGRAY_DESIGN.md` — intended Stingray architecture and objectives.
+- `docs/api/ENDPOINTS.md` — authoritative route matrix for currently registered API endpoints.
+- `docs/api/api-security.md` — auth, token rules, and audit logging behavior.
+- `docs/api/CHUM_LLM_INTERACTION_GUIDE.md` — operator interaction playbook and endpoint usage guidance.
+- `docs/operations/STINGRAY_RUNBOOK.md` — Stingray operational checks, degraded states, and recovery actions.
+- `docs/operations/SCRUM_COMMANDS.md` — command patterns for daily operators
 
 ## License
 

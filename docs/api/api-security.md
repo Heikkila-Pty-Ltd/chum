@@ -6,6 +6,9 @@ This document describes the authentication, authorization, and audit logging fea
 
 CHUM provides a lightweight HTTP API for monitoring and controlling the scheduler. Security controls protect control endpoints that can modify system state while leaving read-only monitoring endpoints accessible.
 
+Canonical route list and auth requirements are maintained in [`docs/api/ENDPOINTS.md`](./ENDPOINTS.md).  
+Scheduler paths shown in legacy examples are not currently registered in `internal/api/api.go`.
+
 ## Security Model
 
 ### Endpoint Classification

@@ -129,10 +129,19 @@ type RateLimits struct {
 type Provider struct {
 	Tier              string  `toml:"tier"`
 	Authed            bool    `toml:"authed"`
+	Enabled           *bool   `toml:"enabled"` // nil = enabled (default true for backward compat)
 	Model             string  `toml:"model"`
 	CLI               string  `toml:"cli"`
 	CostInputPerMtok  float64 `toml:"cost_input_per_mtok"`
 	CostOutputPerMtok float64 `toml:"cost_output_per_mtok"`
+}
+
+// IsEnabled returns true if the provider is enabled (defaults to true if not set).
+func (p Provider) IsEnabled() bool {
+	if p.Enabled == nil {
+		return true
+	}
+	return *p.Enabled
 }
 
 // Tiers maps provider names into fast/balanced/premium groups.

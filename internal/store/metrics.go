@@ -701,3 +701,114 @@ func (s *Store) TokenBurnSince(agent string, since time.Time) (TokenBurn, error)
 	return b, nil
 }
 
+// --- Provider Escalation Learning ---
+
+// ProviderEscalation records when a task failed at one provider/tier and
+// succeeded (or failed) at a higher tier. This feeds the learner loop to
+// automatically route tasks based on historical model performance.
+type ProviderEscalation struct {
+	ID              int64
+	BeadID          string
+	Project         string
+	TaskLabels      string // comma-separated task labels for pattern matching
+	FailedProvider  string // provider key that failed (e.g. "codex-spark")
+	FailedCLI       string // CLI agent name (e.g. "codex")
+	FailedModel     string // model name (e.g. "")
+	FailedTier      string // tier level (e.g. "fast")
+	FailureReason   string // why it failed: "exit_error", "dod_fail", "timeout", "review_reject"
+	EscalatedTo     string // provider key it escalated to
+	EscalatedTier   string // tier level it escalated to
+	EscalatedResult string // "success" or "failure"
+	RecordedAt      string
+}
+
+// migrateProviderEscalations creates the escalation learning table.
+func migrateProviderEscalations(db *sql.DB) error {
+	_, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS provider_escalations (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			bead_id TEXT NOT NULL DEFAULT '',
+			project TEXT NOT NULL DEFAULT '',
+			task_labels TEXT NOT NULL DEFAULT '',
+			failed_provider TEXT NOT NULL DEFAULT '',
+			failed_cli TEXT NOT NULL DEFAULT '',
+			failed_model TEXT NOT NULL DEFAULT '',
+			failed_tier TEXT NOT NULL DEFAULT '',
+			failure_reason TEXT NOT NULL DEFAULT '',
+			escalated_to TEXT NOT NULL DEFAULT '',
+			escalated_tier TEXT NOT NULL DEFAULT '',
+			escalated_result TEXT NOT NULL DEFAULT '',
+			recorded_at DATETIME NOT NULL DEFAULT (datetime('now'))
+		)
+	`)
+	if err != nil {
+		return fmt.Errorf("create provider_escalations table: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_escalations_provider ON provider_escalations(failed_provider, failure_reason)`); err != nil {
+		return fmt.Errorf("create escalations provider index: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_escalations_project ON provider_escalations(project, recorded_at)`); err != nil {
+		return fmt.Errorf("create escalations project index: %w", err)
+	}
+	return nil
+}
+
+// RecordEscalation stores a provider escalation event for learning.
+func (s *Store) RecordEscalation(esc ProviderEscalation) error {
+	_, err := s.db.Exec(
+		`INSERT INTO provider_escalations (bead_id, project, task_labels, failed_provider, failed_cli,
+		  failed_model, failed_tier, failure_reason, escalated_to, escalated_tier, escalated_result)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		esc.BeadID, esc.Project, esc.TaskLabels, esc.FailedProvider, esc.FailedCLI,
+		esc.FailedModel, esc.FailedTier, esc.FailureReason, esc.EscalatedTo,
+		esc.EscalatedTier, esc.EscalatedResult,
+	)
+	if err != nil {
+		return fmt.Errorf("store: record escalation: %w", err)
+	}
+	return nil
+}
+
+// ProviderFailureRate holds aggregate failure data for a provider+failure_reason combo.
+type ProviderFailureRate struct {
+	Provider      string
+	FailureReason string
+	TaskLabels    string
+	FailCount     int
+	EscalateCount int // how many times escalation succeeded
+	TotalCount    int
+}
+
+// GetProviderFailureRates returns provider failure rates within the time window,
+// grouped by provider and failure reason. Used by the learner to identify
+// patterns like "codex always fails at test-writing tasks."
+func (s *Store) GetProviderFailureRates(since time.Time) ([]ProviderFailureRate, error) {
+	cutoff := since.UTC().Format(time.DateTime)
+	rows, err := s.db.Query(`
+		SELECT failed_provider, failure_reason, task_labels,
+		       COUNT(*) as fail_count,
+		       SUM(CASE WHEN escalated_result = 'success' THEN 1 ELSE 0 END) as escalate_success,
+		       COUNT(*) as total
+		FROM provider_escalations
+		WHERE recorded_at >= ?
+		GROUP BY failed_provider, failure_reason, task_labels
+		ORDER BY fail_count DESC`,
+		cutoff,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("store: get provider failure rates: %w", err)
+	}
+	defer rows.Close()
+
+	var rates []ProviderFailureRate
+	for rows.Next() {
+		var r ProviderFailureRate
+		if err := rows.Scan(&r.Provider, &r.FailureReason, &r.TaskLabels,
+			&r.FailCount, &r.EscalateCount, &r.TotalCount); err != nil {
+			return nil, fmt.Errorf("store: scan provider failure rate: %w", err)
+		}
+		rates = append(rates, r)
+	}
+	return rates, rows.Err()
+}
+

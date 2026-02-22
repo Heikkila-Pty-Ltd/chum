@@ -53,9 +53,11 @@ func DispatcherWorkflow(ctx workflow.Context, _ struct{}) error {
 		return nil
 	}
 
-	// Agent rotation — distribute load across available CLI agents.
-	// Claude removed to preserve Max20 auth budget for human use.
-	availableAgents := []string{"codex", "gemini"}
+	// Agent rotation — use enabled agents from the scan result.
+	availableAgents := result.AvailableAgents
+	if len(availableAgents) == 0 {
+		availableAgents = []string{"codex"} // fallback
+	}
 
 	// Start child workflows for each candidate.
 	dispatched := 0
@@ -364,9 +366,10 @@ func (da *DispatchActivities) ScanCandidatesActivity(ctx context.Context) (*Scan
 	}
 
 	return &ScanCandidatesResult{
-		Candidates: result,
-		Running:    running,
-		MaxTotal:   maxTotal,
+		Candidates:      result,
+		Running:         running,
+		MaxTotal:        maxTotal,
+		AvailableAgents: enabledCLIAgents(cfg),
 	}, nil
 }
 
@@ -425,6 +428,26 @@ type openWorkflowExecution struct {
 	startTime  time.Time
 }
 
+
+// enabledCLIAgents returns deduplicated CLI agent names from enabled providers.
+func enabledCLIAgents(cfg *config.Config) []string {
+	seen := make(map[string]bool)
+	var agents []string
+	for _, prov := range cfg.Providers {
+		if !prov.IsEnabled() {
+			continue
+		}
+		cli := prov.CLI
+		if cli == "" {
+			continue
+		}
+		if !seen[cli] {
+			seen[cli] = true
+			agents = append(agents, cli)
+		}
+	}
+	return agents
+}
 
 // lastWeeklyReset returns the most recent Friday 14:00 local time (when Claude Max resets).
 func lastWeeklyReset(now time.Time) time.Time {

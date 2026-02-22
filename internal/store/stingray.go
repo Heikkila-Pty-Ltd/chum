@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -34,10 +35,28 @@ type StingrayFinding struct {
 	LastSeen  time.Time
 }
 
+const (
+	defaultStingrayRecentLimit      = 20
+	defaultStingrayTrendingMinRuns  = 2
+)
+
 // RecordRun inserts a new Stingray run and returns its ID.
 func (s *Store) RecordRun(project string, findingsTotal, findingsNew, findingsResolved int, metricsJSON string) (int64, error) {
+	project = strings.TrimSpace(project)
+	if project == "" {
+		return 0, fmt.Errorf("store: record stingray run: project is required")
+	}
 	if metricsJSON == "" {
 		metricsJSON = "{}"
+	}
+	if findingsTotal < 0 {
+		findingsTotal = 0
+	}
+	if findingsNew < 0 {
+		findingsNew = 0
+	}
+	if findingsResolved < 0 {
+		findingsResolved = 0
 	}
 	res, err := s.db.Exec(`
 		INSERT INTO stingray_runs (project, findings_total, findings_new, findings_resolved, metrics_json)
@@ -51,9 +70,34 @@ func (s *Store) RecordRun(project string, findingsTotal, findingsNew, findingsRe
 
 // RecordFinding inserts a new Stingray finding and returns its ID.
 func (s *Store) RecordFinding(runID int64, project, category, severity, title, detail, filePath, evidence string) (int64, error) {
+	project = strings.TrimSpace(project)
+	category = strings.TrimSpace(category)
+	severity = strings.TrimSpace(severity)
+	title = strings.TrimSpace(title)
+	detail = strings.TrimSpace(detail)
+	filePath = strings.TrimSpace(filePath)
+	evidence = strings.TrimSpace(evidence)
+	if project == "" {
+		return 0, fmt.Errorf("store: record stingray finding: project is required")
+	}
+	if runID <= 0 {
+		return 0, fmt.Errorf("store: record stingray finding: run ID must be > 0")
+	}
+	if category == "" {
+		return 0, fmt.Errorf("store: record stingray finding: category is required")
+	}
+	if severity == "" {
+		return 0, fmt.Errorf("store: record stingray finding: severity is required")
+	}
+	if title == "" {
+		return 0, fmt.Errorf("store: record stingray finding: title is required")
+	}
+	if detail == "" {
+		return 0, fmt.Errorf("store: record stingray finding: detail is required")
+	}
 	res, err := s.db.Exec(`
-		INSERT INTO stingray_findings (run_id, project, category, severity, title, detail, file_path, evidence)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO stingray_findings (run_id, project, category, severity, title, detail, file_path, evidence, bead_id, status)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', 'open')
 	`, runID, project, category, severity, title, detail, filePath, evidence)
 	if err != nil {
 		return 0, fmt.Errorf("store: record stingray finding: %w", err)
@@ -63,15 +107,19 @@ func (s *Store) RecordFinding(runID int64, project, category, severity, title, d
 
 // GetRecentFindings returns the most recent findings for a project, ordered by last_seen descending.
 func (s *Store) GetRecentFindings(project string, limit int) ([]StingrayFinding, error) {
+	project = strings.TrimSpace(project)
+	if project == "" {
+		return []StingrayFinding{}, nil
+	}
 	if limit <= 0 {
-		limit = 20
+		limit = defaultStingrayRecentLimit
 	}
 	rows, err := s.db.Query(`
 		SELECT id, run_id, project, category, severity, title, detail,
 		       file_path, evidence, bead_id, status, first_seen, last_seen
 		FROM stingray_findings
 		WHERE project = ?
-		ORDER BY last_seen DESC
+		ORDER BY last_seen DESC, id DESC
 		LIMIT ?
 	`, project, limit)
 	if err != nil {
@@ -85,8 +133,12 @@ func (s *Store) GetRecentFindings(project string, limit int) ([]StingrayFinding,
 // indicating persistent issues. Measured by counting distinct run_ids for findings with the
 // same title and file_path.
 func (s *Store) GetTrendingFindings(project string, minOccurrences int) ([]StingrayFinding, error) {
+	project = strings.TrimSpace(project)
+	if project == "" {
+		return []StingrayFinding{}, nil
+	}
 	if minOccurrences <= 0 {
-		minOccurrences = 2
+		minOccurrences = defaultStingrayTrendingMinRuns
 	}
 	// Find persistent findings: same title+file_path appearing across multiple runs.
 	// We group by (title, file_path) and return the most recent finding row for each group.
@@ -97,11 +149,12 @@ func (s *Store) GetTrendingFindings(project string, minOccurrences int) ([]Sting
 		INNER JOIN (
 			SELECT title, file_path, MAX(id) AS max_id, COUNT(DISTINCT run_id) AS run_count
 			FROM stingray_findings
-			WHERE project = ? AND status = 'open'
+			WHERE project = ? AND status IN ('open', 'filed')
 			GROUP BY title, file_path
 			HAVING run_count >= ?
 		) grouped ON f.id = grouped.max_id
-		ORDER BY f.last_seen DESC
+		WHERE f.status IN ('open', 'filed')
+		ORDER BY f.last_seen DESC, f.id DESC
 	`, project, minOccurrences)
 	if err != nil {
 		return nil, fmt.Errorf("store: get trending stingray findings: %w", err)

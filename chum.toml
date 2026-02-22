@@ -38,17 +38,53 @@ weekly_cap = 10000000
 # Reserve 50% of weekly for human use (CHUM uses 50%).
 weekly_headroom_pct = 50
 
+# --- Codex (OpenAI) ---
 [providers.codex-spark]
 tier = "fast"
 authed = true
-model = "gpt-5.3-codex-spark"
+model = ""
 cli = "codex"
 
+# --- Claude (Anthropic) — GATED: enabled = false ---
+[providers.claude-haiku]
+tier = "fast"
+authed = true
+model = "haiku"
+cli = "claude"
+enabled = false
+
+[providers.claude-sonnet]
+tier = "balanced"
+authed = true
+model = "sonnet"
+cli = "claude"
+enabled = false
+
+[providers.claude-opus]
+tier = "premium"
+authed = true
+model = "opus"
+cli = "claude"
+enabled = false
+
+# --- Gemini (Google) ---
+[providers.gemini-flash]
+tier = "fast"
+authed = true
+model = "gemini-2.5-flash"
+cli = "gemini"
+
+[providers.gemini-pro]
+tier = "balanced"
+authed = true
+model = "gemini-2.5-pro"
+cli = "gemini"
+
 [tiers]
-# Spark-only routing
-fast = ["codex-spark"]
-balanced = ["codex-spark"]
-premium = ["codex-spark"]
+# Active agents: codex + gemini (claude gated off)
+fast = ["codex-spark", "gemini-flash"]
+balanced = ["codex-spark", "gemini-pro"]
+premium = ["codex-spark", "gemini-pro"]
 
 [health]
 check_interval = "2m"

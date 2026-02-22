@@ -220,37 +220,6 @@ CREATE TABLE IF NOT EXISTS step_metrics (
 CREATE INDEX IF NOT EXISTS idx_step_metrics_dispatch ON step_metrics(dispatch_id);
 CREATE INDEX IF NOT EXISTS idx_step_metrics_project ON step_metrics(project, recorded_at);
 
-CREATE TABLE IF NOT EXISTS stingray_runs (
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	project TEXT NOT NULL,
-	run_at DATETIME NOT NULL DEFAULT (datetime('now')),
-	findings_total INTEGER NOT NULL DEFAULT 0,
-	findings_new INTEGER NOT NULL DEFAULT 0,
-	findings_resolved INTEGER NOT NULL DEFAULT 0,
-	metrics_json TEXT NOT NULL DEFAULT '{}'
-);
-CREATE INDEX IF NOT EXISTS idx_stingray_runs_project ON stingray_runs(project);
-CREATE INDEX IF NOT EXISTS idx_stingray_runs_run_at ON stingray_runs(run_at);
-
-CREATE TABLE IF NOT EXISTS stingray_findings (
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	run_id INTEGER NOT NULL REFERENCES stingray_runs(id),
-	project TEXT NOT NULL,
-	category TEXT NOT NULL,
-	severity TEXT NOT NULL,
-	title TEXT NOT NULL,
-	detail TEXT NOT NULL,
-	file_path TEXT NOT NULL DEFAULT '',
-	evidence TEXT NOT NULL DEFAULT '',
-	bead_id TEXT NOT NULL DEFAULT '',
-	status TEXT NOT NULL DEFAULT 'open',
-	first_seen DATETIME NOT NULL DEFAULT (datetime('now')),
-	last_seen DATETIME NOT NULL DEFAULT (datetime('now'))
-);
-CREATE INDEX IF NOT EXISTS idx_stingray_findings_run ON stingray_findings(run_id);
-CREATE INDEX IF NOT EXISTS idx_stingray_findings_project ON stingray_findings(project);
-CREATE INDEX IF NOT EXISTS idx_stingray_findings_status ON stingray_findings(status);
-CREATE INDEX IF NOT EXISTS idx_stingray_findings_category ON stingray_findings(category);
 `
 
 // Open creates or opens a SQLite database at the given path and ensures the schema exists.
@@ -483,65 +452,13 @@ func migrate(db *sql.DB) error {
 	}
 
 	if err := migrateStingrayTables(db); err != nil {
+		return fmt.Errorf("migrate stingray tables: %w", err)
+	}
+
+	if err := migrateProviderEscalations(db); err != nil {
 		return err
 	}
 
-	return nil
-}
-
-// migrateStingrayTables ensures stingray_runs and stingray_findings tables exist.
-func migrateStingrayTables(db *sql.DB) error {
-	if _, err := db.Exec(`
-		CREATE TABLE IF NOT EXISTS stingray_runs (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			project TEXT NOT NULL,
-			run_at DATETIME NOT NULL DEFAULT (datetime('now')),
-			findings_total INTEGER NOT NULL DEFAULT 0,
-			findings_new INTEGER NOT NULL DEFAULT 0,
-			findings_resolved INTEGER NOT NULL DEFAULT 0,
-			metrics_json TEXT NOT NULL DEFAULT '{}'
-		)
-	`); err != nil {
-		return fmt.Errorf("create stingray_runs table: %w", err)
-	}
-	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_stingray_runs_project ON stingray_runs(project)`); err != nil {
-		return fmt.Errorf("create stingray_runs project index: %w", err)
-	}
-	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_stingray_runs_run_at ON stingray_runs(run_at)`); err != nil {
-		return fmt.Errorf("create stingray_runs run_at index: %w", err)
-	}
-
-	if _, err := db.Exec(`
-		CREATE TABLE IF NOT EXISTS stingray_findings (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			run_id INTEGER NOT NULL REFERENCES stingray_runs(id),
-			project TEXT NOT NULL,
-			category TEXT NOT NULL,
-			severity TEXT NOT NULL,
-			title TEXT NOT NULL,
-			detail TEXT NOT NULL,
-			file_path TEXT NOT NULL DEFAULT '',
-			evidence TEXT NOT NULL DEFAULT '',
-			bead_id TEXT NOT NULL DEFAULT '',
-			status TEXT NOT NULL DEFAULT 'open',
-			first_seen DATETIME NOT NULL DEFAULT (datetime('now')),
-			last_seen DATETIME NOT NULL DEFAULT (datetime('now'))
-		)
-	`); err != nil {
-		return fmt.Errorf("create stingray_findings table: %w", err)
-	}
-	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_stingray_findings_run ON stingray_findings(run_id)`); err != nil {
-		return fmt.Errorf("create stingray_findings run index: %w", err)
-	}
-	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_stingray_findings_project ON stingray_findings(project)`); err != nil {
-		return fmt.Errorf("create stingray_findings project index: %w", err)
-	}
-	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_stingray_findings_status ON stingray_findings(status)`); err != nil {
-		return fmt.Errorf("create stingray_findings status index: %w", err)
-	}
-	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_stingray_findings_category ON stingray_findings(category)`); err != nil {
-		return fmt.Errorf("create stingray_findings category index: %w", err)
-	}
 	return nil
 }
 

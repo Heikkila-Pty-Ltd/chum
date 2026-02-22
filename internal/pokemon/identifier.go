@@ -281,11 +281,11 @@ func parseAnthropicJSONResponse(content []anthropicContent, out interface{}) err
 		if candidate == "" {
 			continue
 		}
-		if err := json.Unmarshal([]byte(candidate), out); err == nil {
+		err := json.Unmarshal([]byte(candidate), out)
+		if err == nil {
 			return nil
-		} else {
-			parseErr = err
 		}
+		parseErr = err
 	}
 	if parseErr != nil {
 		return parseErr

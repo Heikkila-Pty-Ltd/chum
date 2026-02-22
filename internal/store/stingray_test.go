@@ -1,6 +1,8 @@
 package store
 
 import (
+	"database/sql"
+	"path/filepath"
 	"testing"
 )
 
@@ -138,6 +140,46 @@ func TestRecordFindingAndGetRecent(t *testing.T) {
 	}
 	if !found {
 		t.Error("finding f2 not found in results")
+	}
+}
+
+func TestRecordFindingUsesDefaults(t *testing.T) {
+	s := tempStore(t)
+
+	runID, err := s.RecordRun("proj", 1, 1, 0, "{}")
+	if err != nil {
+		t.Fatalf("RecordRun failed: %v", err)
+	}
+
+	findingID, err := s.RecordFinding(runID, "proj", "coverage", "low", "low coverage", "coverage is low", "", "")
+	if err != nil {
+		t.Fatalf("RecordFinding failed: %v", err)
+	}
+
+	var scannedRunID int64
+	var filePath, evidence, beadID, status string
+	if err := s.DB().QueryRow(`
+		SELECT run_id, file_path, evidence, bead_id, status
+		FROM stingray_findings
+		WHERE id = ?
+	`, findingID).Scan(&scannedRunID, &filePath, &evidence, &beadID, &status); err != nil {
+		t.Fatalf("query finding failed: %v", err)
+	}
+
+	if scannedRunID != runID {
+		t.Fatalf("run_id = %d, want %d", scannedRunID, runID)
+	}
+	if filePath != "" {
+		t.Errorf("file_path = %q, want empty", filePath)
+	}
+	if evidence != "" {
+		t.Errorf("evidence = %q, want empty", evidence)
+	}
+	if beadID != "" {
+		t.Errorf("bead_id = %q, want empty", beadID)
+	}
+	if status != "open" {
+		t.Errorf("status = %q, want open", status)
 	}
 }
 
@@ -395,6 +437,45 @@ func TestGetTrendingFindingsDefaultMinOccurrences(t *testing.T) {
 	}
 }
 
+func TestGetTrendingFindingsProjectIsolation(t *testing.T) {
+	s := tempStore(t)
+
+	rA1, _ := s.RecordRun("proj-a", 1, 1, 0, "{}")
+	_, _ = s.RecordFinding(rA1, "proj-a", "tech_debt", "low", "Shared finding", "detail", "a.go", "")
+	_, _ = s.RecordFinding(rA1, "proj-a", "coverage", "medium", "Project A only", "detail", "a2.go", "")
+
+	rA2, _ := s.RecordRun("proj-a", 1, 1, 0, "{}")
+	_, _ = s.RecordFinding(rA2, "proj-a", "tech_debt", "low", "Shared finding", "detail", "a.go", "")
+
+	rB1, _ := s.RecordRun("proj-b", 1, 1, 0, "{}")
+	_, _ = s.RecordFinding(rB1, "proj-b", "tech_debt", "low", "Shared finding", "detail", "a.go", "")
+
+	trendingA, err := s.GetTrendingFindings("proj-a", 2)
+	if err != nil {
+		t.Fatalf("GetTrendingFindings proj-a failed: %v", err)
+	}
+	if len(trendingA) != 1 {
+		t.Fatalf("expected 1 trending finding for proj-a, got %d", len(trendingA))
+	}
+	if trendingA[0].Project != "proj-a" {
+		t.Errorf("trendingA project = %q, want %q", trendingA[0].Project, "proj-a")
+	}
+
+	trendingB, err := s.GetTrendingFindings("proj-b", 1)
+	if err != nil {
+		t.Fatalf("GetTrendingFindings proj-b failed: %v", err)
+	}
+	if len(trendingB) != 1 {
+		t.Fatalf("expected 1 trending finding for proj-b with min=1, got %d", len(trendingB))
+	}
+	if trendingB[0].Project != "proj-b" {
+		t.Errorf("trendingB project = %q, want %q", trendingB[0].Project, "proj-b")
+	}
+	if trendingB[0].Title != "Shared finding" {
+		t.Errorf("trendingB title = %q, want %q", trendingB[0].Title, "Shared finding")
+	}
+}
+
 func TestStingrayTablesCreatedOnStartup(t *testing.T) {
 	s := tempStore(t)
 
@@ -418,6 +499,216 @@ func TestStingrayTablesCreatedOnStartup(t *testing.T) {
 	}
 }
 
+func TestOpenMigratesLegacyDBWithoutStingrayTables(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "legacy.db")
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("open legacy sqlite db failed: %v", err)
+	}
+	if _, err := db.Exec(`
+		CREATE TABLE dispatches (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			bead_id TEXT NOT NULL,
+			project TEXT NOT NULL,
+			agent_id TEXT NOT NULL,
+			provider TEXT NOT NULL,
+			tier TEXT NOT NULL
+		)
+	`); err != nil {
+		t.Fatalf("create legacy dispatches table failed: %v", err)
+	}
+	db.Close()
+
+	s, err := Open(dbPath)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	defer s.Close()
+
+	var tableCount int
+	if err := s.DB().QueryRow(`SELECT COUNT(*) FROM pragma_table_info('stingray_runs')`).Scan(&tableCount); err != nil {
+		t.Fatalf("pragma_table_info(stingray_runs) failed: %v", err)
+	}
+	if tableCount == 0 {
+		t.Fatal("stingray_runs table should have been created on startup")
+	}
+
+	if err := s.DB().QueryRow(`SELECT COUNT(*) FROM pragma_table_info('stingray_findings')`).Scan(&tableCount); err != nil {
+		t.Fatalf("pragma_table_info(stingray_findings) failed: %v", err)
+	}
+	if tableCount == 0 {
+		t.Fatal("stingray_findings table should have been created on startup")
+	}
+
+	var indexCount int
+	if err := s.DB().QueryRow(`
+		SELECT COUNT(*) FROM pragma_index_list('stingray_runs')
+		WHERE name IN ('idx_stingray_runs_project', 'idx_stingray_runs_run_at')
+	`).Scan(&indexCount); err != nil {
+		t.Fatalf("pragma_index_list(stingray_runs) failed: %v", err)
+	}
+	if indexCount != 2 {
+		t.Fatalf("expected 2 stingray_runs indexes, got %d", indexCount)
+	}
+
+	if err := s.DB().QueryRow(`
+		SELECT COUNT(*) FROM pragma_index_list('stingray_findings')
+		WHERE name IN (
+			'idx_stingray_findings_run',
+			'idx_stingray_findings_project',
+			'idx_stingray_findings_status',
+			'idx_stingray_findings_category'
+		)
+	`).Scan(&indexCount); err != nil {
+		t.Fatalf("pragma_index_list(stingray_findings) failed: %v", err)
+	}
+	if indexCount != 4 {
+		t.Fatalf("expected 4 stingray_findings indexes, got %d", indexCount)
+	}
+}
+
+func TestGetRecentFindingsNegativeLimitDefaultsToStandard(t *testing.T) {
+	s := tempStore(t)
+
+	runID, _ := s.RecordRun("proj", 0, 0, 0, "{}")
+	for i := 0; i < 25; i++ {
+		if _, err := s.RecordFinding(runID, "proj", "coverage", "low", "finding", "detail", "", ""); err != nil {
+			t.Fatalf("RecordFinding %d failed: %v", i, err)
+		}
+	}
+
+	findings, err := s.GetRecentFindings("proj", -3)
+	if err != nil {
+		t.Fatalf("GetRecentFindings failed: %v", err)
+	}
+	if len(findings) != 20 {
+		t.Errorf("expected default limit 20, got %d", len(findings))
+	}
+}
+
+func TestGetRecentFindingsOrdersByLastSeen(t *testing.T) {
+	s := tempStore(t)
+
+	runID, _ := s.RecordRun("proj", 0, 0, 0, "{}")
+	oldFindingID, err := s.RecordFinding(runID, "proj", "coverage", "low", "older", "detail", "", "")
+	if err != nil {
+		t.Fatalf("RecordFinding old failed: %v", err)
+	}
+	newFindingID, err := s.RecordFinding(runID, "proj", "coverage", "low", "newer", "detail", "", "")
+	if err != nil {
+		t.Fatalf("RecordFinding new failed: %v", err)
+	}
+
+	if _, err := s.DB().Exec(`UPDATE stingray_findings SET last_seen = datetime('now', '-2 minutes') WHERE id = ?`, oldFindingID); err != nil {
+		t.Fatalf("force old finding last_seen failed: %v", err)
+	}
+
+	findings, err := s.GetRecentFindings("proj", 10)
+	if err != nil {
+		t.Fatalf("GetRecentFindings failed: %v", err)
+	}
+	if len(findings) != 2 {
+		t.Fatalf("expected 2 findings, got %d", len(findings))
+	}
+	if findings[0].ID != newFindingID {
+		t.Errorf("first finding ID = %d, want %d", findings[0].ID, newFindingID)
+	}
+	if findings[1].ID != oldFindingID {
+		t.Errorf("second finding ID = %d, want %d", findings[1].ID, oldFindingID)
+	}
+}
+
+func TestGetTrendingFindingsReopenAndStatusTransitions(t *testing.T) {
+	s := tempStore(t)
+
+	r1, _ := s.RecordRun("proj", 1, 1, 0, "{}")
+	openRun1ID, _ := s.RecordFinding(r1, "proj", "tech_debt", "medium", "Unstable API", "run 1", "api.go", "")
+
+	r2, _ := s.RecordRun("proj", 1, 1, 0, "{}")
+	openRun2ID, _ := s.RecordFinding(r2, "proj", "tech_debt", "medium", "Unstable API", "run 2", "api.go", "")
+
+	r3, _ := s.RecordRun("proj", 1, 1, 1, "{}")
+	resolvedID, _ := s.RecordFinding(r3, "proj", "tech_debt", "medium", "Unstable API", "resolved in run 3", "api.go", "")
+	if err := s.UpdateFindingStatus(resolvedID, "resolved"); err != nil {
+		t.Fatalf("UpdateFindingStatus resolved failed: %v", err)
+	}
+
+	r4, _ := s.RecordRun("proj", 1, 1, 0, "{}")
+	reopenID, _ := s.RecordFinding(r4, "proj", "tech_debt", "medium", "Unstable API", "reopened in run 4", "api.go", "")
+
+	trending, err := s.GetTrendingFindings("proj", 2)
+	if err != nil {
+		t.Fatalf("GetTrendingFindings failed: %v", err)
+	}
+	if len(trending) != 1 {
+		t.Fatalf("expected 1 trending after reopen, got %d", len(trending))
+	}
+	if trending[0].ID != reopenID {
+		t.Fatalf("expected reopened finding ID %d, got %d", reopenID, trending[0].ID)
+	}
+
+	if err := s.UpdateFindingStatus(reopenID, "resolved"); err != nil {
+		t.Fatalf("UpdateFindingStatus reopen resolved failed: %v", err)
+	}
+
+	trending, err = s.GetTrendingFindings("proj", 2)
+	if err != nil {
+		t.Fatalf("GetTrendingFindings failed: %v", err)
+	}
+	if len(trending) != 1 {
+		t.Fatalf("expected 1 trending after reopen resolved, got %d", len(trending))
+	}
+	if trending[0].ID != openRun2ID {
+		t.Fatalf("expected latest open row ID %d, got %d", openRun2ID, trending[0].ID)
+	}
+
+	if err := s.UpdateFindingStatus(openRun1ID, "filed"); err != nil {
+		t.Fatalf("UpdateFindingStatus filed failed: %v", err)
+	}
+
+	run, err := s.GetFindingByTitleAndFile("proj", "Unstable API", "api.go")
+	if err != nil {
+		t.Fatalf("GetFindingByTitleAndFile failed: %v", err)
+	}
+	if run == nil || run.ID != openRun2ID {
+		t.Fatalf("expected latest open/filed finding %d, got %+v", openRun2ID, run)
+	}
+}
+
+func TestUpdateFindingStatusTransitions(t *testing.T) {
+	s := tempStore(t)
+
+	runID, _ := s.RecordRun("proj", 1, 1, 0, "{}")
+	findingID, err := s.RecordFinding(runID, "proj", "god_object", "high", "Huge struct", "too many fields", "store.go", "")
+	if err != nil {
+		t.Fatalf("RecordFinding failed: %v", err)
+	}
+
+	if err := s.UpdateFindingStatus(findingID, "filed"); err != nil {
+		t.Fatalf("UpdateFindingStatus filed failed: %v", err)
+	}
+	if err := s.UpdateFindingStatus(findingID, "resolved"); err != nil {
+		t.Fatalf("UpdateFindingStatus resolved failed: %v", err)
+	}
+	if err := s.UpdateFindingStatus(findingID, "wont_fix"); err != nil {
+		t.Fatalf("UpdateFindingStatus wont_fix failed: %v", err)
+	}
+
+	findings, err := s.GetRecentFindings("proj", 10)
+	if err != nil {
+		t.Fatalf("GetRecentFindings failed: %v", err)
+	}
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d", len(findings))
+	}
+	if findings[0].Status != "wont_fix" {
+		t.Errorf("status = %q, want %q", findings[0].Status, "wont_fix")
+	}
+	if findings[0].ID != findingID {
+		t.Fatalf("expected finding ID %d, got %d", findingID, findings[0].ID)
+	}
+}
+
 func TestMultipleRunsLatestReturned(t *testing.T) {
 	s := tempStore(t)
 
@@ -433,5 +724,180 @@ func TestMultipleRunsLatestReturned(t *testing.T) {
 	}
 	if run.MetricsJSON != `{"run":2}` {
 		t.Errorf("metrics_json = %q, want %q", run.MetricsJSON, `{"run":2}`)
+	}
+}
+
+func TestOpenCreatesStingraySchema(t *testing.T) {
+	s := tempStore(t)
+
+	var count int
+	if err := s.db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='stingray_runs'").Scan(&count); err != nil {
+		t.Fatalf("query stingray_runs failed: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("stingray_runs table missing, got count %d", count)
+	}
+
+	if err := s.db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='stingray_findings'").Scan(&count); err != nil {
+		t.Fatalf("query stingray_findings failed: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("stingray_findings table missing, got count %d", count)
+	}
+}
+
+func TestOpenMigratesLegacyDbForStingraySchema(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "legacy_stingray.db")
+
+	legacy, err := sql.Open("sqlite", dbPath+"?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)")
+	if err != nil {
+		t.Fatalf("open legacy db failed: %v", err)
+	}
+	if _, err := legacy.Exec(`CREATE TABLE legacy_stingray_placeholder (id INTEGER PRIMARY KEY)`); err != nil {
+		t.Fatalf("create legacy table failed: %v", err)
+	}
+	if _, err := legacy.Exec(`DROP TABLE IF EXISTS stingray_findings`); err != nil {
+		t.Fatalf("drop legacy stingray_findings failed: %v", err)
+	}
+	if _, err := legacy.Exec(`DROP TABLE IF EXISTS stingray_runs`); err != nil {
+		t.Fatalf("drop legacy stingray_runs failed: %v", err)
+	}
+	if err := legacy.Close(); err != nil {
+		t.Fatalf("close legacy db failed: %v", err)
+	}
+
+	s2, err := Open(dbPath)
+	if err != nil {
+		t.Fatalf("Open failed on legacy db: %v", err)
+	}
+	defer s2.Close()
+
+	var count int
+	if err := s2.db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='stingray_runs'").Scan(&count); err != nil {
+		t.Fatalf("query stingray_runs failed: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("stingray_runs table missing after migration, got count %d", count)
+	}
+	if err := s2.db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='stingray_findings'").Scan(&count); err != nil {
+		t.Fatalf("query stingray_findings failed: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("stingray_findings table missing after migration, got count %d", count)
+	}
+}
+
+func TestGetRecentFindingsDefaultLimitAndOrder(t *testing.T) {
+	s := tempStore(t)
+
+	runID, _ := s.RecordRun("proj", 0, 0, 0, "{}")
+	for i := 0; i < 25; i++ {
+		title := "finding-" + string('a'+i)
+		_, err := s.RecordFinding(runID, "proj", "tech_debt", "low", title, "detail", "", "")
+		if err != nil {
+			t.Fatalf("RecordFinding %d failed: %v", i, err)
+		}
+	}
+
+	findingsZero, err := s.GetRecentFindings("proj", 0)
+	if err != nil {
+		t.Fatalf("GetRecentFindings limit 0 failed: %v", err)
+	}
+	if len(findingsZero) != 20 {
+		t.Fatalf("expected default limit 20 for 0, got %d", len(findingsZero))
+	}
+
+	findingsNegative, err := s.GetRecentFindings("proj", -5)
+	if err != nil {
+		t.Fatalf("GetRecentFindings limit -5 failed: %v", err)
+	}
+	if len(findingsNegative) != 20 {
+		t.Fatalf("expected default limit 20 for negative, got %d", len(findingsNegative))
+	}
+
+	findingsLimited, err := s.GetRecentFindings("proj", 5)
+	if err != nil {
+		t.Fatalf("GetRecentFindings limit 5 failed: %v", err)
+	}
+	if len(findingsLimited) != 5 {
+		t.Fatalf("expected 5 findings, got %d", len(findingsLimited))
+	}
+
+	// Latest IDs should be returned first.
+	if findingsLimited[0].ID <= findingsLimited[1].ID || findingsLimited[1].ID <= findingsLimited[2].ID {
+		t.Fatalf("expected descending IDs in recent findings: got %d, %d, %d", findingsLimited[0].ID, findingsLimited[1].ID, findingsLimited[2].ID)
+	}
+}
+
+func TestGetTrendingFindingsDefaultMinOccurrencesAndProjectIsolation(t *testing.T) {
+	s := tempStore(t)
+
+	r1, _ := s.RecordRun("proj-a", 1, 1, 0, "{}")
+	s.RecordFinding(r1, "proj-a", "coverage", "low", "Coverage dip", "coverage dropped", "internal/foo.go", "")
+
+	r2, _ := s.RecordRun("proj-a", 1, 0, 0, "{}")
+	s.RecordFinding(r2, "proj-a", "coverage", "low", "Coverage dip", "coverage dropped", "internal/foo.go", "")
+
+	r3, _ := s.RecordRun("proj-b", 1, 1, 0, "{}")
+	s.RecordFinding(r3, "proj-b", "coverage", "low", "Coverage dip", "coverage dropped", "internal/foo.go", "")
+
+	trendingA, err := s.GetTrendingFindings("proj-a", 0)
+	if err != nil {
+		t.Fatalf("GetTrendingFindings for proj-a failed: %v", err)
+	}
+	if len(trendingA) != 1 {
+		t.Fatalf("expected 1 trending for proj-a, got %d", len(trendingA))
+	}
+
+	trendingB, err := s.GetTrendingFindings("proj-b", 0)
+	if err != nil {
+		t.Fatalf("GetTrendingFindings for proj-b failed: %v", err)
+	}
+	if len(trendingB) != 0 {
+		t.Fatalf("expected 0 trending for proj-b, got %d", len(trendingB))
+	}
+}
+
+func TestGetTrendingFindingsStatusReopenRules(t *testing.T) {
+	s := tempStore(t)
+
+	r1, _ := s.RecordRun("proj", 1, 1, 0, "{}")
+	findingID1, err := s.RecordFinding(r1, "proj", "doc_drift", "high", "Doc mismatch", "docs outdated", "README.md", "")
+	if err != nil {
+		t.Fatalf("RecordFinding 1 failed: %v", err)
+	}
+
+	r2, _ := s.RecordRun("proj", 1, 0, 0, "{}")
+	findingID2, err := s.RecordFinding(r2, "proj", "doc_drift", "high", "Doc mismatch", "docs outdated", "README.md", "")
+	if err != nil {
+		t.Fatalf("RecordFinding 2 failed: %v", err)
+	}
+
+	if err := s.UpdateFindingStatus(findingID2, "resolved"); err != nil {
+		t.Fatalf("UpdateFindingStatus failed: %v", err)
+	}
+
+	trending, err := s.GetTrendingFindings("proj", 0)
+	if err != nil {
+		t.Fatalf("GetTrendingFindings failed: %v", err)
+	}
+	if len(trending) != 0 {
+		t.Fatalf("expected 0 trending when one occurrence is resolved, got %d", len(trending))
+	}
+
+	if err := s.UpdateFindingStatus(findingID2, "open"); err != nil {
+		t.Fatalf("reopen UpdateFindingStatus failed: %v", err)
+	}
+
+	trending, err = s.GetTrendingFindings("proj", 0)
+	if err != nil {
+		t.Fatalf("GetTrendingFindings after reopen failed: %v", err)
+	}
+	if len(trending) != 1 {
+		t.Fatalf("expected 1 trending after reopen, got %d", len(trending))
+	}
+
+	if findingID1 == findingID2 {
+		t.Fatalf("expected distinct finding IDs for separate runs")
 	}
 }

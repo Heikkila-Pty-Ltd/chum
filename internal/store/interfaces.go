@@ -179,3 +179,5 @@ type StingrayStore interface {
 	GetFindingByTitleAndFile(project, title, filePath string) (*StingrayFinding, error)
 	GetLatestRun(project string) (*StingrayRun, error)
 }
+
+var _ StingrayStore = (*Store)(nil)

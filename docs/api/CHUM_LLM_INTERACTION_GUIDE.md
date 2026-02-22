@@ -2,6 +2,8 @@
 
 This guide is for LLM agents operating CHUM safely and effectively.
 
+Use [`docs/api/ENDPOINTS.md`](./ENDPOINTS.md) for the current active API route matrix before issuing any control-plane calls.
+
 ## Goal
 
 Use CHUM as the orchestration control plane for development work:
@@ -189,4 +191,3 @@ When packaging CHUM for broader use:
 2. Add a stable API version policy.
 3. Add authn/authz in front of control endpoints.
 4. Publish incident response runbooks aligned with these playbooks.
-

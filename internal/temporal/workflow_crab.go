@@ -166,18 +166,45 @@ func CrabDecompositionWorkflow(ctx workflow.Context, req CrabDecompositionReques
 
 	logger.Info(CrabPrefix+" Sizing complete", "Morsels", len(sizedMorsels))
 
-	// ===== PHASE 6: HUMAN REVIEW =====
+	// ===== PHASE 6: REVIEW GATE =====
+	// Auto-approve by default — human review is opt-in via RequireHumanReview.
+	// Even when human review is required, a 10-minute timeout auto-approves to
+	// prevent indefinite blocking (the old bug: golf crabs sat idle 53 minutes).
 	reviewStart := workflow.Now(ctx)
-	logger.Info(CrabPrefix+" Phase 6: HUMAN REVIEW — waiting for approval",
-		"Whales", len(scopedWhales), "Morsels", len(sizedMorsels))
 
-	reviewChan := workflow.GetSignalChannel(ctx, "crab-review")
-	var decision string
-	reviewChan.Receive(ctx, &decision)
+	decision := "APPROVED" // default: auto-approve
+	if req.RequireHumanReview {
+		logger.Info(CrabPrefix+" Phase 6: HUMAN REVIEW — waiting for approval (10m timeout)",
+			"Whales", len(scopedWhales), "Morsels", len(sizedMorsels))
+
+		reviewChan := workflow.GetSignalChannel(ctx, "crab-review")
+
+		// Use selector with timer — never block forever.
+		timerCtx, cancelTimer := workflow.WithCancel(ctx)
+		timer := workflow.NewTimer(timerCtx, 10*time.Minute)
+
+		sel := workflow.NewSelector(ctx)
+		sel.AddReceive(reviewChan, func(ch workflow.ReceiveChannel, _ bool) {
+			ch.Receive(ctx, &decision)
+			cancelTimer()
+		})
+		sel.AddFuture(timer, func(f workflow.Future) {
+			decision = "APPROVED" // auto-approve on timeout
+			logger.Warn(CrabPrefix + " Review gate timed out (10m) — auto-approving")
+		})
+		sel.Select(ctx)
+	} else {
+		logger.Info(CrabPrefix+" Phase 6: AUTO-APPROVED (no human review required)",
+			"Whales", len(scopedWhales), "Morsels", len(sizedMorsels))
+	}
 
 	if decision != "APPROVED" {
 		recordStep("review", reviewStart, "rejected")
 		logger.Info(CrabPrefix+" Plan REJECTED by human", "Decision", decision)
+
+		// Record health event so octopus can learn from rejections
+		recordCrabHealth(ctx, shortAO, a, req.PlanID, req.Project, "rejected",
+			fmt.Sprintf("Plan rejected by human review. Whales: %d, Morsels: %d", len(scopedWhales), len(sizedMorsels)))
 
 		return &CrabDecompositionResult{
 			Status:      "rejected",
@@ -198,6 +225,11 @@ func CrabDecompositionWorkflow(ctx workflow.Context, req CrabDecompositionReques
 	var emitResult EmitResult
 	if err := workflow.ExecuteActivity(emitCtx, a.EmitMorselsActivity, req, scopedWhales, sizedMorsels).Get(ctx, &emitResult); err != nil {
 		recordStep("emit", emitStart, "failed")
+
+		// Record health event so the system knows emit failed
+		recordCrabHealth(ctx, shortAO, a, req.PlanID, req.Project, "emit_failed",
+			fmt.Sprintf("Emit failed: %v. Whales: %d, Morsels: %d", err, len(scopedWhales), len(sizedMorsels)))
+
 		return nil, fmt.Errorf("emit failed: %w", err)
 	}
 	recordStep("emit", emitStart, "ok")
@@ -214,6 +246,12 @@ func CrabDecompositionWorkflow(ctx workflow.Context, req CrabDecompositionReques
 		"morsels": fmt.Sprintf("%d", len(emitResult.MorselIDs)),
 	})
 
+	// Record health event for successful decomposition
+	recordCrabHealth(ctx, shortAO, a, req.PlanID, req.Project, "completed",
+		fmt.Sprintf("Emitted %d whales, %d morsels in %s",
+			len(emitResult.WhaleIDs), len(emitResult.MorselIDs),
+			workflow.Now(ctx).Sub(startTime).String()))
+
 	return &CrabDecompositionResult{
 		Status:         "completed",
 		PlanID:         req.PlanID,
@@ -223,3 +261,20 @@ func CrabDecompositionWorkflow(ctx workflow.Context, req CrabDecompositionReques
 		TotalTokens:    totalTokens,
 	}, nil
 }
+
+// recordCrabHealth records a crab pipeline event to the health_events store
+// so the octopus and stingray can observe crab outcomes (previously invisible).
+func recordCrabHealth(ctx workflow.Context, opts workflow.ActivityOptions, a *Activities,
+	planID, project, status, details string) {
+
+	logger := workflow.GetLogger(ctx)
+	if a.Store == nil {
+		return
+	}
+	actCtx := workflow.WithActivityOptions(ctx, opts)
+	eventType := fmt.Sprintf("crab_%s", status)
+	fullDetails := fmt.Sprintf("[%s] %s: %s", project, planID, details)
+	_ = workflow.ExecuteActivity(actCtx, a.RecordHealthEventActivity, eventType, fullDetails).Get(ctx, nil)
+	logger.Info(CrabPrefix+" Health event recorded", "EventType", eventType, "PlanID", planID)
+}
+

@@ -1,11 +1,11 @@
 # CHUM Agent Orchestrator Configuration
 
 [general]
-tick_interval = "2m"
-max_per_tick = 3
-max_concurrent_coders = 4
-max_concurrent_reviewers = 1
-max_concurrent_total = 5
+tick_interval = "1m"
+max_per_tick = 7
+max_concurrent_coders = 7
+max_concurrent_reviewers = 2
+max_concurrent_total = 10
 stuck_timeout = "30m"
 max_retries = 6
 log_level = "info"
@@ -99,6 +99,7 @@ tier = "balanced"
 authed = true
 model = "deepseek/deepseek-r1"
 cli = "deepseek"
+enabled = false
 
 [tiers]
 # Active agents: codex + gemini (claude gated off)
@@ -147,6 +148,13 @@ cmd = "gemini"
 prompt_mode = "stdin"
 args = ["-p", "", "--yolo", "-o", "json"]
 model_flag = "--model"
+approval_flags = []
+
+[dispatch.cli.deepseek]
+cmd = "echo"
+prompt_mode = "stdin"
+args = ["deepseek-backlogged"]
+model_flag = "-m"
 approval_flags = []
 
 [dispatch.cli.aider]

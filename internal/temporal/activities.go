@@ -473,6 +473,16 @@ func (a *Activities) CloseTaskActivity(ctx context.Context, taskID, finalStatus 
 	return nil
 }
 
+// RecordHealthEventActivity records a health event to the store from within a
+// workflow. This makes crabs, grooming, and other workflows visible to the
+// octopus and stingray observability system.
+func (a *Activities) RecordHealthEventActivity(ctx context.Context, eventType, details string) error {
+	if a.Store == nil {
+		return nil
+	}
+	return a.Store.RecordHealthEvent(eventType, details)
+}
+
 // --- helpers ---
 
 // extractJSON finds the first JSON object in text (handles markdown code fences).

@@ -429,12 +429,13 @@ type ScanCandidatesResult struct {
 
 // CrabDecompositionRequest starts a crab decomposition workflow.
 type CrabDecompositionRequest struct {
-	PlanID        string `json:"plan_id"`
-	Project       string `json:"project"`
-	WorkDir       string `json:"work_dir"`
-	PlanMarkdown  string `json:"plan_markdown"`
-	Tier          string `json:"tier"`                      // LLM tier: "fast", "balanced", or "premium"
-	ParentWhaleID string `json:"parent_whale_id,omitempty"` // optional parent whale to nest under
+	PlanID             string `json:"plan_id"`
+	Project            string `json:"project"`
+	WorkDir            string `json:"work_dir"`
+	PlanMarkdown       string `json:"plan_markdown"`
+	Tier               string `json:"tier"`                      // LLM tier: "fast", "balanced", or "premium"
+	ParentWhaleID      string `json:"parent_whale_id,omitempty"` // optional parent whale to nest under
+	RequireHumanReview bool   `json:"require_human_review"`      // if true, block at Phase 6 for human signal; default: auto-approve
 }
 
 // ParsedPlan is the output of deterministic markdown parsing.

@@ -338,9 +338,10 @@ Respond with ONLY a JSON array of whales:
 		return nil, fmt.Errorf("decomposition did not produce valid JSON. Output:\n%s", truncate(cliResult.Output, 500))
 	}
 
+	sanitized := sanitizeLLMJSON(jsonStr)
 	var whales []CandidateWhale
-	if err := json.Unmarshal([]byte(jsonStr), &whales); err != nil {
-		return nil, fmt.Errorf("failed to parse decomposition JSON: %w\nRaw: %s", err, truncate(jsonStr, 500))
+	if err := json.Unmarshal([]byte(sanitized), &whales); err != nil {
+		return nil, fmt.Errorf("failed to parse decomposition JSON: %w\nRaw: %s", err, truncate(sanitized, 500))
 	}
 
 	if len(whales) == 0 {

@@ -229,3 +229,19 @@ func extractJSONArray(text string) string {
 	}
 	return ""
 }
+
+// sanitizeLLMJSON cleans up common LLM JSON output quirks:
+//   - Literal backslash+n (\n) outside string values -> actual newlines
+//   - Leading/trailing whitespace or stray escape sequences
+//   - Double-escaped quotes (\" -> ")
+func sanitizeLLMJSON(raw string) string {
+	// If the string starts with a literal backslash, the whole thing may be
+	// double-escaped (common with CLI piping through shells).
+	if strings.Contains(raw, "\\n") || strings.Contains(raw, "\\t") {
+		raw = strings.ReplaceAll(raw, "\\n", "\n")
+		raw = strings.ReplaceAll(raw, "\\t", "\t")
+		raw = strings.ReplaceAll(raw, "\\\"", "\"")
+	}
+	return strings.TrimSpace(raw)
+}
+

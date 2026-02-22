@@ -88,6 +88,7 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 	w.RegisterActivity(acts.StoreLessonActivity)
 	w.RegisterActivity(acts.GenerateSemgrepRuleActivity)
 	w.RegisterActivity(acts.RunSemgrepScanActivity)
+	w.RegisterActivity(acts.SynthesizeCLAUDEmdActivity)
 
 	// --- CHUM Groom Activities ---
 	w.RegisterActivity(acts.MutateTasksActivity)

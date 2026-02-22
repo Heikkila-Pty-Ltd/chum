@@ -226,20 +226,21 @@ func TestDefaultReviewer_Claude(t *testing.T) {
 }
 
 func TestDefaultReviewer_Codex(t *testing.T) {
-	require.Equal(t, "claude", DefaultReviewer("codex"))
+	require.Equal(t, "gemini", DefaultReviewer("codex"))
 }
 
 func TestDefaultReviewer_UnknownFallsBackToCodex(t *testing.T) {
-	require.Equal(t, "codex", DefaultReviewer("gemini"))
+	require.Equal(t, "codex", DefaultReviewer("gemini")) // gemini → codex
 	require.Equal(t, "codex", DefaultReviewer(""))
 	require.Equal(t, "codex", DefaultReviewer("gpt-4"))
 }
 
 func TestDefaultReviewer_CrossModelSymmetry(t *testing.T) {
-	// claude's reviewer is codex, codex's reviewer is claude — cross-model review
-	reviewer1 := DefaultReviewer("claude")
+	// codex's reviewer is gemini, gemini's reviewer is codex — cross-model review
+	reviewer1 := DefaultReviewer("codex")
+	require.Equal(t, "gemini", reviewer1)
 	reviewer2 := DefaultReviewer(reviewer1)
-	require.Equal(t, "claude", reviewer2, "cross-model review should be symmetric")
+	require.Equal(t, "codex", reviewer2, "cross-model review should be symmetric")
 }
 
 // ---------------------------------------------------------------------------

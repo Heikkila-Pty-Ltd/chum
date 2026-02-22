@@ -10,7 +10,7 @@ import (
 func testPragmaIndexNames(t *testing.T, db *sql.DB, table string) map[string]struct{} {
 	t.Helper()
 
-	query := fmt.Sprintf("SELECT seq, name, unique, origin, partial FROM pragma_index_list(%q)", table)
+	query := fmt.Sprintf("SELECT seq, name, \"unique\", origin, partial FROM pragma_index_list('%s')", table)
 	rows, err := db.Query(query)
 	if err != nil {
 		t.Fatalf("query pragma_index_list(%s) failed: %v", table, err)
@@ -243,8 +243,12 @@ func TestGetRecentFindingsProjectIsolation(t *testing.T) {
 
 	r1, _ := s.RecordRun("proj-a", 1, 1, 0, "{}")
 	r2, _ := s.RecordRun("proj-b", 1, 1, 0, "{}")
-	s.RecordFinding(r1, "proj-a", "tech_debt", "low", "finding A", "", "", "")
-	s.RecordFinding(r2, "proj-b", "tech_debt", "low", "finding B", "", "", "")
+	if _, err := s.RecordFinding(r1, "proj-a", "tech_debt", "low", "finding A", "detail A", "", ""); err != nil {
+		t.Fatalf("RecordFinding A failed: %v", err)
+	}
+	if _, err := s.RecordFinding(r2, "proj-b", "tech_debt", "low", "finding B", "detail B", "", ""); err != nil {
+		t.Fatalf("RecordFinding B failed: %v", err)
+	}
 
 	findings, err := s.GetRecentFindings("proj-a", 10)
 	if err != nil {
@@ -548,7 +552,10 @@ func TestOpenMigratesLegacyDBWithoutStingrayTables(t *testing.T) {
 			project TEXT NOT NULL,
 			agent_id TEXT NOT NULL,
 			provider TEXT NOT NULL,
-			tier TEXT NOT NULL
+			tier TEXT NOT NULL,
+			status TEXT NOT NULL DEFAULT 'running',
+			prompt TEXT NOT NULL DEFAULT '',
+			dispatched_at DATETIME NOT NULL DEFAULT (datetime('now'))
 		)
 	`); err != nil {
 		t.Fatalf("create legacy dispatches table failed: %v", err)
@@ -1170,7 +1177,10 @@ func TestOpenIsIdempotentForStingrayMigration(t *testing.T) {
 			project TEXT NOT NULL,
 			agent_id TEXT NOT NULL,
 			provider TEXT NOT NULL,
-			tier TEXT NOT NULL
+			tier TEXT NOT NULL,
+			status TEXT NOT NULL DEFAULT 'running',
+			prompt TEXT NOT NULL DEFAULT '',
+			dispatched_at DATETIME NOT NULL DEFAULT (datetime('now'))
 		)
 	`); err != nil {
 		t.Fatalf("create legacy dispatches failed: %v", err)

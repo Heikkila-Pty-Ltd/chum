@@ -1,167 +1,158 @@
 # CHUM API Endpoints
 
-Last validated against:
-- `internal/api/api.go` (`Server.Start` route registration)
-- `internal/api/*_handlers.go` (request/response behavior)
-- `internal/api/auth.go` (middleware behavior)
-- `internal/api/api_test.go` (existing endpoint-level assertions)
+Canonical date: **2026-02-22 (UTC)**.
 
-Canonical date: **2026-02-22** (UTC).
+## Scope and source-of-truth
 
-## Scope and source of truth
+This is the live route registry for endpoints registered in `internal/api/api.go`.
 
-This section documents only routes registered in `Server.Start`.
+Paths listed here must match:
 
-- route pattern
-- allowed methods
-- middleware behavior
-- request/response shapes
-- canonical statuses and errors
+- `internal/api/api.go` route registrations.
+- `internal/api/handlers_*.go` request and response implementations.
+- `internal/api/auth.go` middleware behavior.
+- `internal/api/api_test.go` coverage assertions.
 
-## Registered routes (implemented)
+## Registered route matrix
 
-| Route pattern | Methods | Auth in middleware | Handler | Notes |
+| Route pattern | Methods | Handler | Auth behavior | Response format |
 | --- | --- | --- | --- | --- |
-| `/status` | any | middleware passes all paths with `method != POST` for non-control | `handleStatus` | JSON object with uptime + running count |
-| `/projects` | any | same as above | `handleProjects` | Map iteration order is not deterministic |
-| `/projects/{project_id}` | any | same as above | `handleProjectDetail` | `GET /projects/` forwards to `/projects` |
-| `/health` | any | same as above | `handleHealth` | returns `503` if any `gateway_critical` event in last hour |
-| `/metrics` | any | same as above | `handleMetrics` | Prometheus text format |
-| `/recommendations` | GET only | same as above | `handleRecommendations` | query-driven list, defaults and clamp |
-| `/dispatches/{bead_id}` | any | same as above | `handleDispatchDetail` | 400 when `{bead_id}` is empty |
-| `/safety/blocks` | GET only | same as above | `handleSafetyBlocks` | returns counts + block list |
-| `/workflows/start` | POST only | wrapped by `RequireAuth` but auth logic currently rejects none | `handleWorkflowStart` | registers `ChumAgentWorkflow` |
-| `/workflows/{workflow_id}` | GET only | wrapped by `RequireAuth` but auth logic currently rejects none | `handleWorkflowStatus` via `routeWorkflows` | uses `POST` path for status if method mismatch -> `405` |
-| `/workflows/{workflow_id}/approve` | POST only | wrapped by `RequireAuth` but auth logic currently rejects none | `handleWorkflowApprove` via `routeWorkflows` | required JSON body: none |
-| `/workflows/{workflow_id}/reject` | POST only | wrapped by `RequireAuth` but auth logic currently rejects none | `handleWorkflowReject` via `routeWorkflows` | required JSON body: none |
-| `/planning/start` | POST only | wrapped by `RequireAuth` but auth logic currently rejects none | `handlePlanningStart` | starts `PlanningCeremonyWorkflow` |
-| `/planning/{session_id}` | GET only | wrapped by `RequireAuth` but auth logic currently rejects none | `handlePlanningStatus` via `routePlanning` | POST on this path is `405` |
-| `/planning/{session_id}/select` | POST only | wrapped by `RequireAuth` but auth logic currently rejects none | `handlePlanningSignal` via `routePlanning` | body: `{ "value": "..." }` |
-| `/planning/{session_id}/answer` | POST only | wrapped by `RequireAuth` but auth logic currently rejects none | `handlePlanningSignal` via `routePlanning` | body: `{ "value": "..." }` |
-| `/planning/{session_id}/greenlight` | POST only | wrapped by `RequireAuth` but auth logic currently rejects none | `handlePlanningSignal` via `routePlanning` | body: `{ "value": "..." }` |
-| `/crab/decompose` | POST only | wrapped by `RequireAuth` but auth logic currently rejects none | `handleCrabDecompose` | starts `CrabDecompositionWorkflow` |
-| `/crab/{session_id}` | GET only | wrapped by `RequireAuth` but auth logic currently rejects none | `handleCrabStatus` via `routeCrab` | POST on this path is `405` |
-| `/crab/{session_id}/clarify` | POST only | wrapped by `RequireAuth` but auth logic currently rejects none | `handleCrabSignal` via `routeCrab` | body: `{ "value": "..." }` |
-| `/crab/{session_id}/review` | POST only | wrapped by `RequireAuth` but auth logic currently rejects none | `handleCrabSignal` via `routeCrab` | body: `{ "value": "..." }` |
+| `/status` | any | `handleStatus` | wrapped by middleware, no control check for this path | `application/json` |
+| `/projects` | any | `handleProjects` | same as above | `application/json` |
+| `/projects/{project_id}` (via `/projects/`) | any | `handleProjectDetail` | same as above | `application/json` |
+| `/health` | any | `handleHealth` | same as above | `application/json` |
+| `/metrics` | any | `handleMetrics` | same as above | `text/plain; version=0.0.4; charset=utf-8` |
+| `/recommendations` | GET only | `handleRecommendations` | same as above | `application/json` |
+| `/dispatches/{bead_id}` (via `/dispatches/`) | any | `handleDispatchDetail` | same as above | `application/json` |
+| `/safety/blocks` | GET only | `handleSafetyBlocks` | same as above | `application/json` |
+| `/workflows/start` | POST only | `handleWorkflowStart` | routed through `RequireAuth`; not a control endpoint under current middleware logic | `application/json` |
+| `/workflows/{workflow_id}` | GET only | `routeWorkflows -> handleWorkflowStatus` | routed through `RequireAuth`; not a control endpoint | `application/json` |
+| `/workflows/{workflow_id}/approve` | POST only | `routeWorkflows -> handleWorkflowApprove` | routed through `RequireAuth`; not a control endpoint | `application/json` |
+| `/workflows/{workflow_id}/reject` | POST only | `routeWorkflows -> handleWorkflowReject` | routed through `RequireAuth`; not a control endpoint | `application/json` |
+| `/planning/start` | POST only | `handlePlanningStart` | routed through `RequireAuth`; not a control endpoint | `application/json` |
+| `/planning/{session_id}` | GET only | `routePlanning -> handlePlanningStatus` | routed through `RequireAuth`; not a control endpoint | `application/json` |
+| `/planning/{session_id}/select` | POST only | `routePlanning -> handlePlanningSignal` | routed through `RequireAuth`; not a control endpoint | `application/json` |
+| `/planning/{session_id}/answer` | POST only | `routePlanning -> handlePlanningSignal` | routed through `RequireAuth`; not a control endpoint | `application/json` |
+| `/planning/{session_id}/greenlight` | POST only | `routePlanning -> handlePlanningSignal` | routed through `RequireAuth`; not a control endpoint | `application/json` |
+| `/crab/decompose` | POST only | `handleCrabDecompose` | routed through `RequireAuth`; not a control endpoint | `application/json` |
+| `/crab/{session_id}` | GET only | `routeCrab -> handleCrabStatus` | routed through `RequireAuth`; not a control endpoint | `application/json` |
+| `/crab/{session_id}/clarify` | POST only | `routeCrab -> handleCrabSignal` | routed through `RequireAuth`; not a control endpoint | `application/json` |
+| `/crab/{session_id}/review` | POST only | `routeCrab -> handleCrabSignal` | routed through `RequireAuth`; not a control endpoint | `application/json` |
 
-> Note: `RequireAuth` enforces auth only for control paths (for example `/scheduler/pause`, `/dispatches/{id}/cancel`, etc.). None of those control paths are currently registered, so all currently exposed routes execute without auth enforcement.
+## Middleware and auth behavior
 
-## Cross route references
+`RequireAuth` is attached to `/workflows/*`, `/planning/*`, and `/crab/*`.
 
-- `docs/api/api-security.md` now points to this endpoint reference for source-of-truth routing.
-- `docs/api/CHUM_LLM_INTERACTION_GUIDE.md` should be read with this page before automation actions.
-- `docs/architecture/STINGRAY_DESIGN.md` does not currently define HTTP endpoints; verify via this file when operating automation around external workflows.
+The middleware only enforces control checks when all are true:
 
-## Shared API contract
+- request method is `POST`.
+- path is one of:
+  - `/scheduler/pause`
+  - `/scheduler/resume`
+  - `/scheduler/plan/activate`
+  - `/scheduler/plan/clear`
+  - `/dispatches/{id}/cancel`
+  - `/dispatches/{id}/retry`
 
-### Content types
+No registered route in `api.go` currently matches these control patterns. Operational effect: all currently exposed endpoints execute with no auth enforcement in live middleware flow.
 
-JSON endpoints set:
-- `Content-Type: application/json`
-- error responses use JSON object shape `{"error":"..."}`
+Auth outcomes when control rules do match:
 
-`/metrics` sets:
-- `Content-Type: text/plain; version=0.0.4; charset=utf-8`
+- auth disabled and `require_local_only=true` with non-local source: `403` and message `Access denied: non-local requests not allowed`.
+- auth enabled with missing/invalid token: `401` and message `Unauthorized: valid token required`.
+- valid token or local override: request proceeds.
 
-### Authentication behavior (`RequireAuth`)
+All control-auth responses also carry `WWW-Authenticate: Bearer`.
 
-`RequireAuth` is attached to `/workflows/*`, `/planning/*`, and `/crab/*` routes.
+## Shared response contracts
 
-For non-control requests (any route not matching control method/path checks), middleware calls next handler without auth checks.
+All JSON handlers return `Content-Type: application/json`.
 
-Control check list used internally:
-- `POST /scheduler/pause`
-- `POST /scheduler/resume`
-- `POST /scheduler/plan/activate`
-- `POST /scheduler/plan/clear`
-- `POST /dispatches/{id}/cancel`
-- `POST /dispatches/{id}/retry`
+Error responses use this shape:
 
-Error behavior:
-- auth disabled + local-only true + non-local client => `403` (`Access denied: non-local requests not allowed`)
-- auth enabled with missing/invalid bearer token => `401` (`Unauthorized: valid token required`)
-- all control responses include `WWW-Authenticate: Bearer` header on auth failures
+```json
+{"error":"..."}
+```
 
-## Endpoint details
+All successful JSON responses are route-specific.
+
+`/metrics` response is plain text with:
+
+`Content-Type: text/plain; version=0.0.4; charset=utf-8`
+
+## Health and monitoring endpoints
 
 ### `GET /status`
 
-- Handler: `handleStatus`
-- Method: all methods
-- Success response:
-  - `200`
+- method: any
+- response shape:
   - `uptime_s` (`number`)
   - `running_count` (`number`)
+- status: always `200`.
 
 ### `GET /projects`
 
-- Handler: `handleProjects`
-- Method: all methods
-- Success response:
-  - `200`
-  - array of projects:
+- method: any
+- response shape:
+  - array of objects:
     - `name` (`string`)
     - `enabled` (`boolean`)
     - `priority` (`number`)
+- status: `200`.
 
 ### `GET /projects/{project_id}`
 
-- Handler: `handleProjectDetail`
-- Method: all methods
-- Empty path `{project_id}` (for example `/projects/`) forwards to `GET /projects`.
-- Success response:
-  - `200`
+- method: any
+- empty trailing path (`/projects/`) is normalized to `/projects`.
+- response shape:
   - `name` (`string`)
   - `enabled` (`boolean`)
   - `priority` (`number`)
   - `workspace` (`string`)
   - `beads_dir` (`string`)
-- Error response:
-  - `404` with `{"error":"project not found"}`
+- status:
+  - `200` when found
+  - `404` when project is unknown.
 
 ### `GET /health`
 
-- Handler: `handleHealth`
-- Method: all methods
-- `events_1h` (`number`) uses `GetRecentHealthEvents(1)`.
-- `recent_events` each item:
-  - `type` (`string`)
-  - `details` (`string`)
-  - `dispatch_id` (`string`)
-  - `bead_id` (`string`)
-  - `time` (`string`, RFC3339)
-- Success response:
-  - `200` when no `gateway_critical`
-  - `503` when at least one `gateway_critical` exists
+- method: any
+- response shape:
+  - `healthy` (`boolean`)
+  - `events_1h` (`number`)
+  - `recent_events` (`array`)
+    - `type` (`string`)
+    - `details` (`string`)
+    - `dispatch_id` (`string`)
+    - `bead_id` (`string`)
+    - `time` (`string`, RFC3339)
+- status:
+  - `200` when no `gateway_critical` events in last hour
+  - `503` when `gateway_critical` exists
 
 ### `GET /metrics`
 
-- Handler: `handleMetrics`
-- Method: all methods
-- Response:
-  - `200`
-  - Prometheus exposition format text
-  - key names include:
-    - `chum_dispatches_total`
-    - `chum_dispatches_failed_total`
-    - `chum_dispatches_running`
-    - `chum_dispatches_running_by_stage`
-    - `chum_tokens_total`
-    - `chum_cost_usd_total`
-    - `chum_uptime_seconds`
-    - others documented in handler implementation
+- method: any
+- status: `200`
+- body format: Prometheus exposition text.
+- includes counters and gauges:
+  - `chum_dispatches_total`
+  - `chum_dispatches_failed_total`
+  - `chum_dispatches_running`
+  - `chum_dispatches_running_by_stage`
+  - `chum_tokens_total`
+  - `chum_cost_usd_total`
+  - `chum_uptime_seconds`
+  - plus additional metrics for activity duration, outcomes, and safety blocks.
 
 ### `GET /recommendations`
 
-- Handler: `handleRecommendations`
-- Method: GET only
-- Query parameters:
+- query params:
   - `q` (`string`, optional)
-  - `hours` (`int`, optional, default `24`, valid range `1` to `168`, invalid or out-of-range resets to default)
-  - `limit` (`int`, optional, default `20`, max `100`)
-- Response:
-  - `200` (even when no matches)
-  - `recommendations` (array):
+  - `hours` (`int`, default `24`, valid range `1` to `168`, invalid values -> `24`)
+  - `limit` (`int`, default `20`, max `100`)
+- response shape:
+  - `recommendations` (`array`)
     - `id` (`number`)
     - `bead_id` (`string`)
     - `project` (`string`)
@@ -174,14 +165,15 @@ Error behavior:
   - `hours` (`number`)
   - `count` (`number`)
   - `generated_at` (`string`, RFC3339)
+- status:
+  - `200` always for valid method/queries
+  - `405` when method is not `GET`
 
 ### `GET /dispatches/{bead_id}`
 
-- Handler: `handleDispatchDetail`
-- Method: all methods
-- Path rule:
-  - `{bead_id}` required and must not be empty
-- Success response (`200`):
+- method: any
+- `bead_id` is required after `/dispatches/`; empty value returns `400`.
+- response shape:
   - `bead_id` (`string`)
   - `dispatches` (`array`)
     - `id` (`number`)
@@ -197,15 +189,15 @@ Error behavior:
     - `output_tail` (`string`)
     - `failure_category` (`string`, optional)
     - `failure_summary` (`string`, optional)
-- Error responses:
-  - `400` if `{bead_id}` empty
-  - `500` if store lookup fails
+- status:
+  - `200` on success
+  - `400` when bead id is empty
+  - `500` when store lookup fails
 
 ### `GET /safety/blocks`
 
-- Handler: `handleSafetyBlocks`
-- Method: GET only
-- Success response (`200`):
+- method: `GET` only
+- response shape:
   - `total` (`number`)
   - `counts_by_type` (`map[string]int`)
   - `blocks` (`array`)
@@ -215,199 +207,239 @@ Error behavior:
     - `reason` (`string`)
     - `metadata` (`object`, optional)
     - `created_at` (`string`, RFC3339)
-- Error response:
-  - `405` on non-GET methods
-  - `500` on store read failures
+- status:
+  - `200` on success
+  - `405` for non-GET
+  - `500` on store errors
 
-## Workflow control endpoints
+## Workflow endpoints
 
 ### `POST /workflows/start`
 
-- Handler: `handleWorkflowStart`
-- Request body (`temporal.TaskRequest`):
+- request body (`temporal.TaskRequest`):
   - `task_id` (`string`, required)
   - `prompt` (`string`, required)
-  - `project` (`string`, optional)
-  - `agent` (`string`, default `claude`)
-  - `reviewer` (`string`, optional passthrough)
-  - `work_dir` (`string`, default `/tmp/workspace`)
-  - `provider` (`string`, optional)
-  - `dod_checks` (`string[]`, optional)
-  - `slow_step_threshold` (`number`, nanoseconds, optional, default from `general.slow_step_threshold`)
-- Success response (`200`):
+  - optional: `project`, `agent`, `reviewer`, `work_dir`, `provider`, `model`, `dod_checks`, `slow_step_threshold`, `escalation_chain`
+- defaults:
+  - `agent` defaults to `claude`
+  - `work_dir` defaults to `/tmp/workspace`
+  - `slow_step_threshold` defaults to `general.slow_step_threshold`
+- response:
   - `workflow_id` (`string`)
   - `run_id` (`string`)
-  - `status` (`string`, value: `"started"`)
-- Error responses:
-  - `400` invalid JSON, missing `task_id` or `prompt`
-  - `405` non-POST method
-  - `500` temporal connect/start failure
-
-### `POST /workflows/{workflow_id}/approve`
-
-- Handler: `handleWorkflowApprove`
-- Request body: none
-- Success response (`200`):
-  - `workflow_id` (`string`)
-  - `status` (`string`, value: `"approved"`)
-- Error responses:
-  - `405` non-POST
-  - `500` Temporal connection or signal failure
-
-### `POST /workflows/{workflow_id}/reject`
-
-- Handler: `handleWorkflowReject`
-- Request body: none
-- Success response (`200`):
-  - `workflow_id` (`string`)
-  - `status` (`string`, value: `"rejected"`)
-- Error responses:
-  - `405` non-POST
-  - `500` Temporal connection or signal failure
+  - `status` (`string`, value `started`)
+- status:
+  - `200` success
+  - `400` missing required fields
+  - `405` non-`POST`
+  - `500` Temporal connect/start failure
 
 ### `GET /workflows/{workflow_id}`
 
-- Handler: `handleWorkflowStatus`
-- Method: GET only
-- Error response:
-  - `400` for empty `workflow_id`
-  - `404` for workflow query failures
-  - `500` temporal describe failure
-- Success response:
-  - `200`
+- response:
   - `workflow_id` (`string`)
   - `run_id` (`string`)
   - `type` (`string`)
   - `status` (`string`)
   - `start_time` (`string`, RFC3339)
-  - `close_time` (`string`, RFC3339, optional when present)
+  - `close_time` (`string`, RFC3339, optional)
+- errors:
+  - `400` for empty workflow id
+  - `404` when workflow is not found
+  - `500` on Temporal describe failures
+  - `405` for non-`GET`
+
+### `POST /workflows/{workflow_id}/approve`
+
+- no request body
+- response:
+  - `workflow_id` (`string`)
+  - `status` (`string`, value `approved`)
+- errors:
+  - `405` for non-`POST`
+  - `500` on signal/send failure
+
+### `POST /workflows/{workflow_id}/reject`
+
+- no request body
+- response:
+  - `workflow_id` (`string`)
+  - `status` (`string`, value `rejected`)
+- errors:
+  - `405` for non-`POST`
+  - `500` on signal/send failure
 
 ## Planning endpoints
 
 ### `POST /planning/start`
 
-- Handler: `handlePlanningStart`
-- Request body (`temporal.PlanningRequest`):
+- request body (`temporal.PlanningRequest`):
   - `project` (`string`, required)
   - `agent` (`string`, default `claude`)
   - `tier` (`string`, optional)
   - `work_dir` (`string`, required)
-  - `slow_step_threshold` (`number`, nanoseconds, optional)
-- Success response (`200`):
+  - `slow_step_threshold` (`number`, optional)
+- response:
   - `session_id` (`string`)
   - `run_id` (`string`)
-  - `status` (`string`, value: `"grooming_backlog"`)
-- Error responses:
-  - `400` invalid JSON, missing required fields
-  - `405` non-POST
-  - `500` temporal connect/start failure
+  - `status` (`string`, value `grooming_backlog`)
+- errors:
+  - `400` required fields missing
+  - `405` non-`POST`
+  - `500` Temporal connect/start failure
 
 ### `GET /planning/{session_id}`
 
-- Handler: `handlePlanningStatus`
-- Method: GET only
-- Success response (`200`):
-  - `session_id` (`string`)
-  - `run_id` (`string`)
-  - `status` (`string`)
-  - `start_time` (`string`, RFC3339)
-  - `close_time` (`string`, RFC3339, optional when present)
-  - optional `note` (`string`) while running
-- Error responses:
-  - `400` empty `{session_id}`
-  - `405` non-GET
-  - `404` unknown session
-  - `500` temporal describe failure
-
-### `POST /planning/{session_id}/select`
-### `POST /planning/{session_id}/answer`
-### `POST /planning/{session_id}/greenlight`
-
-- Handler: `routePlanning` -> `handlePlanningSignal`
-- Request body:
-  - JSON object with required `value` (`string`)
-- Success response (`200`):
-  - `session_id` (`string`)
-  - `signal` (`string`: `item-selected`, `answer`, `greenlight`)
-  - `value` (`string`)
-- Error responses:
-  - `400` invalid JSON (expected `{"value":"..."}`)
-  - `405` non-POST
-  - `500` temporal connect or signal error
-
-## Crab decomposition endpoints
-
-### `POST /crab/decompose`
-
-- Handler: `handleCrabDecompose`
-- Request body (`temporal.CrabDecompositionRequest`):
-  - `project` (`string`, required)
-  - `work_dir` (`string`, required)
-  - `plan_markdown` (`string`, required)
-  - `plan_id` (`string`, optional, default `plan-<project>-<unix_ts>`)
-  - `tier` (`string`, optional)
-  - `parent_whale_id` (`string`, optional)
-- Success response (`200`):
-  - `session_id` (`string`)
-  - `run_id` (`string`)
-  - `plan_id` (`string`)
-  - `status` (`string`, value: `"parsing"`)
-- Error responses:
-  - `400` invalid JSON or missing required fields
-  - `405` non-POST
-  - `500` temporal connect/start failure
-
-### `GET /crab/{session_id}`
-
-- Handler: `handleCrabStatus`
-- Method: GET only
-- Success response (`200`):
+- response:
   - `session_id` (`string`)
   - `run_id` (`string`)
   - `status` (`string`)
   - `start_time` (`string`, RFC3339)
   - `close_time` (`string`, RFC3339, optional)
-  - optional `note` while running
-- Error responses:
-  - `400` empty `{session_id}`
-  - `405` non-GET
-  - `404` unknown session
-  - `500` temporal describe failure
+  - optional `note` (`string`) while session is running
+- errors:
+  - `400` empty session id
+  - `404` session not found
+  - `405` non-`GET`
+  - `500` Temporal describe failure
 
-### `POST /crab/{session_id}/clarify`
-### `POST /crab/{session_id}/review`
+### Planning signal endpoints
 
-- Handler: `routeCrab` -> `handleCrabSignal`
-- Request body:
-  - JSON object with required `value` (`string`)
-- Success response (`200`):
+For each of:
+
+- `POST /planning/{session_id}/select`
+- `POST /planning/{session_id}/answer`
+- `POST /planning/{session_id}/greenlight`
+
+- method: `POST`
+- body:
+  - `value` (`string`, required)
+- response:
   - `session_id` (`string`)
-  - `signal` (`string`: `crab-clarification`, `crab-review`)
+  - `signal` (`string`)
+    - `item-selected` for `select`
+    - `answer` for `answer`
+    - `greenlight` for `greenlight`
   - `value` (`string`)
-- Error responses:
-  - `400` invalid JSON (expected `{"value":"..."}`)
-  - `405` non-POST
-  - `500` temporal connect or signal error
+- errors:
+  - `400` invalid JSON body
+  - `405` non-`POST`
+  - `500` on signal/send failure
+
+## Crab endpoints
+
+### `POST /crab/decompose`
+
+- request body (`temporal.CrabDecompositionRequest`):
+  - `project` (`string`, required)
+  - `work_dir` (`string`, required)
+  - `plan_markdown` (`string`, required)
+  - optional: `plan_id`, `tier`, `parent_whale_id`
+- defaults:
+  - `plan_id` auto-generated as `plan-<project>-<unix_ts>` when empty
+- response:
+  - `session_id` (`string`)
+  - `run_id` (`string`)
+  - `plan_id` (`string`)
+  - `status` (`string`, value `parsing`)
+- errors:
+  - `400` missing required fields
+  - `405` non-`POST`
+  - `500` Temporal connect/start failure
+
+### `GET /crab/{session_id}`
+
+- response:
+  - `session_id` (`string`)
+  - `run_id` (`string`)
+  - `status` (`string`)
+  - `start_time` (`string`, RFC3339)
+  - `close_time` (`string`, RFC3339, optional)
+  - optional `note` (`string`) while session is running
+- errors:
+  - `400` empty session id
+  - `404` session not found
+  - `405` non-`GET`
+  - `500` Temporal describe failure
+
+### Crab signal endpoints
+
+For each of:
+
+- `POST /crab/{session_id}/clarify`
+- `POST /crab/{session_id}/review`
+
+- method: `POST`
+- body:
+  - `value` (`string`, required)
+- response:
+  - `session_id` (`string`)
+  - `signal` (`string`)
+    - `crab-clarification` for `clarify`
+    - `crab-review` for `review`
+  - `value` (`string`)
+- errors:
+  - `400` invalid JSON body
+  - `405` non-`POST`
+  - `500` on signal/send failure
+
+## Representative examples
+
+### Start a workflow run
+
+```bash
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"task_id":"task-001","project":"main","prompt":"Refactor dispatcher config","agent":"claude","work_dir":"/tmp/workspace"}' \
+  http://127.0.0.1:8080/workflows/start
+```
+
+### Send planning greenlight
+
+```bash
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"value":"approve"}' \
+  http://127.0.0.1:8080/planning/session-abc/greenlight
+```
+
+### Query a workflow status
+
+```bash
+curl http://127.0.0.1:8080/workflows/session-abc
+```
 
 ## Error and status matrix
 
-Implemented endpoint statuses:
-
-| Status | When used |
+| Status | Use |
 | --- | --- |
-| `200` | request accepted and handled |
-| `400` | invalid payload, missing required path param, or malformed query/body |
-| `401` | auth required and token missing/invalid on control path |
-| `403` | local-only mode blocks remote request on control path |
-| `404` | missing resource (project/workflow/planning/crab session) |
-| `405` | wrong method |
-| `500` | temporal connect, dispatch/describe failures, store/query failures |
+| `200` | request accepted and response returned |
+| `400` | malformed request payload or missing required path fields |
+| `401` | control auth path rejected token |
+| `403` | control local-only policy rejected remote request |
+| `404` | missing project, workflow, planning session, or crab session |
+| `405` | unsupported HTTP method for route |
+| `500` | Temporal or store/persistent-layer failure |
 
-### Consistency guarantee
+## Verification
 
-This list is generated from and checked against:
-- route registration in `Server.Start`
-- method dispatch in each handler
-- existing tests in `internal/api/api_test.go`
+### Runtime verification commands
 
-Any endpoint absent from `Server.Start` should be treated as non-authoritative and implemented as stale documentation.
+```bash
+rg -n "handleStatus|handleProjects|handleRecommendations|routeWorkflows|routePlanning|routeCrab|RequireAuth|isControlEndpoint" internal/api/*.go
+go test ./internal/api -run Endpoint -count=1
+```
+
+### Consistency checks
+
+- All route behavior is driven by `internal/api/api.go` registrations.
+- `api_test.go` should remain the canonical behavior test layer for request/response assertions.
+- `docs/api/api-security.md` must stay aligned with the note that currently listed control endpoints are not registered for execution.
+
+## Known limitations
+
+- `/teams` is not registered in `api.go` despite legacy references in other docs.
+- `/scheduler/*` and `/dispatches/{id}/cancel|retry` are expected by auth config but are not registered in this release.
+- `workflows`, `planning`, and `crab` routes pass through `RequireAuth`, yet currently do not trigger auth enforcement because they are not control paths in `isControlEndpoint`.
+- Some registered GET endpoints do not explicitly reject unsupported methods and will report method-specific handler errors only for subset routes.
+- Dispatch path semantics for `/dispatches/{bead_id}` currently only accept any method and rely on handler path parsing.

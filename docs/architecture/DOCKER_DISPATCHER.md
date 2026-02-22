@@ -1,144 +1,249 @@
 # Docker Dispatcher Design
 
-## Scope and status
+Last updated: **2026-02-22**
 
-`internal/dispatch/docker.go` contains `DockerDispatcher`, a container-native execution path for agent prompts.
+## Scope
 
-As of 2026-02-22, this implementation is **not the active runtime path**.
+This document is the canonical design narrative for CHUM's container execution path currently implemented as a legacy `DockerDispatcher` in `internal/dispatch/docker.go`.
 
-- It is not registered by the dispatch backend factory used for scheduler runs.
-- It is not a valid value in `dispatch.routing` (`headless_cli` and `openclaw` are the only validated backends).
-- It is therefore a capability component with no production selection route yet.
+The active runtime does not currently select this path. All dispatch execution in shipping code goes through the `dispatch.Backend` abstraction with active backends `headless_cli` and `openclaw`.
 
-The `dispatch` docs should treat this as a migration target and not a current default.
+## Current implementation inventory
 
-## Purpose
+### Canonical implementation files
 
-`DockerDispatcher` isolates each execution inside a disposable container with explicit context directories and separate state handles.
+- `internal/dispatch/docker.go` — concrete container launcher and session lifecycle methods.
+- `internal/dispatch/dispatch.go` — legacy `DispatcherInterface` for PID-managed process execution.
+- `internal/dispatch/backend.go` — active `Backend` interface used by scheduler activities.
+- `internal/dispatch/openclaw.go` and `internal/dispatch/headless.go` — active `Backend` implementations.
+- `internal/config/validate.go` and `internal/config/types.go` — config validation of dispatch routing.
 
-Primary intent:
+### Confirmed facts from code
 
-- provide stronger process containment than PID-based dispatching;
-- make per-run cleanup explicit by handle;
-- enable host-independent runtime assumptions for future deployments.
+- `DockerDispatcher` exposes `Dispatch(ctx, agent, prompt, provider, thinkingLevel, workDir)`, `IsAlive`, `Kill`, `GetHandleType`, `GetSessionName`, and `GetProcessState`.
+- `DockerDispatcher` does not satisfy the active `dispatch.Backend` interface.
+- `docker` is not an accepted `dispatch.routing.*_backend` value today.
+- `internal/config/validate.go` only allows `headless_cli` and `openclaw`.
+- No workflow or scheduler path currently instantiates `NewDockerDispatcher`.
 
-## Architecture
+## Terminology alignment
 
-### Main actors
+- **Docker dispatcher**: the concrete implementation in `internal/dispatch/docker.go`.
+- **Dispatch backend**: interface implemented by runtime selection components in `internal/dispatch/backend.go`.
+- **Docker container session**: one `docker` container started for a dispatch handle.
+- **Handle**: integer identifier returned by `DockerDispatcher.Dispatch`.
+- **Session name**: container name format `chum-agent-<handle>-<unix-ns>`.
+- **Migration target**: moving this legacy dispatcher to the active backend contract.
 
-- `DockerDispatcher` in `internal/dispatch/docker.go`
-- Docker daemon client from `github.com/docker/docker/client`
-- context work dir under `TMPDIR/chum-ctx-<session>`
-- per-dispatch container named `chum-agent-<handle>-<unixns>`
+## Architecture overview
 
-### Responsibilities
+The Docker path is currently a self-contained execution module with explicit fixed behavior.
 
-- create per-run context directories and write execution artifacts (`prompt.txt`, `agent.txt`, `thinking.txt`, `provider.txt`, `script.sh`);
-- launch a container with image `chum-agent:latest`;
-- map context and workdir mounts into the container;
-- track handle→session mapping and optional session metadata;
-- expose handle lifecycle and process state via `DispatcherInterface`;
-- provide cleanup and dead-session cleanup utilities.
+### Component responsibilities
 
-## Lifecycle model
+- `DockerDispatcher.Dispatch`
+  - allocate handle and container session name.
+  - create `os.TempDir()/chum-ctx-<session>` context directory.
+  - write execution metadata (`prompt.txt`, `agent.txt`, `thinking.txt`, `provider.txt`, `script.sh`).
+  - start a container from `chum-agent:latest` with bind mounts and provider credentials.
+  - store session mapping in internal maps.
 
-1. `Dispatch` allocates a numeric handle and stable session name.
-2. `Dispatch` creates `chum-ctx-<session>` and writes prompt/agent/provider inputs.
-3. Container starts with `sh /chum-ctx/script.sh` and is tracked by session name.
-4. The caller observes state through `IsAlive(handle)` or `GetProcessState(handle)`.
-5. Termination uses `Kill(handle)`, which force-removes the container.
-6. `CleanDeadSessions()` prunes stopped `chum-agent-*` containers outside active process flow.
+- `DockerDispatcher.IsAlive`
+  - inspect container running state for a handle.
 
-### State transitions
+- `DockerDispatcher.GetProcessState`
+  - map runtime state to simplified process state values.
 
-- `dispatch -> running` (container reported as `running`)
-- `dispatch -> exited` (container stopped without dead/oom)
-- `dispatch -> failed` (container dead or OOM-killed)
-- `dispatch -> unknown` (inspect failure / missing mapping)
+- `DockerDispatcher.Kill`
+  - force-remove container and remove context directory.
 
-## Interface compatibility
+- `CaptureOutput`
+  - separate package function that collects container logs from a session name.
 
-### Implements `DispatcherInterface`
+- `CleanDeadSessions`
+  - enumerate all local containers and remove stopped `chum-agent-*` instances.
 
-`DockerDispatcher` currently implements the legacy interface used by older scheduler paths:
+- `IsDockerAvailable` and `HasLiveSession`
+  - currently placeholder stubs.
 
-- `Dispatch(ctx, agent, prompt, provider, thinkingLevel, workDir) (int, error)`
-- `IsAlive(handle int) bool`
-- `Kill(handle int) error`
-- `GetHandleType() string`
-- `GetSessionName(handle int) string`
-- `GetProcessState(handle int) ProcessState`
+## Execution flow
 
-### Not a `Backend` yet
+```text
+HTTP/cron/scheduler
+  └─ dispatch selection logic (active backends only today)
 
-`DockerDispatcher` does not implement `dispatch.Backend` (`internal/dispatch/backend.go`):
+(For docker path only)
+  ┌─ Dispatch(call params)
+  │
+  ├─ allocate handle and session name
+  ├─ write temp context files
+  ├─ create container config + host config
+  ├─ mount volumes and inject provider env vars
+  ├─ create/start container
+  ├─ track handle→session metadata
+  └─ return handle to caller
 
-- missing `Dispatch(ctx context.Context, opts DispatchOpts) (Handle, error)`
-- missing `Status(handle Handle)`, `CaptureOutput(handle Handle)`, `Cleanup(handle Handle)`
-- missing `Name() string` on the struct
+Lifecycle management
+  ├─ IsAlive/ GetProcessState for polling
+  ├─ CaptureOutput(session_name) for visibility
+  ├─ Kill(handle) for manual abort
+  └─ CleanDeadSessions() for cleanup sweep
+```
 
-This is the primary API gap for migration.
+### Runtime sequence in detail
 
-## Migration notes from legacy execution model
+1. `Dispatch` increments `nextHandle` and builds deterministic session name.
+2. Context directory is created and metadata files are persisted.
+3. `openclawShellScript()` content is copied into `/chum-ctx/script.sh`.
+4. Container is created with `ContainerConfig`:
+   - image: `chum-agent:latest`
+   - command: shell entrypoint over `/chum-ctx/script.sh` with four parameter files
+   - working directory: `/workspace`
+5. Host mounts are prepared:
+   - `/chum-ctx` read-only for prompt and context
+   - `/workspace` writable workspace fallback to temp on creation errors
+   - `$HOME/.openclaw` mapped to `/root/.openclaw`
+6. Container is started and handle metadata persisted in memory.
+7. Caller can query state via container inspect or kill container by handle.
 
-Current production dispatch routing resolves via `dispatch.routing` and `dispatch.Backend` (`headless_cli`, `openclaw`).
+## State model
 
-To integrate Docker cleanly:
+### In-memory state
 
-- create a `DockerBackend` adapter that implements `dispatch.Backend`;
-- update routing validation to include `docker` as an opt-in backend;
-- map `DispatchOpts` fields to container inputs;
-- normalize status states (`running` / `completed` / `failed` / `unknown`) to workflow expectations;
-- decide and document output and cleanup ownership (who deletes host temp files and when);
-- gate rollout behind config to allow rollback to `headless_cli` or `openclaw`.
+- `sessions map[int]string` — handle to container session name.
+- `metadata map[string]string` — last known `agent=<agent>,provider=<provider>` per session.
+- `nextHandle int` — monotonic integer for stable handle allocation.
+- `sync.Mutex` — serializes state transitions.
 
-## Operational assumptions and caveats
+### Derived execution state
 
-- image hard-coded to `chum-agent:latest`;
-- container lifecycle is explicit (`AutoRemove: false`), so cleanup can leak without periodic maintenance;
-- provider secrets are passed as env vars to each container (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `CHUM_TELEMETRY`);
-- per-container secrets are not isolated by provider yet;
-- `workDir` mount is best-effort: fallback to `TMPDIR/chum-workspace-<session>` when target path cannot be created/written;
-- CLI client creation errors are logged and `DockerDispatcher` is still constructed with an internal nil-check path.
+`GetProcessState(handle)` returns:
 
-## Operational caveats and known gaps
+- `running` when container state is running.
+- `exited` when container is not running and not flagged `dead`/`oom`.
+- `failed` when container state is `Dead` or `OOMKilled`.
+- `unknown` when handle lookup or inspect fails.
 
-- `IsDockerAvailable()` currently always returns `true` (probe gap).
-- `HasLiveSession()` currently always returns `false` (placeholder behavior).
-- no automatic success-path cleanup.
-- no `Backend` adapter to reuse runtime orchestration.
-- no route through `dispatch.routing` in current config validation.
+`GetProcessState` always returns `ExitCode` from container state and does not infer exit reason beyond that mapping.
+
+### Data model side effects
+
+- Context directory path is based on system temp directory.
+- Container logs are collected outside the backend contract through `CaptureOutput`.
+- Container cleanup on `Kill` removes temp context directory for that handle.
+
+## Configuration model
+
+Docker behavior currently uses internal constants and environment values directly:
+
+- hardcoded image: `chum-agent:latest`
+- hardcoded env exposure: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `CHUM_TELEMETRY`
+- hardcoded cleanup behavior: `AutoRemove: false`
+
+To activate this path as an official **dispatch backend**, migration should move these items into explicit config:
+
+- `dispatch.routing` entries in `dispatch.routing.*_backend`.
+- per-backend image, mount policy, timeout, and cleanup policy.
+- secure credential delivery strategy (per-provider only, rotated credentials, optional vault/secret provider).
+- backend adapter layer between `DockerDispatcher` and `dispatch.Backend`.
 
 ## Failure handling
 
-- invalid Docker daemon connection fails at container API call time (`Dispatch`, `Kill`, `IsAlive`, `GetProcessState`);
-- inspect or logs calls return fallback state (`unknown` or error text in caller logs).
-- `dispatch` failures from container start return structured errors, for example:
-  - `failed to create container`
-  - `failed to create context dir`
-  - `write <artifact>: <err>`
+### Direct failure classes
 
-Cleanup recommendation:
+- Context directory creation failure returns an immediate error.
+- `prompt.txt` and related file writes are fail-fast.
+- Container create/start failures are returned with wrapped contextual errors.
+- Container inspect failures convert state to `unknown` and can be observed through caller logic.
+- `Kill` and `CleanDeadSessions` return/ignore errors from Docker remove operations, preserving best-effort cleanup.
 
-- when container handles are stuck, run periodic `CleanDeadSessions()` and periodic removal of stale `TMPDIR/chum-ctx-*` directories.
+### Retry and resilience behavior
 
-## Operational verification
+There is no retry wrapper inside `docker.go`.
 
-### Health checks
+- Failed start/create calls are immediate caller-level failures.
+- No exponential backoff or queue admission control is built into this file.
+- Caller logic must implement retry classification and escalation.
 
-- `docker ps -a --filter name=chum-agent-` should show known session container names;
-- `docker logs <session_name>` should return run output for recent sessions;
-- `docker rm -f <session_name>` for manual recovery.
+## Observability and diagnostics
 
-### Command checks
+### Existing observable signals
 
-- `docker ps --format '{{.Names}}' | rg '^chum-agent-'`
-- `docker ps -a --filter name=chum-agent- --filter status=exited`
-- `go test ./internal/dispatch -run Docker -count=1` (as far as available test coverage permits)
+- Structured logs use injected slog logger for dispatcher and container lifecycle actions.
+- Health/state is inferred via inspect-based polling APIs.
+- Output visibility is available via:
+  - `CaptureOutput(sessionName)` snapshots
+  - manual `docker logs <container>`
+- No dedicated Prometheus metrics exist for Docker state in this file.
 
-## Runtime wiring references
+### Recommended first-level checks
 
-- `internal/dispatch/docker.go` (implementation)
-- `internal/dispatch/backend.go` (`Backend` and legacy interface definitions)
-- `internal/config/validate.go` (`dispatch.routing` accepts `headless_cli` and `openclaw` only)
-- `docs/architecture/CONFIG.md` (`[dispatch.routing]` section)
+- verify docker daemon availability before first dispatch.
+- verify image presence and script compatibility for `openclawShellScript()`.
+- verify context workspace permissions before starting bulk dispatch.
+
+## Security boundaries
+
+### Current risk posture
+
+- All provider API keys (`ANTHROPIC`, `OPENAI`, `GEMINI`, `CHUM_TELEMETRY`) are injected broadly into every container.
+- Temporary context and logs remain on local filesystems under `os.TempDir()` for the life of dispatch.
+- `AutoRemove` is disabled, so manual cleanup is required for storage reclamation.
+- `isDocker` availability checks are stubbed and not authoritative.
+
+### Minimum hardening for migration
+
+- move to task-specific secret scoping.
+- add optional read-only workspace for non-mutating jobs.
+- ensure container output and context directories are encrypted or short-lived per deployment policy.
+- implement explicit resource limits and network policy controls.
+
+## Verification
+
+### Static verification (required)
+
+```bash
+rg -n "type DockerDispatcher|func \(d \*DockerDispatcher\)|openclawShellScript|chum-agent:latest" internal/dispatch/docker.go internal/dispatch/backend.go internal/config/validate.go internal/config/types.go
+go test ./internal/dispatch -run Docker -count=1
+```
+
+### Runtime verification (current behavior)
+
+1. Confirm no runtime routing references `docker` in dispatch routing config.
+2. Launch one local dispatch if a test environment is prepared.
+3. Observe handle allocation, inspect output, and force-kill path.
+4. Confirm `CleanDeadSessions()` removes stopped `chum-agent-*` containers and context directories.
+
+### Cross-document verification points
+
+- `docs/api/ENDPOINTS.md` for runtime contract references that should not cite Docker as active.
+- `docs/architecture/CONFIG.md` for dispatch backend options currently recognized by validation.
+
+## Known limitations and migration gaps
+
+### Known limitations
+
+- `DockerDispatcher` uses legacy interface, so it cannot be selected by current backend wiring.
+- `dispatch.routing` does not accept `docker`.
+- `IsDockerAvailable` and `HasLiveSession` are placeholders.
+- No backend adapter means metrics and lifecycle hooks are missing from active scheduler instrumentation.
+- Image and credential policy are hard-coded.
+- Cleanup relies on manual cleanup paths and best-effort sweeps.
+
+### Migration gaps to productionize
+
+1. Add a backend adapter that satisfies `dispatch.Backend`.
+2. Register `docker` as a valid routing backend.
+3. Add `docker` to runtime config schema and docs.
+4. Add contract tests against `Backend` interface semantics.
+5. Decide and enforce per-provider secret scoping.
+6. Add telemetry counters for start/fail/kill/retry states.
+
+## Maintenance guidance
+
+Update this document when any of these files change:
+
+- `internal/dispatch/docker.go`
+- `internal/dispatch/backend.go`
+- `internal/config/validate.go`
+- `docs/architecture/CONFIG.md`

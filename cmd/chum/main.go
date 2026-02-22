@@ -44,11 +44,13 @@ func configureLogger(logLevel string, useDev bool) *slog.Logger {
 }
 
 func registerTemporalSearchAttributes(ctx context.Context, temporalHostPort, temporalNamespace string, logger *slog.Logger) error {
-	opts := tclient.Options{
-		HostPort: temporalHostPort,
+	if temporalNamespace == "" {
+		temporalNamespace = tclient.DefaultNamespace
 	}
-	if temporalNamespace != "" {
-		opts.Namespace = temporalNamespace
+
+	opts := tclient.Options{
+		HostPort:  temporalHostPort,
+		Namespace: temporalNamespace,
 	}
 	tc, err := tclient.Dial(opts)
 	if err != nil {
@@ -62,6 +64,14 @@ func registerTemporalSearchAttributes(ctx context.Context, temporalHostPort, tem
 	}
 	logger.Info("temporal search attributes ready", "host", temporalHostPort, "namespace", temporalNamespace)
 	return nil
+}
+
+func resolveTemporalNamespace() string {
+	namespace := strings.TrimSpace(os.Getenv("TEMPORAL_NAMESPACE"))
+	if namespace == "" {
+		return tclient.DefaultNamespace
+	}
+	return namespace
 }
 
 func validateRuntimeConfigReload(oldCfg, newCfg *config.Config) error {
@@ -190,26 +200,29 @@ func runAdminMode(args []string, logger *slog.Logger) error {
 		host = temporal.DefaultTemporalHostPort
 	}
 
-	tc, err := tclient.Dial(tclient.Options{HostPort: host})
+	temporalNamespace := resolveTemporalNamespace()
+
+	tc, err := tclient.Dial(tclient.Options{
+		HostPort:  host,
+		Namespace: temporalNamespace,
+	})
 	if err != nil {
 		return err
 	}
 	defer tc.Close()
 
-	namespace := strings.TrimSpace(os.Getenv("TEMPORAL_NAMESPACE"))
-
 	ops := &adminBatchOpsRunner{
 		drain: func(ctx context.Context, q string) (string, error) {
-			return temporal.StartDrainAgentWorkflows(ctx, tc.WorkflowService(), namespace, q)
+			return temporal.StartDrainAgentWorkflows(ctx, tc.WorkflowService(), temporalNamespace, q)
 		},
 		resume: func(ctx context.Context, q string) (string, error) {
-			return temporal.StartResumeAgentWorkflows(ctx, tc.WorkflowService(), namespace, q)
+			return temporal.StartResumeAgentWorkflows(ctx, tc.WorkflowService(), temporalNamespace, q)
 		},
 		reset: func(ctx context.Context, q string) (string, error) {
-			return temporal.StartResetAgentWorkflows(ctx, tc.WorkflowService(), namespace, q)
+			return temporal.StartResetAgentWorkflows(ctx, tc.WorkflowService(), temporalNamespace, q)
 		},
 		terminate: func(ctx context.Context, q string) (string, error) {
-			return temporal.StartTerminateAgentWorkflows(ctx, tc.WorkflowService(), namespace, q)
+			return temporal.StartTerminateAgentWorkflows(ctx, tc.WorkflowService(), temporalNamespace, q)
 		},
 	}
 
@@ -222,7 +235,7 @@ func runAdminMode(args []string, logger *slog.Logger) error {
 		"command", command,
 		"query", query,
 		"operation_id", operationID,
-		"namespace", namespace,
+		"namespace", temporalNamespace,
 		"host", host,
 	)
 	return nil
@@ -317,7 +330,7 @@ func main() {
 		return nil
 	}
 
-	temporalNamespace := strings.TrimSpace(os.Getenv("TEMPORAL_NAMESPACE"))
+	temporalNamespace := resolveTemporalNamespace()
 	if registerErr := registerTemporalSearchAttributes(context.Background(), cfg.General.TemporalHostPort, temporalNamespace, logger); registerErr != nil {
 		logger.Error("failed to register temporal search attributes", "host", cfg.General.TemporalHostPort, "namespace", temporalNamespace, "error", registerErr)
 		os.Exit(1)
@@ -326,7 +339,7 @@ func main() {
 	// Start Temporal worker — now includes DispatcherWorkflow + ScanCandidatesActivity
 	go func() {
 		logger.Info("starting temporal worker")
-		if workerErr := temporal.StartWorker(st, cfg.Tiers, dag, cfgManager, cfg.General.TemporalHostPort, logger); workerErr != nil {
+		if workerErr := temporal.StartWorker(st, cfg.Tiers, dag, cfgManager, cfg.General.TemporalHostPort, temporalNamespace, logger); workerErr != nil {
 			logger.Error("temporal worker error", "error", workerErr)
 		}
 	}()
@@ -337,7 +350,8 @@ func main() {
 		time.Sleep(5 * time.Second)
 
 		tc, dialErr := tclient.Dial(tclient.Options{
-			HostPort: cfg.General.TemporalHostPort,
+			HostPort:  cfg.General.TemporalHostPort,
+			Namespace: temporalNamespace,
 		})
 		if dialErr != nil {
 			logger.Error("failed to create temporal client for schedules", "error", dialErr)

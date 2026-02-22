@@ -133,6 +133,7 @@ func TestCHUMNotSpawnedOnFailure(t *testing.T) {
 
 	var outcome OutcomeRecord
 	outcomeSet := false
+	var capturedAttrs []map[string]interface{}
 	env.OnActivity(a.RecordOutcomeActivity, mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
 		arg := args.Get(1)
 		if o, ok := arg.(OutcomeRecord); ok {
@@ -141,6 +142,19 @@ func TestCHUMNotSpawnedOnFailure(t *testing.T) {
 		}
 	}).Return(nil)
 	env.OnActivity(a.EscalateActivity, mock.Anything, mock.Anything).Return(nil)
+
+	original := upsertChumSearchAttributesFn
+	t.Cleanup(func() {
+		upsertChumSearchAttributesFn = original
+	})
+	upsertChumSearchAttributesFn = func(_ workflow.Context, attrs map[string]interface{}) error {
+		copyAttrs := make(map[string]interface{}, len(attrs))
+		for k, v := range attrs {
+			copyAttrs[k] = v
+		}
+		capturedAttrs = append(capturedAttrs, copyAttrs)
+		return nil
+	}
 
 	// Register the child workflows but they should NOT be called
 	env.OnWorkflow(ContinuousLearnerWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
@@ -168,6 +182,23 @@ func TestCHUMNotSpawnedOnFailure(t *testing.T) {
 	// CHUM should NOT have been spawned
 	env.AssertWorkflowNotCalled(t, "ContinuousLearnerWorkflow", mock.Anything, mock.Anything)
 	env.AssertWorkflowNotCalled(t, "TacticalGroomWorkflow", mock.Anything, mock.Anything)
+
+	stages := make(map[string]int)
+	for _, attrs := range capturedAttrs {
+		stage := fmt.Sprintf("%v", attrs[SearchAttributeCurrentStage])
+		stages[stage]++
+
+		require.Equal(t, "test-project", attrs[SearchAttributeProject])
+		require.Equal(t, "test-morsel-fail", attrs[SearchAttributeTaskTitle])
+		require.Equal(t, 0, attrs[SearchAttributePriority])
+	}
+	require.Greater(t, stages[chumWorkflowStatusPlan], 0)
+	require.Greater(t, stages[chumWorkflowStatusGate], 0)
+	require.Greater(t, stages[chumWorkflowStatusExecute], 0)
+	require.Greater(t, stages[chumWorkflowStatusReview], 0)
+	require.Greater(t, stages[chumWorkflowStatusDoD], 0)
+	require.Greater(t, stages[chumWorkflowStatusEscalated], 0)
+	require.Zero(t, stages[chumWorkflowStatusCompleted])
 }
 
 func TestChumAgentWorkflowUpsertsSearchAttributesAtLifecycleStages(t *testing.T) {

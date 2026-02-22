@@ -64,13 +64,16 @@ func DispatcherWorkflow(ctx workflow.Context, _ struct{}) error {
 		c := &result.Candidates[i]
 		timeout := workflowTimeout(c.EstimateMinutes)
 
+		// Each dispatch is a fresh organism — unique workflow ID per attempt.
+		// If it fails, the task dies and a new one is born from its ashes.
+		wfID := fmt.Sprintf("%s-%d", c.TaskID, workflow.Now(ctx).Unix())
 		childOpts := workflow.ChildWorkflowOptions{
-			WorkflowID:               c.TaskID,
+			WorkflowID:               wfID,
 			TaskQueue:                DefaultTaskQueue,
 			WorkflowExecutionTimeout: timeout,
-			// REJECT_DUPLICATE — a task runs exactly once. If it completed or
-			// failed, the task must be closed in the graph. New work = new morsel.
-			WorkflowIDReusePolicy: enumspb.WORKFLOW_ID_REUSE_POLICY_REJECT_DUPLICATE,
+			// ALLOW_DUPLICATE — every dispatch attempt is a unique organism.
+			// No task ID ever persists. Failed tasks die; new ones are born.
+			WorkflowIDReusePolicy: enumspb.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE,
 			// ABANDON keeps child workflows alive after the dispatcher parent completes.
 			ParentClosePolicy: enumspb.PARENT_CLOSE_POLICY_ABANDON,
 		}
@@ -250,22 +253,14 @@ func (da *DispatchActivities) ScanCandidatesActivity(ctx context.Context) (*Scan
 		slots = maxPerTick
 	}
 
-	// Build set of running workflow IDs to skip re-dispatch.
+	// Build set of TASK IDs that are currently running (extract task ID from
+	// workflow IDs like "w1-1-1708654321" → "w1-1"). Skip re-dispatch for
+	// tasks with an active organism, but allow re-dispatch after death.
 	runningSet := make(map[string]struct{}, len(openWFs))
 	for _, wf := range openWFs {
-		runningSet[wf.workflowID] = struct{}{}
-	}
-
-	// Also skip tasks that have a recently-completed workflow (last 24h).
-	// Without this, the dispatcher keeps trying to re-dispatch tasks that already
-	// completed, and Temporal rejects them every tick.
-	completedSet, err := listRecentlyCompletedWorkflows(ctx, da.TC)
-	if err != nil {
-		logger.Warn(SharkPrefix+" Dispatcher: completed workflow query failed", "error", err)
-		completedSet = make(map[string]struct{}) // non-fatal — proceed without filter
-	}
-	for wfID := range completedSet {
-		runningSet[wfID] = struct{}{} // merge into skip set
+		// Extract task ID from workflow ID (strip timestamp suffix)
+		taskID := extractTaskIDFromWorkflowID(wf.workflowID)
+		runningSet[taskID] = struct{}{}
 	}
 
 	maxPerProject := cfg.Dispatch.Git.MaxConcurrentPerProject
@@ -402,7 +397,13 @@ func (da *DispatchActivities) ScanCandidatesActivity(ctx context.Context) (*Scan
 // listOpenAgentWorkflows returns all currently running ChumAgentWorkflow
 // executions. Extracted from the old scheduler for reuse in the activity.
 func listOpenAgentWorkflows(ctx context.Context, tc workflowListClient, project string) ([]openWorkflowExecution, error) {
-	query := buildOpenAgentWorkflowQuery(project)
+	return listOpenAgentWorkflowsForAgent(ctx, tc, project, "")
+}
+
+// listOpenAgentWorkflowsForAgent returns running Chum workflows filtered by project
+// and optional agent. It is future-ready for targeted drain/review batches.
+func listOpenAgentWorkflowsForAgent(ctx context.Context, tc workflowListClient, project, agent string) ([]openWorkflowExecution, error) {
+	query := buildOpenAgentWorkflowQueryForAgent(project, agent)
 
 	var pageToken []byte
 	executions := make([]openWorkflowExecution, 0, 200)
@@ -451,6 +452,10 @@ func buildOpenAgentWorkflowQuery(project string) string {
 	return ChumAgentRunningVisibilityQueryForProject(project)
 }
 
+func buildOpenAgentWorkflowQueryForAgent(project, agent string) string {
+	return ChumAgentRunningVisibilityQueryForProjectAndAgent(project, agent)
+}
+
 // listRecentlyCompletedWorkflows returns IDs of ChumAgentWorkflows that
 // completed in the last 24 hours. The dispatcher skips these to avoid
 // re-dispatching tasks that already succeeded.
@@ -497,6 +502,27 @@ type openWorkflowExecution struct {
 	workflowID string
 	runID      string
 	startTime  time.Time
+}
+
+// extractTaskIDFromWorkflowID strips the unix timestamp suffix from a workflow ID
+// to recover the original task ID. E.g. "w1-1-1708654321" → "w1-1".
+// Falls back to the full workflow ID if no timestamp suffix is found.
+func extractTaskIDFromWorkflowID(wfID string) string {
+	// Find the last dash — if the part after it is all digits, strip it.
+	idx := strings.LastIndex(wfID, "-")
+	if idx <= 0 {
+		return wfID
+	}
+	suffix := wfID[idx+1:]
+	for _, ch := range suffix {
+		if ch < '0' || ch > '9' {
+			return wfID // not a timestamp suffix
+		}
+	}
+	if len(suffix) < 8 {
+		return wfID // too short to be a unix timestamp
+	}
+	return wfID[:idx]
 }
 
 func buildEscalationTiers(cfg *config.Config) []EscalationTier {

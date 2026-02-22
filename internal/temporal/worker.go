@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/worker"
@@ -17,22 +18,27 @@ import (
 // StartWorker connects to Temporal and starts the chum task queue worker.
 // The store, tiers, dag, and cfgMgr are injected so activities can record
 // outcomes, resolve agents, and scan for ready tasks.
-func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr config.ConfigManager, temporalHostPort string, logger *slog.Logger) error {
+func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr config.ConfigManager, temporalHostPort, temporalNamespace string, logger *slog.Logger) error {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	if temporalHostPort == "" {
 		temporalHostPort = DefaultTemporalHostPort
 	}
+	ns := strings.TrimSpace(temporalNamespace)
+	if ns == "" {
+		ns = client.DefaultNamespace
+	}
 	c, err := client.Dial(client.Options{
-		HostPort: temporalHostPort,
+		HostPort:  temporalHostPort,
+		Namespace: ns,
 	})
 	if err != nil {
 		return err
 	}
 	defer c.Close()
 
-	if err := RegisterChumSearchAttributes(context.Background(), c); err != nil {
+	if err := RegisterChumSearchAttributesWithNamespace(context.Background(), c, ns); err != nil {
 		return err
 	}
 

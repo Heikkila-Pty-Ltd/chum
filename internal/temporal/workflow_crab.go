@@ -277,4 +277,3 @@ func recordCrabHealth(ctx workflow.Context, opts workflow.ActivityOptions, a *Ac
 	_ = workflow.ExecuteActivity(actCtx, a.RecordHealthEventActivity, eventType, fullDetails).Get(ctx, nil)
 	logger.Info(CrabPrefix+" Health event recorded", "EventType", eventType, "PlanID", planID)
 }
-

@@ -11,6 +11,7 @@ import (
 	"go.temporal.io/api/serviceerror"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/workflow"
+	"google.golang.org/grpc"
 )
 
 const (
@@ -42,7 +43,7 @@ func chumSearchAttributeDefs() map[string]enumspb.IndexedValueType {
 		SearchAttributePriority:     enumspb.INDEXED_VALUE_TYPE_INT,
 		SearchAttributeAgent:        enumspb.INDEXED_VALUE_TYPE_KEYWORD,
 		SearchAttributeCurrentStage: enumspb.INDEXED_VALUE_TYPE_KEYWORD,
-		SearchAttributeTaskTitle:    enumspb.INDEXED_VALUE_TYPE_KEYWORD,
+		SearchAttributeTaskTitle:    enumspb.INDEXED_VALUE_TYPE_TEXT,
 	}
 }
 
@@ -55,6 +56,12 @@ func ChumAgentRunningVisibilityQuery() string {
 // ChumAgentRunningVisibilityQueryForProject returns the visibility query for
 // running Chum agent workflows, optionally filtered by project.
 func ChumAgentRunningVisibilityQueryForProject(project string) string {
+	return ChumAgentRunningVisibilityQueryForProjectAndAgent(project, "")
+}
+
+// ChumAgentRunningVisibilityQueryForProjectAndAgent returns the visibility query for
+// running Chum agent workflows, optionally filtered by project and/or agent.
+func ChumAgentRunningVisibilityQueryForProjectAndAgent(project, agent string) string {
 	activeStatuses := []string{
 		chumWorkflowStatusRunning,
 		chumWorkflowStatusPlan,
@@ -75,23 +82,42 @@ func ChumAgentRunningVisibilityQueryForProject(project string) string {
 	)
 
 	project = strings.TrimSpace(project)
-	if project == "" {
-		return visibilityQuery
+	if project != "" {
+		visibilityQuery = fmt.Sprintf("%s AND %s = '%s'", visibilityQuery, SearchAttributeProject, quoteSearchAttributeValue(project))
 	}
 
-	return fmt.Sprintf("%s AND %s = '%s'", visibilityQuery, SearchAttributeProject, strings.ReplaceAll(project, "'", "''"))
+	agent = strings.TrimSpace(agent)
+	if agent != "" {
+		visibilityQuery = fmt.Sprintf("%s AND %s = '%s'", visibilityQuery, SearchAttributeAgent, quoteSearchAttributeValue(agent))
+	}
+
+	return visibilityQuery
 }
 
 func upsertChumWorkflowSearchAttributes(ctx workflow.Context, req TaskRequest, status string) error {
-	req.Priority = normalizePriority(req.Priority)
+	searchMetadata := normalizeSearchMetadataForVisibility(req)
 	attrs := map[string]interface{}{
-		SearchAttributeProject:      req.Project,
-		SearchAttributePriority:     req.Priority,
-		SearchAttributeAgent:        req.Agent,
+		SearchAttributeProject:      searchMetadata.Project,
+		SearchAttributePriority:     searchMetadata.Priority,
+		SearchAttributeAgent:        searchMetadata.Agent,
 		SearchAttributeCurrentStage: status,
-		SearchAttributeTaskTitle:    req.TaskTitle,
+		SearchAttributeTaskTitle:    searchMetadata.TaskTitle,
 	}
 	return upsertChumSearchAttributesFn(ctx, attrs)
+}
+
+func normalizeSearchMetadataForVisibility(req TaskRequest) TaskRequest {
+	req.Agent = strings.TrimSpace(req.Agent)
+	if req.Agent == "" {
+		req.Agent = "claude"
+	}
+	req.Project = strings.TrimSpace(req.Project)
+	if req.Project == "" {
+		req.Project = "unknown"
+	}
+	req.TaskTitle = normalizeTaskTitle(req.TaskID, req.TaskTitle, req.Prompt)
+	req.Priority = normalizePriority(req.Priority)
+	return req
 }
 
 // RegisterChumSearchAttributes is idempotent on existing attribute registrations.
@@ -114,8 +140,15 @@ func RegisterChumSearchAttributesWithNamespace(ctx context.Context, c client.Cli
 		ns = client.DefaultNamespace
 	}
 
-	_, err := c.OperatorService().AddSearchAttributes(ctx, &operatorservice.AddSearchAttributesRequest{
-		Namespace:        ns,
+	if err := registerSearchAttributes(ctx, c.OperatorService(), ns); err != nil {
+		return err
+	}
+	return nil
+}
+
+func registerSearchAttributes(ctx context.Context, reg searchAttributeRegistrar, namespace string) error {
+	_, err := reg.AddSearchAttributes(ctx, &operatorservice.AddSearchAttributesRequest{
+		Namespace:        namespace,
 		SearchAttributes: chumSearchAttributeDefs(),
 	})
 	if err == nil {
@@ -126,6 +159,14 @@ func RegisterChumSearchAttributesWithNamespace(ctx context.Context, c client.Cli
 		return nil
 	}
 	return err
+}
+
+type searchAttributeRegistrar interface {
+	AddSearchAttributes(context.Context, *operatorservice.AddSearchAttributesRequest, ...grpc.CallOption) (*operatorservice.AddSearchAttributesResponse, error)
+}
+
+func quoteSearchAttributeValue(value string) string {
+	return strings.ReplaceAll(value, "'", "''")
 }
 
 func isChumSearchAttributeAlreadyExistsError(err error) bool {

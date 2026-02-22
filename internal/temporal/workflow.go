@@ -95,24 +95,18 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 		}
 	}
 
-	req.Agent = strings.TrimSpace(req.Agent)
-	if req.Agent == "" {
-		req.Agent = "claude"
-	}
+	req = normalizeSearchMetadataForVisibility(req)
 	if req.Reviewer == "" {
 		req.Reviewer = DefaultReviewer(req.Agent)
 	}
-	req.Project = strings.TrimSpace(req.Project)
-	if req.Project == "" {
-		req.Project = "unknown"
-	}
-	req.Priority = normalizePriority(req.Priority)
-	req.TaskTitle = normalizeTaskTitle(req.TaskID, req.TaskTitle, req.Prompt)
-	searchMetadata := req
 
-	if err := upsertChumWorkflowSearchAttributes(ctx, searchMetadata, chumWorkflowStatusPlan); err != nil {
-		logger.Warn(SharkPrefix+" Failed to set workflow search attributes to plan", "error", err)
+	updateSearchAttributes := func(stage string) {
+		if err := upsertChumWorkflowSearchAttributes(ctx, req, stage); err != nil {
+			logger.Warn(SharkPrefix+" Failed to set workflow search attributes", "stage", stage, "error", err)
+		}
 	}
+
+	updateSearchAttributes(chumWorkflowStatusPlan)
 	drainSignal := workflow.GetSignalChannel(ctx, ChumAgentDrainSignalName)
 	resumeSignal := workflow.GetSignalChannel(ctx, ChumAgentResumeSignalName)
 
@@ -210,9 +204,7 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 		"Files", len(plan.FilesToModify),
 	)
 	notify("plan", map[string]string{"title": plan.Summary, "agent": req.Agent})
-	if err := upsertChumWorkflowSearchAttributes(ctx, searchMetadata, chumWorkflowStatusGate); err != nil {
-		logger.Warn(SharkPrefix+" Failed to set workflow search attributes to gate", "error", err)
-	}
+	updateSearchAttributes(chumWorkflowStatusGate)
 
 	// ===== PHASE 2: HUMAN GATE =====
 	// Pre-planned work (has acceptance criteria) skips the gate.
@@ -299,9 +291,7 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 			awaitResumeGate()
 
 			// --- EXECUTE ---
-			if err := upsertChumWorkflowSearchAttributes(ctx, searchMetadata, chumWorkflowStatusExecute); err != nil {
-				logger.Warn(SharkPrefix+" Failed to update workflow status to executing", "error", err)
-			}
+			updateSearchAttributes(chumWorkflowStatusExecute)
 
 			execStart := workflow.Now(ctx)
 			execCtx := workflow.WithActivityOptions(ctx, execOpts)
@@ -320,9 +310,7 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 			awaitResumeGate()
 
 			// --- CROSS-MODEL REVIEW LOOP ---
-			if err := upsertChumWorkflowSearchAttributes(ctx, searchMetadata, chumWorkflowStatusReview); err != nil {
-				logger.Warn(SharkPrefix+" Failed to update workflow status to reviewing", "error", err)
-			}
+			updateSearchAttributes(chumWorkflowStatusReview)
 
 			reviewStart := workflow.Now(ctx)
 			reviewPassed := false
@@ -369,9 +357,7 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 					fmt.Sprintf("The previous agent (%s) attempted to implement the plan but failed code review. Their changes were reverted to give you a clean slate. Review by %s found issues: %s", currentAgent, review.ReviewerAgent, strings.Join(review.Issues, "; ")))
 
 				// Swap: the reviewer becomes the implementer, and vice versa
-				if err := upsertChumWorkflowSearchAttributes(ctx, searchMetadata, chumWorkflowStatusExecute); err != nil {
-					logger.Warn(SharkPrefix+" Failed to update workflow status to handoff", "error", err)
-				}
+				updateSearchAttributes(chumWorkflowStatusExecute)
 				awaitResumeGate()
 
 				currentAgent, currentReviewer = currentReviewer, currentAgent
@@ -438,9 +424,7 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 			awaitResumeGate()
 
 			// --- DOD VERIFICATION ---
-			if err := upsertChumWorkflowSearchAttributes(ctx, searchMetadata, chumWorkflowStatusDoD); err != nil {
-				logger.Warn(SharkPrefix+" Failed to update workflow status to dod", "error", err)
-			}
+			updateSearchAttributes(chumWorkflowStatusDoD)
 
 			dodStart := workflow.Now(ctx)
 			logger.Info(SharkPrefix + " Running DoD checks")
@@ -468,9 +452,7 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 					"TotalCostUSD", totalTokens.CostUSD,
 				)
 
-				if err := upsertChumWorkflowSearchAttributes(ctx, searchMetadata, chumWorkflowStatusCompleted); err != nil {
-					logger.Warn(SharkPrefix+" Failed to update workflow status to completed", "error", err)
-				}
+				updateSearchAttributes(chumWorkflowStatusCompleted)
 
 				// Close the task — it's done. New work = new morsel.
 				closeCtx := workflow.WithActivityOptions(ctx, recordOpts)
@@ -534,9 +516,7 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 
 	// ===== ESCALATE — all tiers exhausted =====
 	awaitResumeGate()
-	if err := upsertChumWorkflowSearchAttributes(ctx, searchMetadata, chumWorkflowStatusEscalated); err != nil {
-		logger.Warn(SharkPrefix+" Failed to update workflow status to escalated", "error", err)
-	}
+	updateSearchAttributes(chumWorkflowStatusEscalated)
 
 	escalateStart := workflow.Now(ctx)
 	notify("escalate", map[string]string{"attempts": fmt.Sprintf("%d", escalationAttempt)})

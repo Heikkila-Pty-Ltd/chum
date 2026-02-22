@@ -1,13 +1,16 @@
 package temporal
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"go.temporal.io/api/workflowservice/v1"
 	"go.temporal.io/sdk/testsuite"
+	"go.temporal.io/sdk/workflow"
 )
 
 // stubActivities mocks all activities used by ChumAgentWorkflow for a clean
@@ -164,6 +167,75 @@ func TestCHUMNotSpawnedOnFailure(t *testing.T) {
 	// CHUM should NOT have been spawned
 	env.AssertWorkflowNotCalled(t, "ContinuousLearnerWorkflow", mock.Anything, mock.Anything)
 	env.AssertWorkflowNotCalled(t, "TacticalGroomWorkflow", mock.Anything, mock.Anything)
+}
+
+func TestChumAgentWorkflowUpsertsSearchAttributesAtLifecycleStages(t *testing.T) {
+	s := testsuite.WorkflowTestSuite{}
+	env := s.NewTestWorkflowEnvironment()
+
+	stubActivities(env)
+	var captured []map[string]interface{}
+	original := upsertChumSearchAttributesFn
+	t.Cleanup(func() {
+		upsertChumSearchAttributesFn = original
+	})
+	upsertChumSearchAttributesFn = func(ctx workflow.Context, attrs map[string]interface{}) error {
+		copyAttrs := make(map[string]interface{}, len(attrs))
+		for k, v := range attrs {
+			copyAttrs[k] = v
+		}
+		captured = append(captured, copyAttrs)
+		return nil
+	}
+
+	env.ExecuteWorkflow(ChumAgentWorkflow, TaskRequest{
+		TaskID:            "test-task-id",
+		Project:           "my-project",
+		TaskTitle:         "Priority hotfix",
+		Prompt:            "fix auth bug",
+		Agent:             "claude",
+		Priority:          7,
+		WorkDir:           "/tmp/test",
+		SlowStepThreshold: defaultSlowStepThreshold,
+	})
+
+	require.True(t, env.IsWorkflowCompleted())
+	require.NoError(t, env.GetWorkflowError())
+	require.GreaterOrEqual(t, len(captured), 5)
+
+	stages := make(map[string]int)
+	for _, attrs := range captured {
+		stage := fmt.Sprintf("%v", attrs[SearchAttributeCurrentStage])
+		stages[stage]++
+
+		require.Equal(t, "my-project", attrs[SearchAttributeProject])
+		require.Equal(t, "claude", attrs[SearchAttributeAgent])
+		require.Equal(t, "Priority hotfix", attrs[SearchAttributeTaskTitle])
+		require.Equal(t, 4, attrs[SearchAttributePriority])
+	}
+
+	require.Equal(t, 1, stages[chumWorkflowStatusPlan])
+	require.Equal(t, 1, stages[chumWorkflowStatusGate])
+	require.Equal(t, 1, stages[chumWorkflowStatusExecute])
+	require.Equal(t, 1, stages[chumWorkflowStatusReview])
+	require.Equal(t, 1, stages[chumWorkflowStatusDoD])
+	require.Equal(t, 1, stages[chumWorkflowStatusCompleted])
+}
+
+func TestBuildOpenAgentWorkflowQueryFiltersByProject(t *testing.T) {
+	q := buildOpenAgentWorkflowQuery("alpha-proj")
+	require.Contains(t, q, fmt.Sprintf("%s = 'alpha-proj'", SearchAttributeProject))
+	q = buildOpenAgentWorkflowQuery("acme's")
+	require.Contains(t, q, fmt.Sprintf("%s = 'acme''s'", SearchAttributeProject))
+}
+
+func TestListOpenAgentWorkflowsUsesProjectFilter(t *testing.T) {
+	fakeTC := &fakeWorkflowListClient{}
+	_, err := listOpenAgentWorkflows(context.Background(), fakeTC, "alpha-proj")
+	require.NoError(t, err)
+	require.Len(t, fakeTC.queries, 1)
+	require.Equal(t, 1, len(fakeTC.queries))
+	require.Contains(t, fakeTC.queries[0], fmt.Sprintf("%s = 'alpha-proj'", SearchAttributeProject))
 }
 
 // TestContinuousLearnerWorkflowPipeline verifies the learner extracts lessons,
@@ -699,6 +771,8 @@ func TestPlanningWorkflowPassesSlowStepThresholdToExecutionTask(t *testing.T) {
 	require.NoError(t, env.GetWorkflowError())
 	require.True(t, captured, "planning workflow should dispatch ChumAgentWorkflow")
 	require.Equal(t, defaultSlowStepThreshold, capturedReq.SlowStepThreshold)
+	require.Equal(t, "Plan this task", capturedReq.TaskTitle)
+	require.Equal(t, 2, capturedReq.Priority)
 }
 
 // TestDispatcherAppliesSlowStepThresholdFallback verifies that the dispatcher
@@ -715,12 +789,14 @@ func TestDispatcherAppliesSlowStepThresholdFallback(t *testing.T) {
 		Candidates: []DispatchCandidate{{
 			TaskID:            "morsel-1",
 			Title:             "Build dashboard",
+			TaskTitle:         "Build dashboard",
 			Project:           "project-1",
 			WorkDir:           "/tmp/test",
 			Prompt:            "Build dashboard",
 			Provider:          "claude",
 			DoDChecks:         []string{"go test ./..."},
 			SlowStepThreshold: 0,
+			Priority:          7,
 			EstimateMinutes:   60,
 		}},
 		Running:  0,
@@ -740,6 +816,19 @@ func TestDispatcherAppliesSlowStepThresholdFallback(t *testing.T) {
 	require.NoError(t, env.GetWorkflowError())
 	require.True(t, captured, "dispatcher should dispatch ChumAgentWorkflow")
 	require.Equal(t, defaultSlowStepThreshold, capturedReq.SlowStepThreshold)
+	require.Equal(t, "Build dashboard", capturedReq.TaskTitle)
+	require.Equal(t, 4, capturedReq.Priority)
 }
 
 func intPtr(i int) *int { return &i }
+
+type fakeWorkflowListClient struct {
+	queries []string
+}
+
+func (f *fakeWorkflowListClient) ListWorkflow(_ context.Context, req *workflowservice.ListWorkflowExecutionsRequest) (*workflowservice.ListWorkflowExecutionsResponse, error) {
+	if req != nil {
+		f.queries = append(f.queries, req.GetQuery())
+	}
+	return &workflowservice.ListWorkflowExecutionsResponse{}, nil
+}

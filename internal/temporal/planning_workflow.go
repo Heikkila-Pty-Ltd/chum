@@ -124,9 +124,11 @@ func PlanningCeremonyWorkflow(ctx workflow.Context, req PlanningRequest) (*TaskR
 				TaskID:            selectedItem.ID,
 				Project:           req.Project,
 				Prompt:            summary.What,
+				TaskTitle:         selectedItem.Title,
 				Agent:             req.Agent,
 				Reviewer:          DefaultReviewer(req.Agent),
 				WorkDir:           req.WorkDir,
+				Priority:          2,
 				DoDChecks:         summary.DoDChecks,
 				SlowStepThreshold: req.SlowStepThreshold,
 			}

@@ -1,6 +1,7 @@
 package temporal
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 
@@ -30,6 +31,10 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 		return err
 	}
 	defer c.Close()
+
+	if err := RegisterChumSearchAttributes(context.Background(), c); err != nil {
+		return err
+	}
 
 	w := worker.New(c, DefaultTaskQueue, worker.Options{})
 

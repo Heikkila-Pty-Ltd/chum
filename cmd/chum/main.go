@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -42,6 +43,27 @@ func configureLogger(logLevel string, useDev bool) *slog.Logger {
 	return slog.New(slog.NewJSONHandler(os.Stderr, opts))
 }
 
+func registerTemporalSearchAttributes(ctx context.Context, temporalHostPort, temporalNamespace string, logger *slog.Logger) error {
+	opts := tclient.Options{
+		HostPort: temporalHostPort,
+	}
+	if temporalNamespace != "" {
+		opts.Namespace = temporalNamespace
+	}
+	tc, err := tclient.Dial(opts)
+	if err != nil {
+		return err
+	}
+	defer tc.Close()
+
+	logger.Info("registering temporal search attributes", "host", temporalHostPort, "namespace", temporalNamespace)
+	if err := temporal.RegisterSearchAttributes(ctx, tc, temporalNamespace); err != nil {
+		return err
+	}
+	logger.Info("temporal search attributes ready", "host", temporalHostPort, "namespace", temporalNamespace)
+	return nil
+}
+
 func validateRuntimeConfigReload(oldCfg, newCfg *config.Config) error {
 	if oldCfg == nil || newCfg == nil {
 		return fmt.Errorf("invalid config state during reload")
@@ -61,7 +83,139 @@ func validateRuntimeConfigReload(oldCfg, newCfg *config.Config) error {
 	return nil
 }
 
+type adminBatchOps interface {
+	Drain(context.Context, string) (string, error)
+	Resume(context.Context, string) (string, error)
+	Reset(context.Context, string) (string, error)
+	Terminate(context.Context, string) (string, error)
+}
+
+func parseAdminSubcommand(args []string, defaultQuery string) (string, string, error) {
+	if len(args) < 2 {
+		return "", "", fmt.Errorf("admin requires a subcommand: drain | resume | reset | terminate")
+	}
+
+	subcommand := strings.ToLower(strings.TrimSpace(args[1]))
+	switch subcommand {
+	case "drain", "resume", "reset", "terminate":
+	default:
+		return "", "", fmt.Errorf("unknown admin command %q", subcommand)
+	}
+
+	fs := flag.NewFlagSet(fmt.Sprintf("admin %s", subcommand), flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	query := fs.String("query", "", "visibility query")
+	if err := fs.Parse(args[2:]); err != nil {
+		return "", "", err
+	}
+	if fs.NArg() > 0 {
+		return "", "", fmt.Errorf("unexpected arguments for admin %s: %v", subcommand, fs.Args())
+	}
+
+	q := strings.TrimSpace(*query)
+	if (subcommand == "reset" || subcommand == "terminate") && q == "" {
+		return "", "", fmt.Errorf("--query is required for %s", subcommand)
+	}
+	if q == "" {
+		q = defaultQuery
+	}
+
+	return subcommand, q, nil
+}
+
+func runAdminAction(ctx context.Context, command, query string, ops adminBatchOps) (string, error) {
+	switch command {
+	case "drain":
+		return ops.Drain(ctx, query)
+	case "resume":
+		return ops.Resume(ctx, query)
+	case "reset":
+		return ops.Reset(ctx, query)
+	case "terminate":
+		return ops.Terminate(ctx, query)
+	default:
+		return "", fmt.Errorf("unknown admin command %q", command)
+	}
+}
+
+func runAdminMode(args []string, logger *slog.Logger) error {
+	adminFS := flag.NewFlagSet("admin", flag.ContinueOnError)
+	adminFS.SetOutput(io.Discard)
+	configPath := adminFS.String("config", "chum.toml", "path to config file")
+	if err := adminFS.Parse(args[1:]); err != nil {
+		return err
+	}
+
+	args = append([]string{"admin"}, adminFS.Args()...)
+	command, query, err := parseAdminSubcommand(args, temporal.ChumAgentRunningVisibilityQuery(""))
+	if err != nil {
+		return err
+	}
+
+	cfgManager, err := config.LoadManager(*configPath)
+	if err != nil {
+		return err
+	}
+	cfg := cfgManager.Get()
+	if cfg == nil {
+		return fmt.Errorf("failed to load config snapshot")
+	}
+
+	host := strings.TrimSpace(cfg.General.TemporalHostPort)
+	if host == "" {
+		host = temporal.DefaultTemporalHostPort
+	}
+
+	tc, err := tclient.Dial(tclient.Options{HostPort: host})
+	if err != nil {
+		return err
+	}
+	defer tc.Close()
+
+	namespace := strings.TrimSpace(os.Getenv("TEMPORAL_NAMESPACE"))
+
+	ops := adminBatchOps{
+		Drain: func(ctx context.Context, q string) (string, error) {
+			return temporal.StartDrainAgentWorkflows(ctx, tc.WorkflowService(), namespace, q)
+		},
+		Resume: func(ctx context.Context, q string) (string, error) {
+			return temporal.StartResumeAgentWorkflows(ctx, tc.WorkflowService(), namespace, q)
+		},
+		Reset: func(ctx context.Context, q string) (string, error) {
+			return temporal.StartResetAgentWorkflows(ctx, tc.WorkflowService(), namespace, q)
+		},
+		Terminate: func(ctx context.Context, q string) (string, error) {
+			return temporal.StartTerminateAgentWorkflows(ctx, tc.WorkflowService(), namespace, q)
+		},
+	}
+
+	operationID, err := runAdminAction(context.Background(), command, query, ops)
+	if err != nil {
+		return err
+	}
+
+	logger.Info("admin command submitted",
+		"command", command,
+		"query", query,
+		"operation_id", operationID,
+		"namespace", namespace,
+		"host", host,
+	)
+	return nil
+}
+
 func main() {
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	slog.SetDefault(logger)
+
+	if len(os.Args) > 1 && os.Args[1] == "admin" {
+		if err := runAdminMode(os.Args, logger); err != nil {
+			logger.Error("admin command failed", "error", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	configPath := flag.String("config", "chum.toml", "path to config file")
 	dev := flag.Bool("dev", false, "use text log format (default is JSON)")
 	disableAnthropic := flag.Bool("disable-anthropic", false, "remove Anthropic/Claude providers from config and exit")
@@ -69,9 +223,6 @@ func main() {
 	const defaultFallbackModel = "gpt-5.3-codex"
 	fallbackModel := flag.String("fallback-model", defaultFallbackModel, "fallback chief model used with -disable-anthropic")
 	flag.Parse()
-
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
-	slog.SetDefault(logger)
 
 	logger.Info("chum starting", "config", *configPath)
 
@@ -140,6 +291,12 @@ func main() {
 		logger = configureLogger(cfg.General.LogLevel, *dev)
 		slog.SetDefault(logger)
 		return nil
+	}
+
+	temporalNamespace := strings.TrimSpace(os.Getenv("TEMPORAL_NAMESPACE"))
+	if err := registerTemporalSearchAttributes(context.Background(), cfg.General.TemporalHostPort, temporalNamespace, logger); err != nil {
+		logger.Error("failed to register temporal search attributes", "host", cfg.General.TemporalHostPort, "namespace", temporalNamespace, "error", err)
+		os.Exit(1)
 	}
 
 	// Start Temporal worker — now includes DispatcherWorkflow + ScanCandidatesActivity

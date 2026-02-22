@@ -12,7 +12,6 @@ import (
 	enumspb "go.temporal.io/api/enums/v1"
 	"go.temporal.io/api/workflowservice/v1"
 	"go.temporal.io/sdk/activity"
-	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
 
@@ -88,12 +87,14 @@ func DispatcherWorkflow(ctx workflow.Context, _ struct{}) error {
 		req := TaskRequest{
 			TaskID:            c.TaskID,
 			Project:           c.Project,
+			TaskTitle:         c.TaskTitle,
 			Prompt:            c.Prompt,
 			Agent:             agent,
 			WorkDir:           c.WorkDir,
 			Provider:          c.Provider,
 			DoDChecks:         c.DoDChecks,
 			SlowStepThreshold: slowStep,
+			Priority:          clampTaskPriority(c.Priority),
 			EscalationChain:   result.EscalationTiers,
 		}
 
@@ -158,9 +159,13 @@ func workflowTimeout(estimateMinutes int) time.Duration {
 // Temporal client for listing workflows — things the regular activities don't need.
 type DispatchActivities struct {
 	CfgMgr config.ConfigManager
-	TC     client.Client
+	TC     workflowListClient
 	DAG    *graph.DAG
 	Store  *store.Store
+}
+
+type workflowListClient interface {
+	ListWorkflow(context.Context, *workflowservice.ListWorkflowExecutionsRequest) (*workflowservice.ListWorkflowExecutionsResponse, error)
 }
 
 // ScanCandidatesActivity does all the I/O-heavy work of discovering ready tasks.
@@ -222,7 +227,7 @@ func (da *DispatchActivities) ScanCandidatesActivity(ctx context.Context) (*Scan
 	}
 
 	// --- List open workflows ---
-	openWFs, err := listOpenAgentWorkflows(ctx, da.TC)
+	openWFs, err := listOpenAgentWorkflows(ctx, da.TC, "")
 	if err != nil {
 		return nil, fmt.Errorf("list open workflows: %w", err)
 	}
@@ -245,14 +250,10 @@ func (da *DispatchActivities) ScanCandidatesActivity(ctx context.Context) (*Scan
 		slots = maxPerTick
 	}
 
-	// Build set of running workflow IDs to skip re-dispatch, and per-project counts.
+	// Build set of running workflow IDs to skip re-dispatch.
 	runningSet := make(map[string]struct{}, len(openWFs))
-	projectRunning := make(map[string]int)
 	for _, wf := range openWFs {
 		runningSet[wf.workflowID] = struct{}{}
-		if idx := strings.LastIndex(wf.workflowID, "-"); idx > 0 {
-			projectRunning[wf.workflowID[:idx]]++
-		}
 	}
 
 	// Also skip tasks that have a recently-completed workflow (last 24h).
@@ -271,6 +272,7 @@ func (da *DispatchActivities) ScanCandidatesActivity(ctx context.Context) (*Scan
 	if maxPerProject <= 0 {
 		maxPerProject = 3
 	}
+	projectRunning := make(map[string]int)
 
 	// --- Gather ready tasks across all enabled projects ---
 	type candidate struct {
@@ -286,6 +288,14 @@ func (da *DispatchActivities) ScanCandidatesActivity(ctx context.Context) (*Scan
 		if !proj.Enabled {
 			continue
 		}
+
+		projectOpenWFs, err := listOpenAgentWorkflows(ctx, da.TC, name)
+		if err != nil {
+			logger.Warn(SharkPrefix+" Dispatcher: failed to count project running workflows", "project", name, "error", err)
+			projectOpenWFs = nil
+		}
+		projectRunning[name] = len(projectOpenWFs)
+
 		if projectRunning[name] >= maxPerProject {
 			continue
 		}
@@ -367,12 +377,14 @@ func (da *DispatchActivities) ScanCandidatesActivity(ctx context.Context) (*Scan
 		result = append(result, DispatchCandidate{
 			TaskID:            c.task.ID,
 			Title:             c.task.Title,
+			TaskTitle:         c.task.Title,
 			Project:           c.project,
 			WorkDir:           c.workDir,
 			Prompt:            buildPrompt(c.task),
 			Provider:          resolveProvider(cfg),
 			DoDChecks:         dodChecks,
 			SlowStepThreshold: slowStepThreshold,
+			Priority:          clampTaskPriority(c.task.Priority),
 			EstimateMinutes:   c.task.EstimateMinutes,
 		})
 		projectRunning[c.project]++
@@ -389,8 +401,8 @@ func (da *DispatchActivities) ScanCandidatesActivity(ctx context.Context) (*Scan
 
 // listOpenAgentWorkflows returns all currently running ChumAgentWorkflow
 // executions. Extracted from the old scheduler for reuse in the activity.
-func listOpenAgentWorkflows(ctx context.Context, tc client.Client) ([]openWorkflowExecution, error) {
-	query := `WorkflowType = 'ChumAgentWorkflow' AND ExecutionStatus = 'Running'`
+func listOpenAgentWorkflows(ctx context.Context, tc workflowListClient, project string) ([]openWorkflowExecution, error) {
+	query := buildOpenAgentWorkflowQuery(project)
 
 	var pageToken []byte
 	executions := make([]openWorkflowExecution, 0, 200)
@@ -435,17 +447,14 @@ func listOpenAgentWorkflows(ctx context.Context, tc client.Client) ([]openWorkfl
 	return executions, nil
 }
 
-// openWorkflowExecution is metadata about a running workflow. Kept package-private.
-type openWorkflowExecution struct {
-	workflowID string
-	runID      string
-	startTime  time.Time
+func buildOpenAgentWorkflowQuery(project string) string {
+	return ChumAgentRunningVisibilityQueryForProject(project)
 }
 
 // listRecentlyCompletedWorkflows returns IDs of ChumAgentWorkflows that
 // completed in the last 24 hours. The dispatcher skips these to avoid
 // re-dispatching tasks that already succeeded.
-func listRecentlyCompletedWorkflows(ctx context.Context, tc client.Client) (map[string]struct{}, error) {
+func listRecentlyCompletedWorkflows(ctx context.Context, tc workflowListClient) (map[string]struct{}, error) {
 	cutoff := time.Now().Add(-24 * time.Hour).Format(time.RFC3339)
 	query := fmt.Sprintf(
 		`WorkflowType = 'ChumAgentWorkflow' AND ExecutionStatus = 'Completed' AND CloseTime > '%s'`,
@@ -478,6 +487,18 @@ func listRecentlyCompletedWorkflows(ctx context.Context, tc client.Client) (map[
 	}
 	return result, nil
 }
+
+func clampTaskPriority(priority int) int {
+	return normalizePriority(priority)
+}
+
+// openWorkflowExecution is metadata about a running workflow. Kept package-private.
+type openWorkflowExecution struct {
+	workflowID string
+	runID      string
+	startTime  time.Time
+}
+
 func buildEscalationTiers(cfg *config.Config) []EscalationTier {
 	chain := EscalationChain(cfg.Tiers, "fast")
 	tiers := make([]EscalationTier, 0, len(chain))

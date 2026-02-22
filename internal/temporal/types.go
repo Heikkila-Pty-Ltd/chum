@@ -7,11 +7,13 @@ type TaskRequest struct {
 	TaskID            string           `json:"task_id"`
 	Project           string           `json:"project"`
 	Prompt            string           `json:"prompt"`
-	Agent             string           `json:"agent"`    // primary coding agent (claude, codex, gemini)
-	Model             string           `json:"model"`    // model override for the CLI (e.g. "haiku", "gemini-2.5-flash")
-	Reviewer          string           `json:"reviewer"` // review agent — auto-assigned if empty
+	TaskTitle         string           `json:"task_title"` // human-readable task title for workflow searchability and display
+	Agent             string           `json:"agent"`      // primary coding agent (keyword): claude|codex|gemini
+	Model             string           `json:"model"`      // model override for the CLI (e.g. "haiku", "gemini-2.5-flash")
+	Reviewer          string           `json:"reviewer"`   // review agent — auto-assigned if empty
 	WorkDir           string           `json:"work_dir"`
 	Provider          string           `json:"provider"`
+	Priority          int              `json:"priority"`            // scheduling priority expected as an int in range [0,4], where 0 is highest
 	DoDChecks         []string         `json:"dod_checks"`          // e.g. ["go build ./cmd/chum", "go test ./..."]
 	SlowStepThreshold time.Duration    `json:"slow_step_threshold"` // steps exceeding this are flagged slow
 	EscalationChain   []EscalationTier `json:"escalation_chain"`    // ordered tiers for fail-upward retry
@@ -398,9 +400,11 @@ type MorningBriefing struct {
 type DispatchCandidate struct {
 	TaskID            string        `json:"task_id"`
 	Title             string        `json:"title"`
+	TaskTitle         string        `json:"task_title"` // same as title; explicit for consistency with TaskRequest
 	Project           string        `json:"project"`
 	WorkDir           string        `json:"work_dir"`
 	Prompt            string        `json:"prompt"`
+	Priority          int           `json:"priority"` // 0..4 scheduling/search metadata
 	Provider          string        `json:"provider"`
 	DoDChecks         []string      `json:"dod_checks"`
 	SlowStepThreshold time.Duration `json:"slow_step_threshold"`

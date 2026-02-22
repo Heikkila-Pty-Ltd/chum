@@ -69,9 +69,9 @@ func DispatcherWorkflow(ctx workflow.Context, _ struct{}) error {
 			WorkflowID:               c.TaskID,
 			TaskQueue:                DefaultTaskQueue,
 			WorkflowExecutionTimeout: timeout,
-			// ALLOW_DUPLICATE_FAILED_ONLY allows retry after failure/termination
-			// but rejects if a workflow with this task ID is currently running.
-			WorkflowIDReusePolicy: enumspb.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE_FAILED_ONLY,
+			// REJECT_DUPLICATE — a task runs exactly once. If it completed or
+			// failed, the task must be closed in the graph. New work = new morsel.
+			WorkflowIDReusePolicy: enumspb.WORKFLOW_ID_REUSE_POLICY_REJECT_DUPLICATE,
 			// ABANDON keeps child workflows alive after the dispatcher parent completes.
 			ParentClosePolicy: enumspb.PARENT_CLOSE_POLICY_ABANDON,
 		}
@@ -255,6 +255,18 @@ func (da *DispatchActivities) ScanCandidatesActivity(ctx context.Context) (*Scan
 		}
 	}
 
+	// Also skip tasks that have a recently-completed workflow (last 24h).
+	// Without this, the dispatcher keeps trying to re-dispatch tasks that already
+	// completed, and Temporal rejects them every tick.
+	completedSet, err := listRecentlyCompletedWorkflows(ctx, da.TC)
+	if err != nil {
+		logger.Warn(SharkPrefix+" Dispatcher: completed workflow query failed", "error", err)
+		completedSet = make(map[string]struct{}) // non-fatal — proceed without filter
+	}
+	for wfID := range completedSet {
+		runningSet[wfID] = struct{}{} // merge into skip set
+	}
+
 	maxPerProject := cfg.Dispatch.Git.MaxConcurrentPerProject
 	if maxPerProject <= 0 {
 		maxPerProject = 3
@@ -430,7 +442,42 @@ type openWorkflowExecution struct {
 	startTime  time.Time
 }
 
-// buildEscalationTiers creates the ordered escalation chain from config.
+// listRecentlyCompletedWorkflows returns IDs of ChumAgentWorkflows that
+// completed in the last 24 hours. The dispatcher skips these to avoid
+// re-dispatching tasks that already succeeded.
+func listRecentlyCompletedWorkflows(ctx context.Context, tc client.Client) (map[string]struct{}, error) {
+	cutoff := time.Now().Add(-24 * time.Hour).Format(time.RFC3339)
+	query := fmt.Sprintf(
+		`WorkflowType = 'ChumAgentWorkflow' AND ExecutionStatus = 'Completed' AND CloseTime > '%s'`,
+		cutoff,
+	)
+
+	result := make(map[string]struct{})
+	var pageToken []byte
+	for {
+		resp, err := tc.ListWorkflow(ctx, &workflowservice.ListWorkflowExecutionsRequest{
+			Query:         query,
+			PageSize:      200,
+			NextPageToken: pageToken,
+		})
+		if err != nil {
+			return nil, err
+		}
+		if resp == nil {
+			break
+		}
+		for _, exec := range resp.Executions {
+			if wfID := exec.GetExecution().GetWorkflowId(); wfID != "" {
+				result[wfID] = struct{}{}
+			}
+		}
+		if len(resp.NextPageToken) == 0 {
+			break
+		}
+		pageToken = resp.NextPageToken
+	}
+	return result, nil
+}
 func buildEscalationTiers(cfg *config.Config) []EscalationTier {
 	chain := EscalationChain(cfg.Tiers, "fast")
 	tiers := make([]EscalationTier, 0, len(chain))

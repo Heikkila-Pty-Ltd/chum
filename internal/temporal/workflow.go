@@ -373,14 +373,19 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 				notify("dod_pass", map[string]string{"duration": fmtDuration(duration), "cost": fmtCost(totalTokens.CostUSD)})
 				notify("complete", map[string]string{"duration": fmtDuration(duration), "cost": fmtCost(totalTokens.CostUSD)})
 
-				// ===== SUCCESS — RECORD OUTCOME =====
-				logger.Info(SharkPrefix+" DoD PASSED — recording outcome",
+				// ===== SUCCESS — CLOSE TASK + RECORD OUTCOME =====
+				logger.Info(SharkPrefix+" DoD PASSED — closing task and recording outcome",
 					"TotalInputTokens", totalTokens.InputTokens,
 					"TotalOutputTokens", totalTokens.OutputTokens,
 					"TotalCacheReadTokens", totalTokens.CacheReadTokens,
 					"TotalCacheCreationTokens", totalTokens.CacheCreationTokens,
 					"TotalCostUSD", totalTokens.CostUSD,
 				)
+
+				// Close the task — it's done. New work = new morsel.
+				closeCtx := workflow.WithActivityOptions(ctx, recordOpts)
+				_ = workflow.ExecuteActivity(closeCtx, a.CloseTaskActivity, req.TaskID, "completed").Get(ctx, nil)
+
 				recordOutcome(ctx, recordOpts, a, req, "completed", 0,
 					handoffCount, true, "", startTime, totalTokens, activityTokens, stepMetrics)
 
@@ -454,6 +459,10 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 		logger.Warn(SharkPrefix+" Escalation activity failed (best-effort)", "error", err)
 	}
 	recordStep("escalate", escalateStart, "ok")
+
+	// Close the task — it failed. New work = new morsel.
+	closeCtx := workflow.WithActivityOptions(ctx, recordOpts)
+	_ = workflow.ExecuteActivity(closeCtx, a.CloseTaskActivity, req.TaskID, "escalated").Get(ctx, nil)
 
 	recordOutcome(ctx, recordOpts, a, req, "escalated", 1,
 		handoffCount, false, strings.Join(allFailures, "\n"), startTime, totalTokens, activityTokens, stepMetrics)

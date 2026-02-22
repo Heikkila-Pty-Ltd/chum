@@ -452,6 +452,27 @@ func (a *Activities) EscalateActivity(ctx context.Context, escalation Escalation
 	return nil
 }
 
+// CloseTaskActivity marks a task as closed in the graph DAG. Called when the
+// workflow completes (success or failure). A closed task never re-enters the
+// dispatcher queue. New work = new morsel. The ocean does not allow weakness.
+func (a *Activities) CloseTaskActivity(ctx context.Context, taskID, finalStatus string) error {
+	logger := activity.GetLogger(ctx)
+	logger.Info(SharkPrefix+" Closing task in DAG", "TaskID", taskID, "FinalStatus", finalStatus)
+
+	if a.DAG == nil {
+		logger.Warn(SharkPrefix + " No DAG configured, skipping task closure")
+		return nil
+	}
+
+	// Update status to the final status (completed/failed/escalated)
+	if err := a.DAG.UpdateTask(ctx, taskID, map[string]any{"status": finalStatus}); err != nil {
+		logger.Warn(SharkPrefix+" Failed to update task status (best-effort)", "error", err)
+		// Don't fail the workflow over this — best-effort closure
+	}
+
+	return nil
+}
+
 // --- helpers ---
 
 // extractJSON finds the first JSON object in text (handles markdown code fences).

@@ -507,16 +507,16 @@ func validateDispatchCostControlConfig(cc DispatchCostControl) error {
 	if cc.DailyCostCapUSD < 0 {
 		return fmt.Errorf("daily_cost_cap_usd cannot be negative")
 	}
-	if cc.PerBeadCostCapUSD < 0 {
-		return fmt.Errorf("per_bead_cost_cap_usd cannot be negative")
+	if cc.PerMorselCostCapUSD < 0 {
+		return fmt.Errorf("per_morsel_cost_cap_usd cannot be negative")
 	}
-	if cc.PerBeadStageAttemptLimit < 0 {
-		return fmt.Errorf("per_bead_stage_attempt_limit cannot be negative")
+	if cc.PerMorselStageAttemptLimit < 0 {
+		return fmt.Errorf("per_morsel_stage_attempt_limit cannot be negative")
 	}
-	if cc.PerBeadStageAttemptLimit > 0 && cc.StageAttemptWindow.Duration <= 0 {
-		return fmt.Errorf("stage_attempt_window must be > 0 when per_bead_stage_attempt_limit is set")
+	if cc.PerMorselStageAttemptLimit > 0 && cc.StageAttemptWindow.Duration <= 0 {
+		return fmt.Errorf("stage_attempt_window must be > 0 when per_morsel_stage_attempt_limit is set")
 	}
-	if cc.PerBeadStageAttemptLimit > 0 && cc.StageCooldown.Duration < 0 {
+	if cc.PerMorselStageAttemptLimit > 0 && cc.StageCooldown.Duration < 0 {
 		return fmt.Errorf("stage_cooldown cannot be negative")
 	}
 	if cc.TokenWasteWindow.Duration < 0 {

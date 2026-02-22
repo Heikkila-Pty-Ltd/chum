@@ -21,7 +21,7 @@ Scheduler paths shown in legacy examples are not currently registered in `intern
 - `GET /projects/{id}` - Project details
 - `GET /teams` - Team information
 - `GET /teams/{project}` - Project team details
-- `GET /dispatches/{bead_id}` - Dispatch history (read-only)
+- `GET /dispatches/{morsel_id}` - Dispatch history (read-only)
 - `GET /scheduler/status` - Scheduler status
 - `GET /recommendations` - System recommendations
 

@@ -7,13 +7,13 @@ import (
 	"time"
 )
 
-// SprintReviewData holds metrics comparing planned vs delivered beads for a sprint period.
+// SprintReviewData holds metrics comparing planned vs delivered morsels for a sprint period.
 type SprintReviewData struct {
 	StartDate      time.Time              `json:"start_date"`
 	EndDate        time.Time              `json:"end_date"`
-	TotalBeads     int                    `json:"total_beads"`
-	CompletedBeads int                    `json:"completed_beads"`
-	PlannedBeads   int                    `json:"planned_beads"`
+	TotalMorsels     int                    `json:"total_morsels"`
+	CompletedMorsels int                    `json:"completed_morsels"`
+	PlannedMorsels   int                    `json:"planned_morsels"`
 	CompletionRate float64                `json:"completion_rate"`
 	ProjectStats   map[string]ProjectStat `json:"project_stats"`
 }
@@ -21,8 +21,8 @@ type SprintReviewData struct {
 // ProjectStat holds completion metrics for a specific project.
 type ProjectStat struct {
 	Project        string  `json:"project"`
-	TotalBeads     int     `json:"total_beads"`
-	CompletedBeads int     `json:"completed_beads"`
+	TotalMorsels     int     `json:"total_morsels"`
+	CompletedMorsels int     `json:"completed_morsels"`
 	CompletionRate float64 `json:"completion_rate"`
 	AvgDuration    float64 `json:"avg_duration"`
 }
@@ -30,7 +30,7 @@ type ProjectStat struct {
 // FailedDispatchDetail contains comprehensive information about a failed dispatch.
 type FailedDispatchDetail struct {
 	ID              int64      `json:"id"`
-	BeadID          string     `json:"bead_id"`
+	MorselID          string     `json:"morsel_id"`
 	Project         string     `json:"project"`
 	AgentID         string     `json:"agent_id"`
 	Provider        string     `json:"provider"`
@@ -45,13 +45,13 @@ type FailedDispatchDetail struct {
 	FailureSummary  string     `json:"failure_summary"`
 	LogPath         string     `json:"log_path"`
 	Branch          string     `json:"branch"`
-	BeadContext     *BeadStage `json:"bead_context,omitempty"`
+	MorselContext     *MorselStage `json:"morsel_context,omitempty"`
 }
 
 // StuckDispatchDetail contains information about dispatches that are stuck.
 type StuckDispatchDetail struct {
 	ID            int64      `json:"id"`
-	BeadID        string     `json:"bead_id"`
+	MorselID        string     `json:"morsel_id"`
 	Project       string     `json:"project"`
 	AgentID       string     `json:"agent_id"`
 	Provider      string     `json:"provider"`
@@ -61,7 +61,7 @@ type StuckDispatchDetail struct {
 	PID           int        `json:"pid"`
 	SessionName   string     `json:"session_name"`
 	Stage         string     `json:"stage"`
-	BeadContext   *BeadStage `json:"bead_context,omitempty"`
+	MorselContext   *MorselStage `json:"morsel_context,omitempty"`
 }
 
 // AgentPerformanceStats contains performance metrics for agents.
@@ -111,7 +111,7 @@ type CostStats struct {
 	AvgCost   float64 `json:"avg_cost"`
 }
 
-// GetSprintReviewData returns comprehensive data for sprint review comparing planned vs delivered beads.
+// GetSprintReviewData returns comprehensive data for sprint review comparing planned vs delivered morsels.
 func (s *Store) GetSprintReviewData(startDate, endDate time.Time) (*SprintReviewData, error) {
 	data := &SprintReviewData{
 		StartDate:    startDate,
@@ -119,41 +119,41 @@ func (s *Store) GetSprintReviewData(startDate, endDate time.Time) (*SprintReview
 		ProjectStats: make(map[string]ProjectStat),
 	}
 
-	// Get overall bead and completion statistics
+	// Get overall morsel and completion statistics
 	err := s.db.QueryRow(`
 		SELECT 
-			COUNT(DISTINCT d.bead_id) as total_beads,
-			COUNT(DISTINCT CASE WHEN d.status = 'completed' THEN d.bead_id END) as completed_beads
+			COUNT(DISTINCT d.morsel_id) as total_morsels,
+			COUNT(DISTINCT CASE WHEN d.status = 'completed' THEN d.morsel_id END) as completed_morsels
 		FROM dispatches d
 		WHERE d.dispatched_at >= ? AND d.dispatched_at <= ?
 	`, startDate.Format(time.DateTime), endDate.Format(time.DateTime)).Scan(
-		&data.TotalBeads, &data.CompletedBeads)
+		&data.TotalMorsels, &data.CompletedMorsels)
 	if err != nil {
 		return nil, fmt.Errorf("get sprint review totals: %w", err)
 	}
 
 	// Calculate completion rate
-	if data.TotalBeads > 0 {
-		data.CompletionRate = float64(data.CompletedBeads) / float64(data.TotalBeads) * 100
+	if data.TotalMorsels > 0 {
+		data.CompletionRate = float64(data.CompletedMorsels) / float64(data.TotalMorsels) * 100
 	}
 
-	// Get planned beads from bead_stages (beads that were in the system during the sprint)
+	// Get planned morsels from morsel_stages (morsels that were in the system during the sprint)
 	err = s.db.QueryRow(`
-		SELECT COUNT(DISTINCT bead_id)
-		FROM bead_stages 
+		SELECT COUNT(DISTINCT morsel_id)
+		FROM morsel_stages 
 		WHERE created_at <= ? 
 		AND (updated_at >= ? OR current_stage != 'completed')
-	`, endDate.Format(time.DateTime), startDate.Format(time.DateTime)).Scan(&data.PlannedBeads)
+	`, endDate.Format(time.DateTime), startDate.Format(time.DateTime)).Scan(&data.PlannedMorsels)
 	if err != nil {
-		return nil, fmt.Errorf("get planned beads count: %w", err)
+		return nil, fmt.Errorf("get planned morsels count: %w", err)
 	}
 
 	// Get per-project statistics
 	rows, err := s.db.Query(`
 		SELECT 
 			d.project,
-			COUNT(DISTINCT d.bead_id) as total_beads,
-			COUNT(DISTINCT CASE WHEN d.status = 'completed' THEN d.bead_id END) as completed_beads,
+			COUNT(DISTINCT d.morsel_id) as total_morsels,
+			COUNT(DISTINCT CASE WHEN d.status = 'completed' THEN d.morsel_id END) as completed_morsels,
 			AVG(CASE WHEN d.status = 'completed' THEN d.duration_s END) as avg_duration
 		FROM dispatches d
 		WHERE d.dispatched_at >= ? AND d.dispatched_at <= ?
@@ -167,15 +167,15 @@ func (s *Store) GetSprintReviewData(startDate, endDate time.Time) (*SprintReview
 	for rows.Next() {
 		var stat ProjectStat
 		var avgDur sql.NullFloat64
-		err := rows.Scan(&stat.Project, &stat.TotalBeads, &stat.CompletedBeads, &avgDur)
+		err := rows.Scan(&stat.Project, &stat.TotalMorsels, &stat.CompletedMorsels, &avgDur)
 		if err != nil {
 			return nil, fmt.Errorf("scan project stat: %w", err)
 		}
 		if avgDur.Valid {
 			stat.AvgDuration = avgDur.Float64
 		}
-		if stat.TotalBeads > 0 {
-			stat.CompletionRate = float64(stat.CompletedBeads) / float64(stat.TotalBeads) * 100
+		if stat.TotalMorsels > 0 {
+			stat.CompletionRate = float64(stat.CompletedMorsels) / float64(stat.TotalMorsels) * 100
 		}
 		data.ProjectStats[stat.Project] = stat
 	}
@@ -187,13 +187,13 @@ func (s *Store) GetSprintReviewData(startDate, endDate time.Time) (*SprintReview
 func (s *Store) GetFailedDispatchDetails(startDate, endDate time.Time) ([]FailedDispatchDetail, error) {
 	rows, err := s.db.Query(`
 		SELECT 
-			d.id, d.bead_id, d.project, d.agent_id, d.provider, d.tier,
+			d.id, d.morsel_id, d.project, d.agent_id, d.provider, d.tier,
 			d.dispatched_at, d.completed_at, d.duration_s, d.exit_code,
 			d.retries, d.escalated_from_tier, d.failure_category, d.failure_summary,
 			d.log_path, d.branch,
 			bs.workflow, bs.current_stage, bs.stage_index, bs.total_stages, bs.stage_history
 		FROM dispatches d
-		LEFT JOIN bead_stages bs ON d.bead_id = bs.bead_id AND d.project = bs.project
+		LEFT JOIN morsel_stages bs ON d.morsel_id = bs.morsel_id AND d.project = bs.project
 		WHERE d.status = 'failed' 
 		AND d.dispatched_at >= ? 
 		AND d.dispatched_at <= ?
@@ -212,7 +212,7 @@ func (s *Store) GetFailedDispatchDetails(startDate, endDate time.Time) ([]Failed
 		var stageIndex, totalStages sql.NullInt64
 
 		err := rows.Scan(
-			&detail.ID, &detail.BeadID, &detail.Project, &detail.AgentID,
+			&detail.ID, &detail.MorselID, &detail.Project, &detail.AgentID,
 			&detail.Provider, &detail.Tier, &detail.DispatchedAt, &completedAt,
 			&detail.Duration, &detail.ExitCode, &detail.Retries,
 			&detail.EscalatedFrom, &detail.FailureCategory, &detail.FailureSummary,
@@ -227,24 +227,24 @@ func (s *Store) GetFailedDispatchDetails(startDate, endDate time.Time) ([]Failed
 			detail.FailedAt = completedAt.Time
 		}
 
-		// Add bead context if available
+		// Add morsel context if available
 		if workflow.Valid {
-			beadStage := &BeadStage{
+			morselStage := &MorselStage{
 				Project:      detail.Project,
-				BeadID:       detail.BeadID,
+				MorselID:       detail.MorselID,
 				Workflow:     workflow.String,
 				CurrentStage: currentStage.String,
 			}
 			if stageIndex.Valid {
-				beadStage.StageIndex = int(stageIndex.Int64)
+				morselStage.StageIndex = int(stageIndex.Int64)
 			}
 			if totalStages.Valid {
-				beadStage.TotalStages = int(totalStages.Int64)
+				morselStage.TotalStages = int(totalStages.Int64)
 			}
 			if stageHistory.Valid {
-				json.Unmarshal([]byte(stageHistory.String), &beadStage.StageHistory)
+				json.Unmarshal([]byte(stageHistory.String), &morselStage.StageHistory)
 			}
-			detail.BeadContext = beadStage
+			detail.MorselContext = morselStage
 		}
 
 		details = append(details, detail)
@@ -258,11 +258,11 @@ func (s *Store) GetStuckDispatchDetails(timeout time.Duration) ([]StuckDispatchD
 	cutoff := time.Now().Add(-timeout)
 	rows, err := s.db.Query(`
 		SELECT 
-			d.id, d.bead_id, d.project, d.agent_id, d.provider, d.tier,
+			d.id, d.morsel_id, d.project, d.agent_id, d.provider, d.tier,
 			d.dispatched_at, d.pid, d.session_name, d.stage,
 			bs.workflow, bs.current_stage, bs.stage_index, bs.total_stages, bs.stage_history
 		FROM dispatches d
-		LEFT JOIN bead_stages bs ON d.bead_id = bs.bead_id AND d.project = bs.project
+		LEFT JOIN morsel_stages bs ON d.morsel_id = bs.morsel_id AND d.project = bs.project
 		WHERE d.status = 'running' 
 		AND d.dispatched_at < ?
 		ORDER BY d.dispatched_at ASC
@@ -280,7 +280,7 @@ func (s *Store) GetStuckDispatchDetails(timeout time.Duration) ([]StuckDispatchD
 		var stageIndex, totalStages sql.NullInt64
 
 		err := rows.Scan(
-			&detail.ID, &detail.BeadID, &detail.Project, &detail.AgentID,
+			&detail.ID, &detail.MorselID, &detail.Project, &detail.AgentID,
 			&detail.Provider, &detail.Tier, &detail.DispatchedAt, &detail.PID,
 			&detail.SessionName, &detail.Stage,
 			&workflow, &currentStage, &stageIndex, &totalStages, &stageHistory,
@@ -291,24 +291,24 @@ func (s *Store) GetStuckDispatchDetails(timeout time.Duration) ([]StuckDispatchD
 
 		detail.StuckDuration = now.Sub(detail.DispatchedAt).Hours()
 
-		// Add bead context if available
+		// Add morsel context if available
 		if workflow.Valid {
-			beadStage := &BeadStage{
+			morselStage := &MorselStage{
 				Project:      detail.Project,
-				BeadID:       detail.BeadID,
+				MorselID:       detail.MorselID,
 				Workflow:     workflow.String,
 				CurrentStage: currentStage.String,
 			}
 			if stageIndex.Valid {
-				beadStage.StageIndex = int(stageIndex.Int64)
+				morselStage.StageIndex = int(stageIndex.Int64)
 			}
 			if totalStages.Valid {
-				beadStage.TotalStages = int(totalStages.Int64)
+				morselStage.TotalStages = int(totalStages.Int64)
 			}
 			if stageHistory.Valid {
-				json.Unmarshal([]byte(stageHistory.String), &beadStage.StageHistory)
+				json.Unmarshal([]byte(stageHistory.String), &morselStage.StageHistory)
 			}
-			detail.BeadContext = beadStage
+			detail.MorselContext = morselStage
 		}
 
 		details = append(details, detail)

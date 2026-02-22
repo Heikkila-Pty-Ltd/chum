@@ -25,7 +25,7 @@ Keep implementation costs low by moving decision-making into plan-space:
    - readiness report and unresolved blockers.
 3. Human approves plan (`/plan approve` equivalent workflow).
 4. Activate plan in CHUM control plane.
-5. CHUM dispatches only from ready, unblocked frontier beads.
+5. CHUM dispatches only from ready, unblocked frontier morsels.
 
 ## Readiness Definition
 
@@ -34,7 +34,7 @@ The `stage:ready` gate is a hard preflight with two enforcement points:
 - DAG readiness checks enforce all `stage:ready` requirements (acceptance + test + DoD + design notes + estimate)
 - dispatcher preflight auto-reverts any invalid `stage:ready` task back to `stage:planning`
 
-A bead is executable only when all are true:
+A morsel is executable only when all are true:
 
 - `stage:ready`
 - acceptance criteria exists and explicitly includes:
@@ -43,9 +43,9 @@ A bead is executable only when all are true:
 - design notes exists (non-empty)
 - estimate exists (`estimated_minutes > 0`)
 - dependencies are satisfied
-- bead is included in the active approved plan frontier
+- morsel is included in the active approved plan frontier
 
-Invalid `stage:ready` beads are auto-reverted by scheduler preflight to `stage:planning`, with a bead note and `stage_ready_gate_reverted` health event.
+Invalid `stage:ready` morsels are auto-reverted by scheduler preflight to `stage:planning`, with a morsel note and `stage_ready_gate_reverted` health event.
 
 ## Execution Gate
 

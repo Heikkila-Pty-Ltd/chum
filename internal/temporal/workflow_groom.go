@@ -9,7 +9,7 @@ import (
 	"go.temporal.io/sdk/workflow"
 )
 
-// TacticalGroomWorkflow runs after every bead completion to tidy the backlog.
+// TacticalGroomWorkflow runs after every morsel completion to tidy the backlog.
 // Spawned as a fire-and-forget child workflow (ParentClosePolicy: ABANDON).
 // Uses fast/cheap LLM tier.
 func TacticalGroomWorkflow(ctx workflow.Context, req TacticalGroomRequest) error {
@@ -57,7 +57,7 @@ func TacticalGroomWorkflow(ctx workflow.Context, req TacticalGroomRequest) error
 // StrategicGroomWorkflow runs daily at 5:00 AM via CronSchedule.
 // Uses premium LLM tier for deep analysis.
 //
-// Pipeline: GenerateRepoMap -> GetBeadState -> StrategicAnalysis -> ApplyMutations -> MorningBriefing
+// Pipeline: GenerateRepoMap -> GetMorselState -> StrategicAnalysis -> ApplyMutations -> MorningBriefing
 func StrategicGroomWorkflow(ctx workflow.Context, req StrategicGroomRequest) error {
 	logger := workflow.GetLogger(ctx)
 	logger.Info(RemoraPrefix+" StrategicGroom starting", "Project", req.Project)
@@ -85,18 +85,18 @@ func StrategicGroomWorkflow(ctx workflow.Context, req StrategicGroomRequest) err
 		return fmt.Errorf("repo map generation failed: %w", err)
 	}
 
-	// Step 2: Get compressed bead state summary
-	beadStateCtx := workflow.WithActivityOptions(ctx, shortAO)
-	var beadStateSummary string
-	if err := workflow.ExecuteActivity(beadStateCtx, a.GetBeadStateSummaryActivity, req).Get(ctx, &beadStateSummary); err != nil {
-		logger.Warn(RemoraPrefix+" Failed to get bead state, continuing with empty", "error", err)
-		beadStateSummary = "(bead state unavailable)"
+	// Step 2: Get compressed morsel state summary
+	morselStateCtx := workflow.WithActivityOptions(ctx, shortAO)
+	var morselStateSummary string
+	if err := workflow.ExecuteActivity(morselStateCtx, a.GetMorselStateSummaryActivity, req).Get(ctx, &morselStateSummary); err != nil {
+		logger.Warn(RemoraPrefix+" Failed to get morsel state, continuing with empty", "error", err)
+		morselStateSummary = "(morsel state unavailable)"
 	}
 
 	// Step 3: Strategic analysis (premium LLM, may be slow)
 	analysisCtx := workflow.WithActivityOptions(ctx, longAO)
 	var analysis StrategicAnalysis
-	if err := workflow.ExecuteActivity(analysisCtx, a.StrategicAnalysisActivity, req, &repoMap, beadStateSummary).Get(ctx, &analysis); err != nil {
+	if err := workflow.ExecuteActivity(analysisCtx, a.StrategicAnalysisActivity, req, &repoMap, morselStateSummary).Get(ctx, &analysis); err != nil {
 		return fmt.Errorf("strategic analysis failed: %w", err)
 	}
 
@@ -131,12 +131,12 @@ func StrategicGroomWorkflow(ctx workflow.Context, req StrategicGroomRequest) err
 	return nil
 }
 
-func normalizeStrategicMutations(mutations []BeadMutation) []BeadMutation {
+func normalizeStrategicMutations(mutations []MorselMutation) []MorselMutation {
 	if len(mutations) == 0 {
 		return nil
 	}
 
-	out := make([]BeadMutation, 0, len(mutations))
+	out := make([]MorselMutation, 0, len(mutations))
 	for idx := range mutations {
 		m := mutations[idx]
 		if strings.TrimSpace(m.StrategicSource) == "" {
@@ -186,7 +186,7 @@ func normalizeStrategicMutations(mutations []BeadMutation) []BeadMutation {
 	return out
 }
 
-func isStrategicCreateActionable(m BeadMutation) bool {
+func isStrategicCreateActionable(m MorselMutation) bool {
 	return strings.TrimSpace(m.Title) != "" &&
 		strings.TrimSpace(m.Description) != "" &&
 		strings.TrimSpace(m.Acceptance) != "" &&

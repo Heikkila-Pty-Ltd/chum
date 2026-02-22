@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS stingray_findings (
 	detail TEXT NOT NULL,
 	file_path TEXT NOT NULL DEFAULT '',
 	evidence TEXT NOT NULL DEFAULT '',
-	bead_id TEXT NOT NULL DEFAULT '',
+	morsel_id TEXT NOT NULL DEFAULT '',
 	status TEXT NOT NULL DEFAULT 'open',
 	first_seen DATETIME NOT NULL DEFAULT (datetime('now')),
 	last_seen DATETIME NOT NULL DEFAULT (datetime('now'))

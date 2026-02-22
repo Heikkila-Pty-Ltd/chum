@@ -46,7 +46,7 @@ while IFS= read -r mdfile; do
             EXIT_CODE=1
         fi
     done <<< "$refs"
-done < <(find "$DOCS_DIR" -name '*.md' -not -path '*/.git/*' -not -path '*/_archived/*' -not -path '*/.beads/*' -not -path '*/.gemini/*' -not -path '*/.openclaw/*' -not -path '*/node_modules/*')
+done < <(find "$DOCS_DIR" -name '*.md' -not -path '*/.git/*' -not -path '*/_archived/*' -not -path '*/.morsels/*' -not -path '*/.gemini/*' -not -path '*/.openclaw/*' -not -path '*/node_modules/*')
 
 echo ""
 echo -e "Checked ${GREEN}${CHECKED}${NC} references across markdown files."

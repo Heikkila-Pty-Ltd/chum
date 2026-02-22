@@ -140,21 +140,21 @@ func (c *Chief) RunMultiTeamPlanning(ctx context.Context) error {
 
 	c.logger.Info("starting multi-team sprint planning ceremony")
 
-	// Create a ceremony dispatch bead to track this work
-	ceremonyBead := c.createCeremonyBead("Multi-team sprint planning ceremony", "multi-team-planning")
+	// Create a ceremony dispatch morsel to track this work
+	ceremonyMorsel := c.createCeremonyMorsel("Multi-team sprint planning ceremony", "multi-team-planning")
 
 	// Dispatch the Chief SM with portfolio context
-	dispatchID, err := c.dispatchChiefSM(ctx, ceremonyBead, "sprint_planning_multi")
+	dispatchID, err := c.dispatchChiefSM(ctx, ceremonyMorsel, "sprint_planning_multi")
 	if err != nil {
 		return fmt.Errorf("failed to dispatch chief sm: %w", err)
 	}
 
 	c.logger.Info("multi-team planning ceremony dispatched",
 		"dispatch_id", dispatchID,
-		"bead_id", ceremonyBead.ID)
+		"morsel_id", ceremonyMorsel.ID)
 
 	// Start a background process to monitor completion and record allocations
-	go c.monitorCeremonyCompletion(ctx, ceremonyBead.ID, CeremonyMultiTeamPlanning, dispatchID)
+	go c.monitorCeremonyCompletion(ctx, ceremonyMorsel.ID, CeremonyMultiTeamPlanning, dispatchID)
 
 	return nil
 }
@@ -167,17 +167,17 @@ func (c *Chief) RunOverallRetrospective(ctx context.Context) error {
 
 	c.logger.Info("starting overall retrospective ceremony")
 
-	ceremonyBead := c.createCeremonyBead("Overall cross-project retrospective ceremony", "overall-retrospective")
-	dispatchID, err := c.dispatchChiefSM(ctx, ceremonyBead, "overall_retrospective")
+	ceremonyMorsel := c.createCeremonyMorsel("Overall cross-project retrospective ceremony", "overall-retrospective")
+	dispatchID, err := c.dispatchChiefSM(ctx, ceremonyMorsel, "overall_retrospective")
 	if err != nil {
 		return fmt.Errorf("failed to dispatch chief sm overall retrospective: %w", err)
 	}
 
 	c.logger.Info("overall retrospective ceremony dispatched",
 		"dispatch_id", dispatchID,
-		"bead_id", ceremonyBead.ID)
+		"morsel_id", ceremonyMorsel.ID)
 
-	go c.monitorCeremonyCompletion(ctx, ceremonyBead.ID, CeremonyRetrospective, dispatchID)
+	go c.monitorCeremonyCompletion(ctx, ceremonyMorsel.ID, CeremonyRetrospective, dispatchID)
 
 	return nil
 }
@@ -282,8 +282,8 @@ func (c *Chief) processCeremonyResults(ctx context.Context, ceremonyID string, c
 	return nil
 }
 
-// createCeremonyBead creates a synthetic task to track ceremony work
-func (c *Chief) createCeremonyBead(title, ceremonySlug string) graph.Task {
+// createCeremonyMorsel creates a synthetic task to track ceremony work
+func (c *Chief) createCeremonyMorsel(title, ceremonySlug string) graph.Task {
 	now := time.Now()
 	return graph.Task{
 		ID:          fmt.Sprintf("ceremony-%s-%d", strings.TrimSpace(ceremonySlug), now.Unix()),
@@ -297,7 +297,7 @@ func (c *Chief) createCeremonyBead(title, ceremonySlug string) graph.Task {
 }
 
 // dispatchChiefSM dispatches the Chief SM for a ceremony
-func (c *Chief) dispatchChiefSM(ctx context.Context, bead graph.Task, promptTemplate string) (int64, error) {
+func (c *Chief) dispatchChiefSM(ctx context.Context, morsel graph.Task, promptTemplate string) (int64, error) {
 	purpose := chiefPurpose(promptTemplate)
 	provider, tier := dispatch.SelectProviderForPurpose(c.cfg, purpose)
 	if provider == "" {
@@ -318,7 +318,7 @@ func (c *Chief) dispatchChiefSM(ctx context.Context, bead graph.Task, promptTemp
 
 	// Record the dispatch in the store first
 	dispatchID, err := c.store.RecordDispatch(
-		bead.ID,
+		morsel.ID,
 		"chum", // project name
 		agentID,
 		provider,
@@ -416,7 +416,7 @@ Use this JSON as the source of truth for this ceremony. It already includes all 
 
 	c.logger.Info("portfolio context gathered successfully",
 		"active_projects", portfolioData.Summary.ActiveProjects,
-		"total_beads", portfolioData.Summary.TotalOpenBeads,
+		"total_morsels", portfolioData.Summary.TotalOpenMorsels,
 		"cross_project_blockers", portfolioData.Summary.CrossProjectBlockers)
 
 	// Build enriched prompt with actual portfolio data
@@ -427,14 +427,14 @@ You are the **Chief Scrum Master** conducting a unified sprint planning across a
 ## Portfolio Context (Pre-gathered)
 
 **Active Projects:** %d
-**Total Open Beads:** %d (Refined: %d, Unrefined: %d, Ready: %d)
+**Total Open Morsels:** %d (Refined: %d, Unrefined: %d, Ready: %d)
 **Cross-Project Blockers:** %d
 
 ### Project Priorities (High to Low)
 `, portfolioData.Summary.ActiveProjects,
-		portfolioData.Summary.TotalOpenBeads,
-		portfolioData.Summary.TotalRefinedBeads,
-		portfolioData.Summary.TotalUnrefinedBeads,
+		portfolioData.Summary.TotalOpenMorsels,
+		portfolioData.Summary.TotalRefinedMorsels,
+		portfolioData.Summary.TotalUnrefinedMorsels,
 		portfolioData.Summary.TotalReadyToWork,
 		portfolioData.Summary.CrossProjectBlockers)
 
@@ -442,8 +442,8 @@ You are the **Chief Scrum Master** conducting a unified sprint planning across a
 	for _, projectName := range portfolioData.Summary.ProjectsByPriority {
 		if backlog, exists := portfolioData.ProjectBacklogs[projectName]; exists {
 			budget := portfolioData.CapacityBudgets[projectName]
-			promptBuilder += fmt.Sprintf("- **%s** (Priority %d, Budget: %d%%): %d beads (%d ready), ~%d min\n",
-				projectName, backlog.Priority, budget, len(backlog.AllBeads),
+			promptBuilder += fmt.Sprintf("- **%s** (Priority %d, Budget: %d%%): %d morsels (%d ready), ~%d min\n",
+				projectName, backlog.Priority, budget, len(backlog.AllMorsels),
 				len(backlog.ReadyToWork), backlog.TotalEstimate)
 		}
 	}
@@ -457,8 +457,8 @@ You are the **Chief Scrum Master** conducting a unified sprint planning across a
 				status = "🚫 BLOCKING"
 			}
 			promptBuilder += fmt.Sprintf("- %s:%s → %s:%s %s\n",
-				dep.SourceProject, dep.SourceBeadID,
-				dep.TargetProject, dep.TargetBeadID, status)
+				dep.SourceProject, dep.SourceMorselID,
+				dep.TargetProject, dep.TargetMorselID, status)
 		}
 	}
 
@@ -507,7 +507,7 @@ You are the **Chief Scrum Master** conducting a unified sprint planning across a
    - Calculate per-project capacity budgets from rate_limits.budget
 
 2. **Strategic Allocation** (your LLM reasoning):
-   - Review cross-project dependencies: "Project B needs endpoint from Project A — prioritize A's endpoint bead"
+   - Review cross-project dependencies: "Project B needs endpoint from Project A — prioritize A's endpoint morsel"
    - Allocate capacity: "Project A gets 60% this sprint (critical deadline), B gets 40%"  
    - Identify conflicts: "Both projects want premium tier — stagger them"
    - Balance technical debt vs features across portfolio
@@ -550,7 +550,7 @@ Use this JSON as the source of truth.
 - [P1] Improve dependency handoff checklist | project:chum | owner:chief-sm | why:handoff ambiguity caused delays
 - [P2] Rebalance provider usage for retries | project:chum | owner:ops | why:failure concentration
 `+"```"+`
-4. Keep each action item concrete, scoped, and executable as a bead.
+4. Keep each action item concrete, scoped, and executable as a morsel.
 `, injectedContext)
 	}
 
@@ -568,7 +568,7 @@ You are the **Chief Scrum Master** leading the end-of-sprint portfolio retrospec
 ## Action Items
 - [P1] <title> | project:<project> | owner:<owner> | why:<reason>
 
-Only include actionable, concrete items that should become follow-up beads.`
+Only include actionable, concrete items that should become follow-up morsels.`
 }
 
 // GetMultiTeamPlanningSchedule returns the default schedule for multi-team planning

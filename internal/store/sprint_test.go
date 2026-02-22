@@ -14,7 +14,7 @@ func TestStoreStepMetrics(t *testing.T) {
 	defer s.Close()
 
 	// Create a dispatch to associate step metrics with.
-	dispatchID, err := s.RecordDispatch("bead-step", "proj", "claude", "anthropic", "fast", 0, "", "", "", "", "temporal")
+	dispatchID, err := s.RecordDispatch("morsel-step", "proj", "claude", "anthropic", "fast", 0, "", "", "", "", "temporal")
 	if err != nil {
 		t.Fatalf("RecordDispatch failed: %v", err)
 	}
@@ -35,7 +35,7 @@ func TestStoreStepMetrics(t *testing.T) {
 	}
 
 	for _, step := range steps {
-		if err := s.StoreStepMetric(dispatchID, "bead-step", "proj", step.name, step.durationS, step.status, step.slow); err != nil {
+		if err := s.StoreStepMetric(dispatchID, "morsel-step", "proj", step.name, step.durationS, step.status, step.slow); err != nil {
 			t.Fatalf("StoreStepMetric(%s) failed: %v", step.name, err)
 		}
 	}
@@ -77,8 +77,8 @@ func TestStoreStepMetrics(t *testing.T) {
 	}
 }
 
-// TestGetBacklogBeads verifies that backlog bead filtering works correctly.
-func TestGetBacklogBeads(t *testing.T) {
+// TestGetBacklogMorsels verifies that backlog morsel filtering works correctly.
+func TestGetBacklogMorsels(t *testing.T) {
 	s := tempStore(t)
 	defer s.Close()
 
@@ -97,12 +97,12 @@ func TestGetBacklogBeads(t *testing.T) {
 		t.Fatalf("CreateTask failed: %v", err)
 	}
 
-	backlogBeads, err := s.GetBacklogBeads(ctx, dag, "test-project")
+	backlogMorsels, err := s.GetBacklogMorsels(ctx, dag, "test-project")
 	if err != nil {
-		t.Fatalf("GetBacklogBeads failed: %v", err)
+		t.Fatalf("GetBacklogMorsels failed: %v", err)
 	}
-	if len(backlogBeads) != 1 {
-		t.Errorf("Expected 1 backlog bead, got %d", len(backlogBeads))
+	if len(backlogMorsels) != 1 {
+		t.Errorf("Expected 1 backlog morsel, got %d", len(backlogMorsels))
 	}
 }
 
@@ -127,7 +127,7 @@ func TestGetSprintContext(t *testing.T) {
 	}
 
 	t.Logf("GetSprintContext succeeded: %d backlog, %d in-progress, %d recent",
-		len(sprintContext.BacklogBeads), len(sprintContext.InProgressBeads), len(sprintContext.RecentCompletions))
+		len(sprintContext.BacklogMorsels), len(sprintContext.InProgressMorsels), len(sprintContext.RecentCompletions))
 }
 
 // TestBuildDependencyGraph tests the dependency graph building.
@@ -159,21 +159,21 @@ func TestBuildDependencyGraph(t *testing.T) {
 	}
 }
 
-// TestEnrichBacklogBeadResilient verifies that enrichment doesn't fail on missing data.
-func TestEnrichBacklogBeadResilient(t *testing.T) {
+// TestEnrichBacklogMorselResilient verifies that enrichment doesn't fail on missing data.
+func TestEnrichBacklogMorselResilient(t *testing.T) {
 	s := tempStore(t)
 	defer s.Close()
 
-	testBead := &BacklogBead{
-		Task: &graph.Task{ID: "non-existent-bead", Title: "Test bead"},
+	testMorsel := &BacklogMorsel{
+		Task: &graph.Task{ID: "non-existent-morsel", Title: "Test morsel"},
 	}
 
-	s.enrichBacklogBead("test-project", testBead)
+	s.enrichBacklogMorsel("test-project", testMorsel)
 
-	if testBead.DispatchCount < 0 {
+	if testMorsel.DispatchCount < 0 {
 		t.Error("DispatchCount should be non-negative")
 	}
-	if testBead.FailureCount < 0 {
+	if testMorsel.FailureCount < 0 {
 		t.Error("FailureCount should be non-negative")
 	}
 }
@@ -192,38 +192,38 @@ func TestCalculateReadinessStats(t *testing.T) {
 
 	depGraph := graph.BuildDepGraph(testTasks)
 
-	backlogBeads := []*BacklogBead{
+	backlogMorsels := []*BacklogMorsel{
 		{Task: &testTasks[0]},
 		{Task: &testTasks[1]},
 		{Task: &testTasks[2]},
 	}
 
-	readyCount, blockedCount := s.calculateReadinessStats(backlogBeads, depGraph)
+	readyCount, blockedCount := s.calculateReadinessStats(backlogMorsels, depGraph)
 
 	if readyCount != 2 {
-		t.Errorf("Expected 2 ready beads, got %d", readyCount)
+		t.Errorf("Expected 2 ready morsels, got %d", readyCount)
 	}
 	if blockedCount != 1 {
-		t.Errorf("Expected 1 blocked bead, got %d", blockedCount)
+		t.Errorf("Expected 1 blocked morsel, got %d", blockedCount)
 	}
 
-	var blockedBead *BacklogBead
-	for _, bead := range backlogBeads {
-		if bead.IsBlocked {
-			blockedBead = bead
+	var blockedMorsel *BacklogMorsel
+	for _, morsel := range backlogMorsels {
+		if morsel.IsBlocked {
+			blockedMorsel = morsel
 			break
 		}
 	}
 
-	if blockedBead == nil {
-		t.Fatal("Expected to find a blocked bead")
+	if blockedMorsel == nil {
+		t.Fatal("Expected to find a blocked morsel")
 	}
 
-	if blockedBead.ID != "blocked-1" {
-		t.Errorf("Expected blocked-1 to be blocked, got %s", blockedBead.ID)
+	if blockedMorsel.ID != "blocked-1" {
+		t.Errorf("Expected blocked-1 to be blocked, got %s", blockedMorsel.ID)
 	}
 
-	if len(blockedBead.BlockingReasons) == 0 {
+	if len(blockedMorsel.BlockingReasons) == 0 {
 		t.Error("Expected blocking reasons to be set")
 	}
 }

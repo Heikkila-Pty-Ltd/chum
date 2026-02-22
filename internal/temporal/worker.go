@@ -96,7 +96,7 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 	// --- CHUM Groom Activities ---
 	w.RegisterActivity(acts.MutateTasksActivity)
 	w.RegisterActivity(acts.GenerateRepoMapActivity)
-	w.RegisterActivity(acts.GetBeadStateSummaryActivity)
+	w.RegisterActivity(acts.GetMorselStateSummaryActivity)
 	w.RegisterActivity(acts.StrategicAnalysisActivity)
 	w.RegisterActivity(acts.GenerateMorningBriefingActivity)
 

@@ -81,8 +81,8 @@ func TestCreateFeatureBranch(t *testing.T) {
 		t.Fatalf("failed to get current branch: %v", err)
 	}
 
-	beadID := "test-123"
-	if err := CreateFeatureBranch(repo, beadID, baseBranch); err != nil {
+	morselID := "test-123"
+	if err := CreateFeatureBranch(repo, morselID, baseBranch); err != nil {
 		t.Fatalf("CreateFeatureBranch failed: %v", err)
 	}
 
@@ -125,10 +125,10 @@ func TestEnsureFeatureBranchWithBase(t *testing.T) {
 	repo := setupTestRepo(t)
 
 	baseBranch, _ := GetCurrentBranch(repo)
-	beadID := "test-456"
+	morselID := "test-456"
 
 	// Test creating new branch
-	if err := EnsureFeatureBranchWithBase(repo, beadID, baseBranch, "feat/"); err != nil {
+	if err := EnsureFeatureBranchWithBase(repo, morselID, baseBranch, "feat/"); err != nil {
 		t.Fatalf("EnsureFeatureBranchWithBase failed: %v", err)
 	}
 
@@ -146,7 +146,7 @@ func TestEnsureFeatureBranchWithBase(t *testing.T) {
 	}
 
 	// Test switching to existing branch
-	if err := EnsureFeatureBranchWithBase(repo, beadID, baseBranch, "feat/"); err != nil {
+	if err := EnsureFeatureBranchWithBase(repo, morselID, baseBranch, "feat/"); err != nil {
 		t.Fatalf("EnsureFeatureBranchWithBase failed on existing branch: %v", err)
 	}
 
@@ -160,8 +160,8 @@ func TestMergeBranchIntoBaseSuccess(t *testing.T) {
 	repo := setupTestRepo(t)
 
 	baseBranch, _ := GetCurrentBranch(repo)
-	beadID := "merge-123"
-	if err := EnsureFeatureBranchWithBase(repo, beadID, baseBranch, "ctx/"); err != nil {
+	morselID := "merge-123"
+	if err := EnsureFeatureBranchWithBase(repo, morselID, baseBranch, "ctx/"); err != nil {
 		t.Fatalf("EnsureFeatureBranchWithBase failed: %v", err)
 	}
 
@@ -173,7 +173,7 @@ func TestMergeBranchIntoBaseSuccess(t *testing.T) {
 	runGit(t, repo, "commit", "-m", "feature commit")
 	runGit(t, repo, "checkout", baseBranch)
 
-	if err := MergeBranchIntoBase(repo, "ctx/"+beadID, baseBranch, "merge"); err != nil {
+	if err := MergeBranchIntoBase(repo, "ctx/"+morselID, baseBranch, "merge"); err != nil {
 		t.Fatalf("MergeBranchIntoBase failed: %v", err)
 	}
 
@@ -190,8 +190,8 @@ func TestMergeBranchIntoBaseConflict(t *testing.T) {
 	repo := setupTestRepo(t)
 
 	baseBranch, _ := GetCurrentBranch(repo)
-	beadID := "conflict-456"
-	if err := EnsureFeatureBranchWithBase(repo, beadID, baseBranch, "ctx/"); err != nil {
+	morselID := "conflict-456"
+	if err := EnsureFeatureBranchWithBase(repo, morselID, baseBranch, "ctx/"); err != nil {
 		t.Fatalf("EnsureFeatureBranchWithBase failed: %v", err)
 	}
 
@@ -209,7 +209,7 @@ func TestMergeBranchIntoBaseConflict(t *testing.T) {
 	runGit(t, repo, "add", "README.md")
 	runGit(t, repo, "commit", "-m", "base change")
 
-	err := MergeBranchIntoBase(repo, "ctx/"+beadID, baseBranch, "merge")
+	err := MergeBranchIntoBase(repo, "ctx/"+morselID, baseBranch, "merge")
 	if err == nil {
 		t.Fatal("expected merge conflict error")
 	}
@@ -222,9 +222,9 @@ func TestMergeBranchIntoBaseRebaseWithAdvancedBase(t *testing.T) {
 	repo := setupTestRepo(t)
 
 	baseBranch, _ := GetCurrentBranch(repo)
-	beadID := "rebase-111"
-	featureBranch := "ctx/" + beadID
-	if err := EnsureFeatureBranchWithBase(repo, beadID, baseBranch, "ctx/"); err != nil {
+	morselID := "rebase-111"
+	featureBranch := "ctx/" + morselID
+	if err := EnsureFeatureBranchWithBase(repo, morselID, baseBranch, "ctx/"); err != nil {
 		t.Fatalf("EnsureFeatureBranchWithBase failed: %v", err)
 	}
 
@@ -264,9 +264,9 @@ func TestMergeBranchIntoBaseRebaseConflict(t *testing.T) {
 	repo := setupTestRepo(t)
 
 	baseBranch, _ := GetCurrentBranch(repo)
-	beadID := "rebase-conflict-222"
-	featureBranch := "ctx/" + beadID
-	if err := EnsureFeatureBranchWithBase(repo, beadID, baseBranch, "ctx/"); err != nil {
+	morselID := "rebase-conflict-222"
+	featureBranch := "ctx/" + morselID
+	if err := EnsureFeatureBranchWithBase(repo, morselID, baseBranch, "ctx/"); err != nil {
 		t.Fatalf("EnsureFeatureBranchWithBase failed: %v", err)
 	}
 
@@ -302,9 +302,9 @@ func TestDeleteBranch(t *testing.T) {
 	repo := setupTestRepo(t)
 
 	baseBranch, _ := GetCurrentBranch(repo)
-	beadID := "delete-789"
-	branchName := "ctx/" + beadID
-	if err := EnsureFeatureBranchWithBase(repo, beadID, baseBranch, "ctx/"); err != nil {
+	morselID := "delete-789"
+	branchName := "ctx/" + morselID
+	if err := EnsureFeatureBranchWithBase(repo, morselID, baseBranch, "ctx/"); err != nil {
 		t.Fatalf("EnsureFeatureBranchWithBase failed: %v", err)
 	}
 	runGit(t, repo, "checkout", baseBranch)

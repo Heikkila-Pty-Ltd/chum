@@ -69,7 +69,7 @@ func TestRecordSchedulerDispatch_RollbackAndRetrySafety(t *testing.T) {
 			})
 
 			_, err := s.RecordSchedulerDispatch(
-				"bead-rollback", "proj", "agent-1", "model-x", "balanced", 1234, "sess-1", "prompt", "/tmp/log", "main", "openclaw", []string{"stage:todo", "team:platform"},
+				"morsel-rollback", "proj", "agent-1", "model-x", "balanced", 1234, "sess-1", "prompt", "/tmp/log", "main", "openclaw", []string{"stage:todo", "team:platform"},
 			)
 			if err == nil {
 				t.Fatalf("expected injected error at %s", tc.failpoint)
@@ -78,7 +78,7 @@ func TestRecordSchedulerDispatch_RollbackAndRetrySafety(t *testing.T) {
 				t.Fatalf("expected failpoint error, got: %v", err)
 			}
 
-			countAfterFailure := dispatchCountForBead(t, s, "bead-rollback")
+			countAfterFailure := dispatchCountForMorsel(t, s, "morsel-rollback")
 			if countAfterFailure != 0 {
 				t.Fatalf("expected rollback to leave 0 rows, got %d", countAfterFailure)
 			}
@@ -86,7 +86,7 @@ func TestRecordSchedulerDispatch_RollbackAndRetrySafety(t *testing.T) {
 			// Retry with failpoint removed must succeed and create exactly one row.
 			s.SetDispatchPersistHookForTesting(nil)
 			dispatchID, err := s.RecordSchedulerDispatch(
-				"bead-rollback", "proj", "agent-1", "model-x", "balanced", 1234, "sess-1", "prompt", "/tmp/log", "main", "openclaw", []string{"stage:todo", "team:platform"},
+				"morsel-rollback", "proj", "agent-1", "model-x", "balanced", 1234, "sess-1", "prompt", "/tmp/log", "main", "openclaw", []string{"stage:todo", "team:platform"},
 			)
 			if err != nil {
 				t.Fatalf("retry should succeed: %v", err)
@@ -95,7 +95,7 @@ func TestRecordSchedulerDispatch_RollbackAndRetrySafety(t *testing.T) {
 				t.Fatalf("expected positive dispatch id, got %d", dispatchID)
 			}
 
-			countAfterRetry := dispatchCountForBead(t, s, "bead-rollback")
+			countAfterRetry := dispatchCountForMorsel(t, s, "morsel-rollback")
 			if countAfterRetry != 1 {
 				t.Fatalf("expected exactly 1 row after retry, got %d", countAfterRetry)
 			}
@@ -117,11 +117,11 @@ func TestRecordSchedulerDispatch_RollbackAndRetrySafety(t *testing.T) {
 	}
 }
 
-func dispatchCountForBead(t *testing.T, s *Store, beadID string) int {
+func dispatchCountForMorsel(t *testing.T, s *Store, morselID string) int {
 	t.Helper()
 	var count int
-	if err := s.DB().QueryRow(`SELECT COUNT(*) FROM dispatches WHERE bead_id = ?`, beadID).Scan(&count); err != nil {
-		t.Fatalf("count dispatches for bead %s: %v", beadID, err)
+	if err := s.DB().QueryRow(`SELECT COUNT(*) FROM dispatches WHERE morsel_id = ?`, morselID).Scan(&count); err != nil {
+		t.Fatalf("count dispatches for morsel %s: %v", morselID, err)
 	}
 	return count
 }
@@ -139,20 +139,20 @@ func TestRecordSchedulerDispatch_NoDuplicatesAfterTransientFailure(t *testing.T)
 	})
 
 	_, err := s.RecordSchedulerDispatch(
-		"bead-retry", "proj", "agent-2", "model-y", "fast", 5678, "sess-2", "prompt", "/tmp/log2", "", "openclaw", []string{"retry:test"},
+		"morsel-retry", "proj", "agent-2", "model-y", "fast", 5678, "sess-2", "prompt", "/tmp/log2", "", "openclaw", []string{"retry:test"},
 	)
 	if err == nil {
 		t.Fatal("expected first call to fail")
 	}
 
 	dispatchID, err := s.RecordSchedulerDispatch(
-		"bead-retry", "proj", "agent-2", "model-y", "fast", 5678, "sess-2", "prompt", "/tmp/log2", "", "openclaw", []string{"retry:test"},
+		"morsel-retry", "proj", "agent-2", "model-y", "fast", 5678, "sess-2", "prompt", "/tmp/log2", "", "openclaw", []string{"retry:test"},
 	)
 	if err != nil {
 		t.Fatalf("second call should succeed: %v", err)
 	}
 
-	count := dispatchCountForBead(t, s, "bead-retry")
+	count := dispatchCountForMorsel(t, s, "morsel-retry")
 	if count != 1 {
 		t.Fatalf("expected 1 dispatch row after fail+retry, got %d", count)
 	}
@@ -177,7 +177,7 @@ func TestRecordSchedulerDispatch_FailpointErrorIncludesLocation(t *testing.T) {
 	})
 
 	_, err := s.RecordSchedulerDispatch(
-		"bead-observable", "proj", "agent-3", "model-z", "premium", 777, "sess-3", "prompt", "/tmp/log3", "", "openclaw", nil,
+		"morsel-observable", "proj", "agent-3", "model-z", "premium", 777, "sess-3", "prompt", "/tmp/log3", "", "openclaw", nil,
 	)
 	if err == nil {
 		t.Fatal("expected error")

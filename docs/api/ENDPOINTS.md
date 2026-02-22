@@ -23,7 +23,7 @@ Paths listed here must match:
 | `/health` | any | `handleHealth` | same as above | `application/json` |
 | `/metrics` | any | `handleMetrics` | same as above | `text/plain; version=0.0.4; charset=utf-8` |
 | `/recommendations` | GET only | `handleRecommendations` | same as above | `application/json` |
-| `/dispatches/{bead_id}` (via `/dispatches/`) | any | `handleDispatchDetail` | same as above | `application/json` |
+| `/dispatches/{morsel_id}` (via `/dispatches/`) | any | `handleDispatchDetail` | same as above | `application/json` |
 | `/safety/blocks` | GET only | `handleSafetyBlocks` | same as above | `application/json` |
 | `/workflows/start` | POST only | `handleWorkflowStart` | routed through `RequireAuth`; not a control endpoint under current middleware logic | `application/json` |
 | `/workflows/{workflow_id}` | GET only | `routeWorkflows -> handleWorkflowStatus` | routed through `RequireAuth`; not a control endpoint | `application/json` |
@@ -109,7 +109,7 @@ All successful JSON responses are route-specific.
   - `enabled` (`boolean`)
   - `priority` (`number`)
   - `workspace` (`string`)
-  - `beads_dir` (`string`)
+  - `morsels_dir` (`string`)
 - status:
   - `200` when found
   - `404` when project is unknown.
@@ -124,7 +124,7 @@ All successful JSON responses are route-specific.
     - `type` (`string`)
     - `details` (`string`)
     - `dispatch_id` (`string`)
-    - `bead_id` (`string`)
+    - `morsel_id` (`string`)
     - `time` (`string`, RFC3339)
 - status:
   - `200` when no `gateway_critical` events in last hour
@@ -154,7 +154,7 @@ All successful JSON responses are route-specific.
 - response shape:
   - `recommendations` (`array`)
     - `id` (`number`)
-    - `bead_id` (`string`)
+    - `morsel_id` (`string`)
     - `project` (`string`)
     - `category` (`string`)
     - `summary` (`string`)
@@ -169,12 +169,12 @@ All successful JSON responses are route-specific.
   - `200` always for valid method/queries
   - `405` when method is not `GET`
 
-### `GET /dispatches/{bead_id}`
+### `GET /dispatches/{morsel_id}`
 
 - method: any
-- `bead_id` is required after `/dispatches/`; empty value returns `400`.
+- `morsel_id` is required after `/dispatches/`; empty value returns `400`.
 - response shape:
-  - `bead_id` (`string`)
+  - `morsel_id` (`string`)
   - `dispatches` (`array`)
     - `id` (`number`)
     - `agent` (`string`)
@@ -191,7 +191,7 @@ All successful JSON responses are route-specific.
     - `failure_summary` (`string`, optional)
 - status:
   - `200` on success
-  - `400` when bead id is empty
+  - `400` when morsel id is empty
   - `500` when store lookup fails
 
 ### `GET /safety/blocks`
@@ -442,4 +442,4 @@ go test ./internal/api -run Endpoint -count=1
 - `/scheduler/*` and `/dispatches/{id}/cancel|retry` are expected by auth config but are not registered in this release.
 - `workflows`, `planning`, and `crab` routes pass through `RequireAuth`, yet currently do not trigger auth enforcement because they are not control paths in `isControlEndpoint`.
 - Some registered GET endpoints do not explicitly reject unsupported methods and will report method-specific handler errors only for subset routes.
-- Dispatch path semantics for `/dispatches/{bead_id}` currently only accept any method and rely on handler path parsing.
+- Dispatch path semantics for `/dispatches/{morsel_id}` currently only accept any method and rely on handler path parsing.

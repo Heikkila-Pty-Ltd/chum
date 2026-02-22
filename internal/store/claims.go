@@ -9,29 +9,29 @@ import (
 
 // ClaimLease tracks ownership locks so stale claims can be reconciled safely.
 type ClaimLease struct {
-	BeadID      string
+	MorselID      string
 	Project     string
-	BeadsDir    string
+	MorselsDir    string
 	AgentID     string
 	DispatchID  int64
 	ClaimedAt   time.Time
 	HeartbeatAt time.Time
 }
-// UpsertClaimLease records or refreshes a claim lease for a bead ownership lock.
-func (s *Store) UpsertClaimLease(beadID, project, beadsDir, agentID string) error {
-	beadID = strings.TrimSpace(beadID)
-	if beadID == "" {
-		return fmt.Errorf("store: upsert claim lease: bead_id is required")
+// UpsertClaimLease records or refreshes a claim lease for a morsel ownership lock.
+func (s *Store) UpsertClaimLease(morselID, project, morselsDir, agentID string) error {
+	morselID = strings.TrimSpace(morselID)
+	if morselID == "" {
+		return fmt.Errorf("store: upsert claim lease: morsel_id is required")
 	}
 	_, err := s.db.Exec(
-		`INSERT INTO claim_leases (bead_id, project, beads_dir, agent_id, dispatch_id, claimed_at, heartbeat_at)
+		`INSERT INTO claim_leases (morsel_id, project, morsels_dir, agent_id, dispatch_id, claimed_at, heartbeat_at)
 		 VALUES (?, ?, ?, ?, 0, datetime('now'), datetime('now'))
-		 ON CONFLICT(bead_id) DO UPDATE SET
+		 ON CONFLICT(morsel_id) DO UPDATE SET
 		   project=excluded.project,
-		   beads_dir=excluded.beads_dir,
+		   morsels_dir=excluded.morsels_dir,
 		   agent_id=excluded.agent_id,
 		   heartbeat_at=datetime('now')`,
-		beadID, strings.TrimSpace(project), strings.TrimSpace(beadsDir), strings.TrimSpace(agentID),
+		morselID, strings.TrimSpace(project), strings.TrimSpace(morselsDir), strings.TrimSpace(agentID),
 	)
 	if err != nil {
 		return fmt.Errorf("store: upsert claim lease: %w", err)
@@ -40,14 +40,14 @@ func (s *Store) UpsertClaimLease(beadID, project, beadsDir, agentID string) erro
 }
 
 // AttachDispatchToClaimLease links a recorded dispatch to its claim lease and refreshes heartbeat.
-func (s *Store) AttachDispatchToClaimLease(beadID string, dispatchID int64) error {
-	beadID = strings.TrimSpace(beadID)
-	if beadID == "" {
-		return fmt.Errorf("store: attach dispatch to claim lease: bead_id is required")
+func (s *Store) AttachDispatchToClaimLease(morselID string, dispatchID int64) error {
+	morselID = strings.TrimSpace(morselID)
+	if morselID == "" {
+		return fmt.Errorf("store: attach dispatch to claim lease: morsel_id is required")
 	}
 	_, err := s.db.Exec(
-		`UPDATE claim_leases SET dispatch_id = ?, heartbeat_at = datetime('now') WHERE bead_id = ?`,
-		dispatchID, beadID,
+		`UPDATE claim_leases SET dispatch_id = ?, heartbeat_at = datetime('now') WHERE morsel_id = ?`,
+		dispatchID, morselID,
 	)
 	if err != nil {
 		return fmt.Errorf("store: attach dispatch to claim lease: %w", err)
@@ -56,12 +56,12 @@ func (s *Store) AttachDispatchToClaimLease(beadID string, dispatchID int64) erro
 }
 
 // HeartbeatClaimLease refreshes heartbeat for an existing lease.
-func (s *Store) HeartbeatClaimLease(beadID string) error {
-	beadID = strings.TrimSpace(beadID)
-	if beadID == "" {
+func (s *Store) HeartbeatClaimLease(morselID string) error {
+	morselID = strings.TrimSpace(morselID)
+	if morselID == "" {
 		return nil
 	}
-	_, err := s.db.Exec(`UPDATE claim_leases SET heartbeat_at = datetime('now') WHERE bead_id = ?`, beadID)
+	_, err := s.db.Exec(`UPDATE claim_leases SET heartbeat_at = datetime('now') WHERE morsel_id = ?`, morselID)
 	if err != nil {
 		return fmt.Errorf("store: heartbeat claim lease: %w", err)
 	}
@@ -69,27 +69,27 @@ func (s *Store) HeartbeatClaimLease(beadID string) error {
 }
 
 // DeleteClaimLease clears a lease record.
-func (s *Store) DeleteClaimLease(beadID string) error {
-	beadID = strings.TrimSpace(beadID)
-	if beadID == "" {
+func (s *Store) DeleteClaimLease(morselID string) error {
+	morselID = strings.TrimSpace(morselID)
+	if morselID == "" {
 		return nil
 	}
-	_, err := s.db.Exec(`DELETE FROM claim_leases WHERE bead_id = ?`, beadID)
+	_, err := s.db.Exec(`DELETE FROM claim_leases WHERE morsel_id = ?`, morselID)
 	if err != nil {
 		return fmt.Errorf("store: delete claim lease: %w", err)
 	}
 	return nil
 }
 
-// GetClaimLease loads a lease by bead ID.
-func (s *Store) GetClaimLease(beadID string) (*ClaimLease, error) {
-	beadID = strings.TrimSpace(beadID)
-	if beadID == "" {
+// GetClaimLease loads a lease by morsel ID.
+func (s *Store) GetClaimLease(morselID string) (*ClaimLease, error) {
+	morselID = strings.TrimSpace(morselID)
+	if morselID == "" {
 		return nil, nil
 	}
 	rows, err := s.db.Query(
-		`SELECT bead_id, project, beads_dir, agent_id, dispatch_id, claimed_at, heartbeat_at FROM claim_leases WHERE bead_id = ?`,
-		beadID,
+		`SELECT morsel_id, project, morsels_dir, agent_id, dispatch_id, claimed_at, heartbeat_at FROM claim_leases WHERE morsel_id = ?`,
+		morselID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("store: get claim lease: %w", err)
@@ -109,7 +109,7 @@ func (s *Store) GetClaimLease(beadID string) (*ClaimLease, error) {
 // ListClaimLeases returns all active claim leases.
 func (s *Store) ListClaimLeases() ([]ClaimLease, error) {
 	rows, err := s.db.Query(
-		`SELECT bead_id, project, beads_dir, agent_id, dispatch_id, claimed_at, heartbeat_at
+		`SELECT morsel_id, project, morsels_dir, agent_id, dispatch_id, claimed_at, heartbeat_at
 		 FROM claim_leases ORDER BY heartbeat_at ASC`,
 	)
 	if err != nil {
@@ -126,7 +126,7 @@ func (s *Store) GetExpiredClaimLeases(ttl time.Duration) ([]ClaimLease, error) {
 	}
 	cutoff := time.Now().Add(-ttl).UTC().Format(time.DateTime)
 	rows, err := s.db.Query(
-		`SELECT bead_id, project, beads_dir, agent_id, dispatch_id, claimed_at, heartbeat_at
+		`SELECT morsel_id, project, morsels_dir, agent_id, dispatch_id, claimed_at, heartbeat_at
 		 FROM claim_leases WHERE heartbeat_at < ? ORDER BY heartbeat_at ASC`,
 		cutoff,
 	)
@@ -141,9 +141,9 @@ func scanClaimLeases(rows *sql.Rows) ([]ClaimLease, error) {
 	for rows.Next() {
 		var lease ClaimLease
 		if err := rows.Scan(
-			&lease.BeadID,
+			&lease.MorselID,
 			&lease.Project,
-			&lease.BeadsDir,
+			&lease.MorselsDir,
 			&lease.AgentID,
 			&lease.DispatchID,
 			&lease.ClaimedAt,

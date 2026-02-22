@@ -16,13 +16,13 @@ session_prefix = "chum-"
 
 [projects.hg-website]
 enabled = false
-beads_dir = "~/projects/hg-website/.beads"
+morsels_dir = "~/projects/hg-website/.morsels"
 workspace = "~/projects/hg-website"
 priority = 1
 
 [projects.hunter-galloway]
 enabled = false
-beads_dir = "/home/ubuntu/.openclaw/workspace-main/.beads"
+morsels_dir = "/home/ubuntu/.openclaw/workspace-main/.morsels"
 workspace = "/home/ubuntu/obsidian-vault"
 priority = 1
 matrix_room = "!adJhqAxLcYqQuYraGf:vmi3041112.contaboserver.net"

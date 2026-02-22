@@ -14,7 +14,7 @@ type Commit struct {
 	Message   string
 	Author    string
 	Date      time.Time
-	BeadIDs   []string // Extracted bead IDs from commit message
+	MorselIDs   []string // Extracted morsel IDs from commit message
 }
 
 // GetRecentCommits returns commits from the last N days
@@ -60,7 +60,7 @@ func GetRecentCommits(workspace string, days int) ([]Commit, error) {
 			Message: parts[1],
 			Author:  parts[2],
 			Date:    date,
-			BeadIDs: ExtractBeadIDs(parts[1]),
+			MorselIDs: ExtractMorselIDs(parts[1]),
 		}
 		
 		commits = append(commits, commit)
@@ -69,37 +69,37 @@ func GetRecentCommits(workspace string, days int) ([]Commit, error) {
 	return commits, nil
 }
 
-// ExtractBeadIDs finds bead ID patterns in commit messages
+// ExtractMorselIDs finds morsel ID patterns in commit messages
 // Matches patterns like: chum-abc, chum-abc.1, project-def.2, hg-website-123.5, etc.
-func ExtractBeadIDs(message string) []string {
+func ExtractMorselIDs(message string) []string {
 	// Pattern matches: word-word-...-word[.digits] (e.g., chum-abc, hg-website-123.5, project-def.2)
 	pattern := `\b([a-zA-Z][a-zA-Z0-9]*(?:-[a-zA-Z0-9]+)+(?:\.[0-9]+)?)\b`
 	re := regexp.MustCompile(pattern)
 	
 	matches := re.FindAllStringSubmatch(message, -1)
-	beadIDs := make([]string, 0, len(matches))
+	morselIDs := make([]string, 0, len(matches))
 	seen := make(map[string]bool)
 	
 	for _, match := range matches {
 		if len(match) > 1 {
-			beadID := match[1]
+			morselID := match[1]
 			// Filter out obvious false positives
-			if !isLikelyBeadID(beadID) {
+			if !isLikelyMorselID(morselID) {
 				continue
 			}
 			
-			if !seen[beadID] {
-				beadIDs = append(beadIDs, beadID)
-				seen[beadID] = true
+			if !seen[morselID] {
+				morselIDs = append(morselIDs, morselID)
+				seen[morselID] = true
 			}
 		}
 	}
 	
-	return beadIDs
+	return morselIDs
 }
 
-// isLikelyBeadID filters out common false positives
-func isLikelyBeadID(candidate string) bool {
+// isLikelyMorselID filters out common false positives
+func isLikelyMorselID(candidate string) bool {
 	candidate = strings.ToLower(candidate)
 	
 	// Common false positives to exclude
@@ -144,8 +144,8 @@ func isLikelyBeadID(candidate string) bool {
 	return true
 }
 
-// GetCommitsWithBeadID returns commits that reference a specific bead ID
-func GetCommitsWithBeadID(workspace, beadID string, days int) ([]Commit, error) {
+// GetCommitsWithMorselID returns commits that reference a specific morsel ID
+func GetCommitsWithMorselID(workspace, morselID string, days int) ([]Commit, error) {
 	commits, err := GetRecentCommits(workspace, days)
 	if err != nil {
 		return nil, err
@@ -153,8 +153,8 @@ func GetCommitsWithBeadID(workspace, beadID string, days int) ([]Commit, error) 
 	
 	var matchingCommits []Commit
 	for _, commit := range commits {
-		for _, id := range commit.BeadIDs {
-			if id == beadID {
+		for _, id := range commit.MorselIDs {
+			if id == morselID {
 				matchingCommits = append(matchingCommits, commit)
 				break
 			}
@@ -164,24 +164,24 @@ func GetCommitsWithBeadID(workspace, beadID string, days int) ([]Commit, error) 
 	return matchingCommits, nil
 }
 
-// GetAllBeadIDsFromCommits extracts all unique bead IDs from recent commits
-func GetAllBeadIDsFromCommits(workspace string, days int) ([]string, error) {
+// GetAllMorselIDsFromCommits extracts all unique morsel IDs from recent commits
+func GetAllMorselIDsFromCommits(workspace string, days int) ([]string, error) {
 	commits, err := GetRecentCommits(workspace, days)
 	if err != nil {
 		return nil, err
 	}
 	
 	seen := make(map[string]bool)
-	var allBeadIDs []string
+	var allMorselIDs []string
 	
 	for _, commit := range commits {
-		for _, beadID := range commit.BeadIDs {
-			if !seen[beadID] {
-				allBeadIDs = append(allBeadIDs, beadID)
-				seen[beadID] = true
+		for _, morselID := range commit.MorselIDs {
+			if !seen[morselID] {
+				allMorselIDs = append(allMorselIDs, morselID)
+				seen[morselID] = true
 			}
 		}
 	}
 	
-	return allBeadIDs, nil
+	return allMorselIDs, nil
 }

@@ -49,21 +49,21 @@ git branch -d feature/your-feature     # after merge
 
 ## CHUM Agent Worktree Management
 
-When `use_branches = true` is configured, the scheduler automatically creates worktrees for each dispatched bead:
+When `use_branches = true` is configured, the scheduler automatically creates worktrees for each dispatched morsel:
 
 ```
 /home/user/projects/
 ├── chum/                              # canonical workspace (master)
-├── chum-chum-bvnv/                  # auto-created for bead chum-bvnv
-├── chum-chum-o4ni/                  # auto-created for bead chum-o4ni
-└── chum-chum-w7dk/                  # auto-created for bead chum-w7dk
+├── chum-chum-bvnv/                  # auto-created for morsel chum-bvnv
+├── chum-chum-o4ni/                  # auto-created for morsel chum-o4ni
+└── chum-chum-w7dk/                  # auto-created for morsel chum-w7dk
 ```
 
-**Branch naming convention:** `{branch_prefix}{bead-id}` (e.g., `feat/chum-bvnv`).
+**Branch naming convention:** `{branch_prefix}{morsel-id}` (e.g., `feat/chum-bvnv`).
 
 **Lifecycle:**
 1. Scheduler creates branch from `base_branch`
-2. Worktree is added at `../chum-{project}-{bead-id}`
+2. Worktree is added at `../chum-{project}-{morsel-id}`
 3. Agent is dispatched into the worktree
 4. On completion, PR is created via `merge_method`
 5. Post-merge checks run and worktree is cleaned up
@@ -78,7 +78,7 @@ When `use_branches = true` is configured, the scheduler automatically creates wo
 | `feat/{scope}` | Feature work |
 | `fix/{scope}` | Bug fixes |
 | `chore/{scope}` | Maintenance, docs, CI |
-| `chum/{bead-id}` | Auto-created by scheduler |
+| `chum/{morsel-id}` | Auto-created by scheduler |
 
 ---
 
@@ -87,7 +87,7 @@ When `use_branches = true` is configured, the scheduler automatically creates wo
 - **One worktree per active feature.** Never share a worktree between tasks.
 - **Never commit from canonical workspace** while worktrees exist for the same branch.
 - **Max concurrent worktrees** is governed by `dispatch.git.max_concurrent_per_project` (default: 3).
-- **Merge conflicts** are handled by the scheduler — if a merge conflict is detected, the dispatch is failed and the bead is re-queued.
+- **Merge conflicts** are handled by the scheduler — if a merge conflict is detected, the dispatch is failed and the morsel is re-queued.
 
 ---
 

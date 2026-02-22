@@ -47,7 +47,7 @@ const (
 
 type scrumCommand struct {
 	kind        scrumCommandKind
-	beadID      string
+	morselID      string
 	priority    int
 	dispatchID  int64
 	title       string
@@ -382,7 +382,7 @@ func (p *Poller) runScrumCommand(ctx context.Context, msg InboundMessage, cmd sc
 	case scrumCommandStatus:
 		return p.handleStatusCommand(msg.Project)
 	case scrumCommandPriority:
-		return p.handlePriorityCommand(ctx, msg.Project, cmd.beadID, cmd.priority)
+		return p.handlePriorityCommand(ctx, msg.Project, cmd.morselID, cmd.priority)
 	case scrumCommandCancel:
 		return p.handleCancelCommand(ctx, cmd.dispatchID)
 	case scrumCommandCreate:
@@ -415,24 +415,24 @@ func (p *Poller) handleStatusCommand(project string) (string, error) {
 		return "", fmt.Errorf("retrieving recent completions: %w", err)
 	}
 
-	var runningBeads []string
+	var runningMorsels []string
 	for _, d := range running {
 		if strings.TrimSpace(d.Project) != strings.TrimSpace(project) {
 			continue
 		}
-		if strings.TrimSpace(d.BeadID) != "" {
-			runningBeads = append(runningBeads, d.BeadID)
+		if strings.TrimSpace(d.MorselID) != "" {
+			runningMorsels = append(runningMorsels, d.MorselID)
 		}
 	}
 
 	var lines []string
 	lines = append(lines, fmt.Sprintf("Project: %s", strings.TrimSpace(project)))
-	lines = append(lines, fmt.Sprintf("Running beads: %d", len(runningBeads)))
-	if len(runningBeads) > 0 {
-		if len(runningBeads) > 5 {
-			runningBeads = runningBeads[:5]
+	lines = append(lines, fmt.Sprintf("Running morsels: %d", len(runningMorsels)))
+	if len(runningMorsels) > 0 {
+		if len(runningMorsels) > 5 {
+			runningMorsels = runningMorsels[:5]
 		}
-		lines = append(lines, fmt.Sprintf("Running IDs: %s", strings.Join(runningBeads, ", ")))
+		lines = append(lines, fmt.Sprintf("Running IDs: %s", strings.Join(runningMorsels, ", ")))
 	} else {
 		lines = append(lines, "Running IDs: none")
 	}
@@ -453,7 +453,7 @@ func (p *Poller) handleStatusCommand(project string) (string, error) {
 		if timeStr == "0001-01-01T00:00:00Z" {
 			timeStr = "unknown"
 		}
-		lines = append(lines, fmt.Sprintf("- %s (%s)", d.BeadID, timeStr))
+		lines = append(lines, fmt.Sprintf("- %s (%s)", d.MorselID, timeStr))
 	}
 	if len(recent) > limit {
 		lines = append(lines, "- ...")
@@ -462,7 +462,7 @@ func (p *Poller) handleStatusCommand(project string) (string, error) {
 	return strings.Join(lines, "\n"), nil
 }
 
-func (p *Poller) handlePriorityCommand(ctx context.Context, project, beadID string, priority int) (string, error) {
+func (p *Poller) handlePriorityCommand(ctx context.Context, project, morselID string, priority int) (string, error) {
 	if strings.TrimSpace(project) == "" {
 		return "", fmt.Errorf("missing project")
 	}
@@ -473,10 +473,10 @@ func (p *Poller) handlePriorityCommand(ctx context.Context, project, beadID stri
 		return "", fmt.Errorf("DAG not configured")
 	}
 
-	if err := p.dag.UpdateTask(ctx, beadID, map[string]any{"priority": priority}); err != nil {
+	if err := p.dag.UpdateTask(ctx, morselID, map[string]any{"priority": priority}); err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("Updated %s priority to p%d", beadID, priority), nil
+	return fmt.Sprintf("Updated %s priority to p%d", morselID, priority), nil
 }
 
 func (p *Poller) handleCancelCommand(_ context.Context, dispatchID int64) (string, error) {
@@ -533,21 +533,21 @@ func parseScrumCommand(raw string) (scrumCommand, bool, error) {
 		return scrumCommand{kind: scrumCommandStatus}, true, nil
 	case "priority":
 		if len(parts) != 3 {
-			return scrumCommand{}, true, errors.New("malformed priority command. Usage: priority <bead-id> <p0|p1|p2|p3|p4>")
+			return scrumCommand{}, true, errors.New("malformed priority command. Usage: priority <morsel-id> <p0|p1|p2|p3|p4>")
 		}
-		beadID := strings.TrimSpace(parts[1])
-		if beadID == "" {
-			return scrumCommand{}, true, errors.New("priority command requires a bead id. Usage: priority <bead-id> <p0|p1|p2|p3|p4>")
+		morselID := strings.TrimSpace(parts[1])
+		if morselID == "" {
+			return scrumCommand{}, true, errors.New("priority command requires a morsel id. Usage: priority <morsel-id> <p0|p1|p2|p3|p4>")
 		}
 		priorityToken := strings.ToLower(strings.TrimSpace(parts[2]))
 		if !strings.HasPrefix(priorityToken, "p") || len(priorityToken) != 2 {
-			return scrumCommand{}, true, errors.New("priority must be p0, p1, p2, p3, or p4. Usage: priority <bead-id> <p0|p1|p2|p3|p4>")
+			return scrumCommand{}, true, errors.New("priority must be p0, p1, p2, p3, or p4. Usage: priority <morsel-id> <p0|p1|p2|p3|p4>")
 		}
 		priority, err := strconv.Atoi(priorityToken[1:])
 		if err != nil || priority < 0 || priority > 4 {
-			return scrumCommand{}, true, errors.New("priority must be p0, p1, p2, p3, or p4. Usage: priority <bead-id> <p0|p1|p2|p3|p4>")
+			return scrumCommand{}, true, errors.New("priority must be p0, p1, p2, p3, or p4. Usage: priority <morsel-id> <p0|p1|p2|p3|p4>")
 		}
-		return scrumCommand{kind: scrumCommandPriority, beadID: beadID, priority: priority}, true, nil
+		return scrumCommand{kind: scrumCommandPriority, morselID: morselID, priority: priority}, true, nil
 	case "cancel":
 		if len(parts) != 2 {
 			return scrumCommand{}, true, errors.New("malformed cancel command. Usage: cancel <dispatch-id>")
@@ -582,19 +582,19 @@ func commandPermissionDeniedMessage() string {
 func commandUsageMessage() string {
 	return `Supported commands:
 - status
-- priority <bead-id> <p0|p1|p2|p3|p4>
+- priority <morsel-id> <p0|p1|p2|p3|p4>
 - cancel <dispatch-id>
 - create task "<title>" "<description>"
 
 Usage:
 - status
   - Shows a brief project summary and recent completions.
-- priority <bead-id> <p0|p1|p2|p3|p4>
-  - Reprioritizes an existing bead.
+- priority <morsel-id> <p0|p1|p2|p3|p4>
+  - Reprioritizes an existing morsel.
 - cancel <dispatch-id>
   - Cancels a running dispatch by id.
 - create task "<title>" "<description>"
-  - Creates a new task bead with the provided title and description.`
+  - Creates a new task morsel with the provided title and description.`
 }
 
 func (p *Poller) cursor(room string) string {

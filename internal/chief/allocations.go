@@ -194,9 +194,9 @@ func (ar *AllocationRecorder) buildSprintPlanMessage(decision *store.AllocationD
 			allocation.AllocatedCapacity, allocation.CapacityPercent)
 		fmt.Fprintf(&b, "- **Provider Tier:** %s\n", allocation.ProviderTier)
 		
-		if len(allocation.PriorityBeads) > 0 {
-			fmt.Fprintf(&b, "- **Priority Beads:** %s\n", 
-				strings.Join(allocation.PriorityBeads, ", "))
+		if len(allocation.PriorityMorsels) > 0 {
+			fmt.Fprintf(&b, "- **Priority Morsels:** %s\n", 
+				strings.Join(allocation.PriorityMorsels, ", "))
 		}
 		
 		if allocation.Notes != "" {
@@ -210,7 +210,7 @@ func (ar *AllocationRecorder) buildSprintPlanMessage(decision *store.AllocationD
 		fmt.Fprintf(&b, "## 🔗 Cross-Project Dependencies\n\n")
 		for _, dep := range decision.CrossProjectDeps {
 			fmt.Fprintf(&b, "- **%s** depends on **%s**\n", dep.FromProject, dep.ToProject)
-			fmt.Fprintf(&b, "  - Bead: `%s` (%s priority)\n", dep.BeadID, dep.Priority)
+			fmt.Fprintf(&b, "  - Morsel: `%s` (%s priority)\n", dep.MorselID, dep.Priority)
 			if dep.Description != "" {
 				fmt.Fprintf(&b, "  - %s\n", dep.Description)
 			}

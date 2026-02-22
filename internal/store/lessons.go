@@ -11,7 +11,7 @@ import (
 // StoredLesson is a lesson persisted in the lessons table with FTS5 indexing.
 type StoredLesson struct {
 	ID            int64
-	BeadID        string
+	MorselID        string
 	Project       string
 	Category      string // pattern, antipattern, rule, insight
 	Summary       string
@@ -28,7 +28,7 @@ func migrateLessonsTable(db *sql.DB) error {
 	if _, err := db.Exec(`
 		CREATE TABLE IF NOT EXISTS lessons (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			bead_id TEXT NOT NULL,
+			morsel_id TEXT NOT NULL,
 			project TEXT NOT NULL,
 			category TEXT NOT NULL,
 			summary TEXT NOT NULL,
@@ -42,8 +42,8 @@ func migrateLessonsTable(db *sql.DB) error {
 		return fmt.Errorf("create lessons table: %w", err)
 	}
 
-	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_lessons_bead ON lessons(bead_id)`); err != nil {
-		return fmt.Errorf("create lessons bead index: %w", err)
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_lessons_morsel ON lessons(morsel_id)`); err != nil {
+		return fmt.Errorf("create lessons morsel index: %w", err)
 	}
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_lessons_project ON lessons(project)`); err != nil {
 		return fmt.Errorf("create lessons project index: %w", err)
@@ -99,7 +99,7 @@ func migrateLessonsTable(db *sql.DB) error {
 }
 
 // StoreLesson persists a lesson and updates the FTS5 index (via triggers).
-func (s *Store) StoreLesson(beadID, project, category, summary, detail string, filePaths []string, labels []string, semgrepRuleID string) (int64, error) {
+func (s *Store) StoreLesson(morselID, project, category, summary, detail string, filePaths []string, labels []string, semgrepRuleID string) (int64, error) {
 	filePathsJSON, err := json.Marshal(filePaths)
 	if err != nil {
 		return 0, fmt.Errorf("marshal file_paths: %w", err)
@@ -107,9 +107,9 @@ func (s *Store) StoreLesson(beadID, project, category, summary, detail string, f
 	labelsStr := strings.Join(labels, ",")
 
 	result, err := s.db.Exec(`
-		INSERT INTO lessons (bead_id, project, category, summary, detail, file_paths, labels, semgrep_rule_id)
+		INSERT INTO lessons (morsel_id, project, category, summary, detail, file_paths, labels, semgrep_rule_id)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-	`, beadID, project, category, summary, detail, string(filePathsJSON), labelsStr, semgrepRuleID)
+	`, morselID, project, category, summary, detail, string(filePathsJSON), labelsStr, semgrepRuleID)
 	if err != nil {
 		return 0, fmt.Errorf("insert lesson: %w", err)
 	}
@@ -122,7 +122,7 @@ func (s *Store) SearchLessons(query string, limit int) ([]StoredLesson, error) {
 		limit = 10
 	}
 	rows, err := s.db.Query(`
-		SELECT l.id, l.bead_id, l.project, l.category, l.summary, l.detail,
+		SELECT l.id, l.morsel_id, l.project, l.category, l.summary, l.detail,
 		       l.file_paths, l.labels, l.semgrep_rule_id, l.created_at
 		FROM lessons l
 		JOIN lessons_fts f ON l.id = f.rowid
@@ -186,7 +186,7 @@ func (s *Store) GetRecentLessons(project string, limit int) ([]StoredLesson, err
 		limit = 10
 	}
 	rows, err := s.db.Query(`
-		SELECT id, bead_id, project, category, summary, detail,
+		SELECT id, morsel_id, project, category, summary, detail,
 		       file_paths, labels, semgrep_rule_id, created_at
 		FROM lessons
 		WHERE project = ?
@@ -200,17 +200,17 @@ func (s *Store) GetRecentLessons(project string, limit int) ([]StoredLesson, err
 	return scanLessons(rows)
 }
 
-// GetLessonsByBead returns all lessons for a specific bead.
-func (s *Store) GetLessonsByBead(beadID string) ([]StoredLesson, error) {
+// GetLessonsByMorsel returns all lessons for a specific morsel.
+func (s *Store) GetLessonsByMorsel(morselID string) ([]StoredLesson, error) {
 	rows, err := s.db.Query(`
-		SELECT id, bead_id, project, category, summary, detail,
+		SELECT id, morsel_id, project, category, summary, detail,
 		       file_paths, labels, semgrep_rule_id, created_at
 		FROM lessons
-		WHERE bead_id = ?
+		WHERE morsel_id = ?
 		ORDER BY created_at DESC
-	`, beadID)
+	`, morselID)
 	if err != nil {
-		return nil, fmt.Errorf("get lessons by bead: %w", err)
+		return nil, fmt.Errorf("get lessons by morsel: %w", err)
 	}
 	defer rows.Close()
 	return scanLessons(rows)
@@ -239,7 +239,7 @@ func scanLessons(rows *sql.Rows) ([]StoredLesson, error) {
 		var filePathsJSON, labelsStr string
 		var createdAt string
 
-		if err := rows.Scan(&l.ID, &l.BeadID, &l.Project, &l.Category,
+		if err := rows.Scan(&l.ID, &l.MorselID, &l.Project, &l.Category,
 			&l.Summary, &l.Detail, &filePathsJSON, &labelsStr,
 			&l.SemgrepRuleID, &createdAt); err != nil {
 			return nil, fmt.Errorf("scan lesson: %w", err)

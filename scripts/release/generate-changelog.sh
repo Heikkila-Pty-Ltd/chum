@@ -5,13 +5,13 @@ OUT_MD="CHANGELOG.md"
 OUT_JSON="release/changelog.json"
 FROM_REF=""
 TO_REF="HEAD"
-MAX_BEADS=50
+MAX_MORSELS=50
 
 usage() {
   cat <<'USAGE'
 Usage: scripts/generate-changelog.sh [--from REF] [--to REF] [--out-md FILE] [--out-json FILE]
 
-Generates deterministic changelog artifacts (Markdown + JSON) from git history and closed beads.
+Generates deterministic changelog artifacts (Markdown + JSON) from git history and closed morsels.
 USAGE
 }
 
@@ -110,20 +110,20 @@ while IFS=$'\t' read -r sha subject; do
   fi
 done < "$tmp_commits"
 
-tmp_beads="$(mktemp)"
+tmp_morsels="$(mktemp)"
 if [[ -n "$start_date" ]]; then
-  jq -r --arg start "$start_date" --argjson max "$MAX_BEADS" '
+  jq -r --arg start "$start_date" --argjson max "$MAX_MORSELS" '
     select(.status=="closed" and (.closed_at // "") != "")
     | select(.closed_at >= $start)
     | [.closed_at, .id, .title]
     | @tsv
-  ' .beads/issues.jsonl | sort -r | head -n "$MAX_BEADS" > "$tmp_beads"
+  ' .morsels/issues.jsonl | sort -r | head -n "$MAX_MORSELS" > "$tmp_morsels"
 else
-  jq -r --argjson max "$MAX_BEADS" '
+  jq -r --argjson max "$MAX_MORSELS" '
     select(.status=="closed" and (.closed_at // "") != "")
     | [.closed_at, .id, .title]
     | @tsv
-  ' .beads/issues.jsonl | sort -r | head -n "$MAX_BEADS" > "$tmp_beads"
+  ' .morsels/issues.jsonl | sort -r | head -n "$MAX_MORSELS" > "$tmp_morsels"
 fi
 
 version="$(tr -d '[:space:]' < VERSION 2>/dev/null || echo "0.0.0")"
@@ -169,11 +169,11 @@ tmp_md="$(mktemp)"
   fi
   echo
 
-  echo "### Closed Beads"
-  if [[ -s "$tmp_beads" ]]; then
-    while IFS=$'\t' read -r closed_at bead_id title; do
-      echo "- ${bead_id}: ${title} (${closed_at})"
-    done < "$tmp_beads"
+  echo "### Closed Morsels"
+  if [[ -s "$tmp_morsels" ]]; then
+    while IFS=$'\t' read -r closed_at morsel_id title; do
+      echo "- ${morsel_id}: ${title} (${closed_at})"
+    done < "$tmp_morsels"
   else
     echo "- None"
   fi
@@ -191,7 +191,7 @@ jq -n \
   --argjson bugfixes "$(jq -Rsc 'split("\n") | map(select(length>0))' "$bugfixes")" \
   --argjson breaking "$(jq -Rsc 'split("\n") | map(select(length>0))' "$breaking")" \
   --argjson deprecations "$(jq -Rsc 'split("\n") | map(select(length>0))' "$deprecations")" \
-  --argjson closed_beads "$(awk -F'\t' 'NF==3 {printf("{\"closed_at\":\"%s\",\"id\":\"%s\",\"title\":\"%s\"}\n", $1,$2,$3)}' "$tmp_beads" | jq -s '.')" \
+  --argjson closed_morsels "$(awk -F'\t' 'NF==3 {printf("{\"closed_at\":\"%s\",\"id\":\"%s\",\"title\":\"%s\"}\n", $1,$2,$3)}' "$tmp_morsels" | jq -s '.')" \
   '{
     version: $version,
     range: $range,
@@ -203,12 +203,12 @@ jq -n \
       breaking_changes: $breaking,
       deprecations: $deprecations
     },
-    closed_beads: $closed_beads
+    closed_morsels: $closed_morsels
   }' > "$tmp_json"
 
 mv "$tmp_json" "$OUT_JSON"
 
-rm -f "$tmp_commits" "$features" "$bugfixes" "$breaking" "$deprecations" "$tmp_beads"
+rm -f "$tmp_commits" "$features" "$bugfixes" "$breaking" "$deprecations" "$tmp_morsels"
 
 log "wrote $OUT_MD"
 log "wrote $OUT_JSON"

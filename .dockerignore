@@ -39,7 +39,7 @@ evidence/
 # Runtime data
 state/
 .chum/
-.beads/
+.morsels/
 
 # Release artifacts
 release/

@@ -29,7 +29,7 @@ type StingrayFinding struct {
 	Detail    string
 	FilePath  string
 	Evidence  string
-	BeadID    string
+	MorselID    string
 	Status    string // open, filed, resolved, wont_fix
 	FirstSeen time.Time
 	LastSeen  time.Time
@@ -156,7 +156,7 @@ func (s *Store) RecordFinding(runID int64, project, category, severity, title, d
 		return 0, fmt.Errorf("store: record stingray finding: detail is required")
 	}
 	res, err := s.db.Exec(`
-		INSERT INTO stingray_findings (run_id, project, category, severity, title, detail, file_path, evidence, bead_id, status)
+		INSERT INTO stingray_findings (run_id, project, category, severity, title, detail, file_path, evidence, morsel_id, status)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', ?)
 	`, runID, project, category, severity, title, detail, filePath, evidence, stingrayFindingStatusOpen)
 	if err != nil {
@@ -180,7 +180,7 @@ func (s *Store) GetRecentFindings(project string, limit int) ([]StingrayFinding,
 	}
 	rows, err := s.db.Query(`
 		SELECT id, run_id, project, category, severity, title, detail,
-		       file_path, evidence, bead_id, status, first_seen, last_seen
+		       file_path, evidence, morsel_id, status, first_seen, last_seen
 		FROM stingray_findings
 		WHERE project = ?
 		ORDER BY last_seen DESC, id DESC
@@ -225,7 +225,7 @@ func (s *Store) GetTrendingFindings(project string, minOccurrences int) ([]Sting
 				f.detail,
 				f.file_path,
 				f.evidence,
-				f.bead_id,
+				f.morsel_id,
 				f.status,
 				f.first_seen,
 				f.last_seen,
@@ -238,7 +238,7 @@ func (s *Store) GetTrendingFindings(project string, minOccurrences int) ([]Sting
 			WHERE f.project = ? AND f.status IN (?, ?)
 		)
 		SELECT id, run_id, project, category, severity, title, detail,
-		       file_path, evidence, bead_id, status, first_seen, last_seen
+		       file_path, evidence, morsel_id, status, first_seen, last_seen
 		FROM ranked_findings
 		WHERE rn = 1
 		ORDER BY last_seen DESC, id DESC
@@ -266,12 +266,12 @@ func (s *Store) UpdateFindingStatus(id int64, status string) error {
 	return nil
 }
 
-// UpdateFindingBeadID links a finding to a filed bead.
-func (s *Store) UpdateFindingBeadID(id int64, beadID string) error {
-	beadID = strings.TrimSpace(beadID)
-	_, err := s.db.Exec(`UPDATE stingray_findings SET bead_id = ?, status = 'filed' WHERE id = ?`, beadID, id)
+// UpdateFindingMorselID links a finding to a filed morsel.
+func (s *Store) UpdateFindingMorselID(id int64, morselID string) error {
+	morselID = strings.TrimSpace(morselID)
+	_, err := s.db.Exec(`UPDATE stingray_findings SET morsel_id = ?, status = 'filed' WHERE id = ?`, morselID, id)
 	if err != nil {
-		return fmt.Errorf("store: update stingray finding bead_id: %w", err)
+		return fmt.Errorf("store: update stingray finding morsel_id: %w", err)
 	}
 	return nil
 }
@@ -298,14 +298,14 @@ func (s *Store) GetFindingByTitleAndFile(project, title, filePath string) (*Stin
 	var firstSeen, lastSeen string
 	err := s.db.QueryRow(`
 		SELECT id, run_id, project, category, severity, title, detail,
-		       file_path, evidence, bead_id, status, first_seen, last_seen
+		       file_path, evidence, morsel_id, status, first_seen, last_seen
 		FROM stingray_findings
 		WHERE project = ? AND title = ? AND file_path = ? AND status IN ('open', 'filed')
 		ORDER BY last_seen DESC
 		LIMIT 1
 	`, project, title, filePath).Scan(
 		&f.ID, &f.RunID, &f.Project, &f.Category, &f.Severity, &f.Title, &f.Detail,
-		&f.FilePath, &f.Evidence, &f.BeadID, &f.Status, &firstSeen, &lastSeen,
+		&f.FilePath, &f.Evidence, &f.MorselID, &f.Status, &firstSeen, &lastSeen,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -355,7 +355,7 @@ func scanStingrayFindings(rows *sql.Rows) ([]StingrayFinding, error) {
 		var firstSeen, lastSeen string
 		if err := rows.Scan(
 			&f.ID, &f.RunID, &f.Project, &f.Category, &f.Severity, &f.Title, &f.Detail,
-			&f.FilePath, &f.Evidence, &f.BeadID, &f.Status, &firstSeen, &lastSeen,
+			&f.FilePath, &f.Evidence, &f.MorselID, &f.Status, &firstSeen, &lastSeen,
 		); err != nil {
 			return nil, fmt.Errorf("scan stingray finding: %w", err)
 		}

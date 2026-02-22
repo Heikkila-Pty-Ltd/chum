@@ -31,13 +31,13 @@ func sanitizeForFilename(s string) string {
 	return strings.Trim(s, "-")
 }
 
-// ExtractLessonsActivity uses a fast LLM to analyze the completed bead's diff,
+// ExtractLessonsActivity uses a fast LLM to analyze the completed morsel's diff,
 // DoD results, and review feedback to extract reusable lessons.
 func (a *Activities) ExtractLessonsActivity(ctx context.Context, req LearnerRequest) ([]Lesson, error) {
 	logger := activity.GetLogger(ctx)
 	logger.Info(OctopusPrefix+" Extracting lessons", "TaskID", req.TaskID, "Tier", req.Tier)
 
-	// Build context from the bead's journey
+	// Build context from the morsel's journey
 	var contextParts []string
 	if req.DiffSummary != "" {
 		contextParts = append(contextParts, "DIFF:\n"+truncate(req.DiffSummary, 4000))
@@ -67,9 +67,9 @@ func (a *Activities) ExtractLessonsActivity(ctx context.Context, req LearnerRequ
 		}
 	}
 
-	prompt := fmt.Sprintf(`You are a code quality analyst. A bead (work item) just completed. Analyze the results and extract reusable lessons.
+	prompt := fmt.Sprintf(`You are a code quality analyst. A morsel (work item) just completed. Analyze the results and extract reusable lessons.
 
-BEAD: %s (project: %s, agent: %s)
+MORSEL: %s (project: %s, agent: %s)
 DOD PASSED: %v
 
 %s
@@ -114,7 +114,7 @@ If there are no meaningful lessons, return an empty array [].`,
 		return nil, nil
 	}
 
-	// Stamp bead/project on each lesson
+	// Stamp morsel/project on each lesson
 	for i := range lessons {
 		lessons[i].TaskID = req.TaskID
 		lessons[i].Project = req.Project
@@ -137,9 +137,9 @@ func (a *Activities) StoreLessonActivity(ctx context.Context, lessons []Lesson) 
 	for i := range lessons {
 		lesson := &lessons[i]
 		// Idempotency: check if this exact lesson already exists
-		existing, existingErr := a.Store.GetLessonsByBead(lesson.TaskID)
+		existing, existingErr := a.Store.GetLessonsByMorsel(lesson.TaskID)
 		if existingErr != nil {
-			logger.Warn(OctopusPrefix+" Failed to check existing lessons", "bead", lesson.TaskID, "error", existingErr)
+			logger.Warn(OctopusPrefix+" Failed to check existing lessons", "morsel", lesson.TaskID, "error", existingErr)
 		}
 		isDuplicate := false
 		for j := range existing {

@@ -9,10 +9,10 @@ import (
 	"github.com/antigravity-dev/chum/internal/graph"
 )
 
-// BacklogBead represents a task in the backlog with metadata for sprint planning.
-type BacklogBead struct {
+// BacklogMorsel represents a task in the backlog with metadata for sprint planning.
+type BacklogMorsel struct {
 	*graph.Task
-	StageInfo       *BeadStage `json:"stage_info,omitempty"`
+	StageInfo       *MorselStage `json:"stage_info,omitempty"`
 	LastDispatchAt  *time.Time `json:"last_dispatch_at,omitempty"`
 	DispatchCount   int        `json:"dispatch_count"`
 	FailureCount    int        `json:"failure_count"`
@@ -22,19 +22,19 @@ type BacklogBead struct {
 
 // SprintContext provides comprehensive context for sprint planning decisions.
 type SprintContext struct {
-	BacklogBeads      []*BacklogBead  `json:"backlog_beads"`
-	InProgressBeads   []*BacklogBead  `json:"in_progress_beads"`
-	RecentCompletions []*BacklogBead  `json:"recent_completions"`
+	BacklogMorsels      []*BacklogMorsel  `json:"backlog_morsels"`
+	InProgressMorsels   []*BacklogMorsel  `json:"in_progress_morsels"`
+	RecentCompletions []*BacklogMorsel  `json:"recent_completions"`
 	DependencyGraph   *graph.DepGraph `json:"dependency_graph"`
 	SprintBoundary    *SprintBoundary `json:"current_sprint,omitempty"`
-	TotalBeadCount    int             `json:"total_bead_count"`
-	ReadyBeadCount    int             `json:"ready_bead_count"`
-	BlockedBeadCount  int             `json:"blocked_bead_count"`
+	TotalMorselCount    int             `json:"total_morsel_count"`
+	ReadyMorselCount    int             `json:"ready_morsel_count"`
+	BlockedMorselCount  int             `json:"blocked_morsel_count"`
 }
 
 // DependencyNode represents a node in the dependency graph with additional metadata.
 type DependencyNode struct {
-	BeadID          string   `json:"bead_id"`
+	MorselID          string   `json:"morsel_id"`
 	Title           string   `json:"title"`
 	Priority        int      `json:"priority"`
 	Stage           string   `json:"stage,omitempty"`
@@ -56,14 +56,14 @@ type SprintPlanningRecord struct {
 	TriggeredAt time.Time `json:"triggered_at"`
 }
 
-// GetBacklogBeads retrieves all tasks that are in the backlog (no stage or stage:backlog).
-func (s *Store) GetBacklogBeads(ctx context.Context, dag *graph.DAG, project string) ([]*BacklogBead, error) {
+// GetBacklogMorsels retrieves all tasks that are in the backlog (no stage or stage:backlog).
+func (s *Store) GetBacklogMorsels(ctx context.Context, dag *graph.DAG, project string) ([]*BacklogMorsel, error) {
 	allTasks, err := dag.ListTasks(ctx, project, "open")
 	if err != nil {
 		return nil, fmt.Errorf("failed to list tasks: %w", err)
 	}
 
-	var backlogBeads []*BacklogBead
+	var backlogMorsels []*BacklogMorsel
 
 	for i := range allTasks {
 		task := &allTasks[i]
@@ -86,32 +86,32 @@ func (s *Store) GetBacklogBeads(ctx context.Context, dag *graph.DAG, project str
 
 		// Include in backlog if: no stage label OR explicitly stage:backlog
 		if !hasStageLabel || isBacklog {
-			backlogBead := &BacklogBead{
+			backlogMorsel := &BacklogMorsel{
 				Task: task,
 			}
 
 			// Enrich with store data - don't skip if enrichment fails
-			s.enrichBacklogBead(project, backlogBead) // ignore errors
+			s.enrichBacklogMorsel(project, backlogMorsel) // ignore errors
 
-			backlogBeads = append(backlogBeads, backlogBead)
+			backlogMorsels = append(backlogMorsels, backlogMorsel)
 		}
 	}
 
-	return backlogBeads, nil
+	return backlogMorsels, nil
 }
 
 // GetSprintContext gathers comprehensive context for sprint planning.
 func (s *Store) GetSprintContext(ctx context.Context, dag *graph.DAG, project string, daysBack int) (*SprintContext, error) {
 	// Get backlog tasks
-	backlogBeads, err := s.GetBacklogBeads(ctx, dag, project)
+	backlogMorsels, err := s.GetBacklogMorsels(ctx, dag, project)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get backlog beads: %w", err)
+		return nil, fmt.Errorf("failed to get backlog morsels: %w", err)
 	}
 
 	// Get in-progress tasks
-	inProgressBeads, err := s.getInProgressBeads(ctx, dag, project)
+	inProgressMorsels, err := s.getInProgressMorsels(ctx, dag, project)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get in-progress beads: %w", err)
+		return nil, fmt.Errorf("failed to get in-progress morsels: %w", err)
 	}
 
 	// Get recent completions
@@ -122,10 +122,10 @@ func (s *Store) GetSprintContext(ctx context.Context, dag *graph.DAG, project st
 
 	// Build dependency graph
 	var allTasks []graph.Task
-	for _, bb := range backlogBeads {
+	for _, bb := range backlogMorsels {
 		allTasks = append(allTasks, *bb.Task)
 	}
-	for _, bb := range inProgressBeads {
+	for _, bb := range inProgressMorsels {
 		allTasks = append(allTasks, *bb.Task)
 	}
 	for _, bb := range recentCompletions {
@@ -138,38 +138,38 @@ func (s *Store) GetSprintContext(ctx context.Context, dag *graph.DAG, project st
 	currentSprint, _ := s.GetCurrentSprintBoundary()
 
 	// Calculate counts
-	readyCount, blockedCount := s.calculateReadinessStats(backlogBeads, depGraph)
+	readyCount, blockedCount := s.calculateReadinessStats(backlogMorsels, depGraph)
 
 	return &SprintContext{
-		BacklogBeads:      backlogBeads,
-		InProgressBeads:   inProgressBeads,
+		BacklogMorsels:      backlogMorsels,
+		InProgressMorsels:   inProgressMorsels,
 		RecentCompletions: recentCompletions,
 		DependencyGraph:   depGraph,
 		SprintBoundary:    currentSprint,
-		TotalBeadCount:    len(backlogBeads),
-		ReadyBeadCount:    readyCount,
-		BlockedBeadCount:  blockedCount,
+		TotalMorselCount:    len(backlogMorsels),
+		ReadyMorselCount:    readyCount,
+		BlockedMorselCount:  blockedCount,
 	}, nil
 }
 
 // Helper functions
 
-func (s *Store) enrichBacklogBead(project string, backlogBead *BacklogBead) {
+func (s *Store) enrichBacklogMorsel(project string, backlogMorsel *BacklogMorsel) {
 	// Get stage info - best effort
-	stageInfo, err := s.GetBeadStage(project, backlogBead.ID)
+	stageInfo, err := s.GetMorselStage(project, backlogMorsel.ID)
 	if err == nil {
-		backlogBead.StageInfo = stageInfo
+		backlogMorsel.StageInfo = stageInfo
 	}
 
 	// Get dispatch statistics - best effort
-	dispatches, err := s.GetDispatchesByBead(backlogBead.ID)
+	dispatches, err := s.GetDispatchesByMorsel(backlogMorsel.ID)
 	if err != nil {
-		backlogBead.DispatchCount = 0
-		backlogBead.FailureCount = 0
+		backlogMorsel.DispatchCount = 0
+		backlogMorsel.FailureCount = 0
 		return
 	}
 
-	backlogBead.DispatchCount = len(dispatches)
+	backlogMorsel.DispatchCount = len(dispatches)
 
 	var lastDispatch *time.Time
 	failureCount := 0
@@ -183,17 +183,17 @@ func (s *Store) enrichBacklogBead(project string, backlogBead *BacklogBead) {
 		}
 	}
 
-	backlogBead.LastDispatchAt = lastDispatch
-	backlogBead.FailureCount = failureCount
+	backlogMorsel.LastDispatchAt = lastDispatch
+	backlogMorsel.FailureCount = failureCount
 }
 
-func (s *Store) getInProgressBeads(ctx context.Context, dag *graph.DAG, project string) ([]*BacklogBead, error) {
+func (s *Store) getInProgressMorsels(ctx context.Context, dag *graph.DAG, project string) ([]*BacklogMorsel, error) {
 	allTasks, err := dag.ListTasks(ctx, project, "open")
 	if err != nil {
 		return nil, fmt.Errorf("failed to list tasks: %w", err)
 	}
 
-	var inProgressBeads []*BacklogBead
+	var inProgressMorsels []*BacklogMorsel
 
 	for i := range allTasks {
 		task := &allTasks[i]
@@ -208,42 +208,42 @@ func (s *Store) getInProgressBeads(ctx context.Context, dag *graph.DAG, project 
 		}
 
 		if isInProgress {
-			backlogBead := &BacklogBead{Task: task}
-			s.enrichBacklogBead(project, backlogBead)
-			inProgressBeads = append(inProgressBeads, backlogBead)
+			backlogMorsel := &BacklogMorsel{Task: task}
+			s.enrichBacklogMorsel(project, backlogMorsel)
+			inProgressMorsels = append(inProgressMorsels, backlogMorsel)
 		}
 	}
 
-	return inProgressBeads, nil
+	return inProgressMorsels, nil
 }
 
-func (s *Store) getRecentCompletions(ctx context.Context, dag *graph.DAG, project string, daysBack int) ([]*BacklogBead, error) {
+func (s *Store) getRecentCompletions(ctx context.Context, dag *graph.DAG, project string, daysBack int) ([]*BacklogMorsel, error) {
 	allTasks, err := dag.ListTasks(ctx, project, "closed")
 	if err != nil {
 		return nil, fmt.Errorf("failed to list tasks: %w", err)
 	}
 
 	cutoff := time.Now().AddDate(0, 0, -daysBack)
-	var recentCompletions []*BacklogBead
+	var recentCompletions []*BacklogMorsel
 
 	for i := range allTasks {
 		task := &allTasks[i]
 		if task.UpdatedAt.After(cutoff) {
-			backlogBead := &BacklogBead{Task: task}
-			s.enrichBacklogBead(project, backlogBead)
-			recentCompletions = append(recentCompletions, backlogBead)
+			backlogMorsel := &BacklogMorsel{Task: task}
+			s.enrichBacklogMorsel(project, backlogMorsel)
+			recentCompletions = append(recentCompletions, backlogMorsel)
 		}
 	}
 
 	return recentCompletions, nil
 }
 
-func (s *Store) calculateReadinessStats(backlogBeads []*BacklogBead, depGraph *graph.DepGraph) (readyCount, blockedCount int) {
-	for _, bead := range backlogBeads {
-		if s.isBeadBlocked(bead, depGraph) {
+func (s *Store) calculateReadinessStats(backlogMorsels []*BacklogMorsel, depGraph *graph.DepGraph) (readyCount, blockedCount int) {
+	for _, morsel := range backlogMorsels {
+		if s.isMorselBlocked(morsel, depGraph) {
 			blockedCount++
-			bead.IsBlocked = true
-			bead.BlockingReasons = s.getBlockingReasons(bead, depGraph)
+			morsel.IsBlocked = true
+			morsel.BlockingReasons = s.getBlockingReasons(morsel, depGraph)
 		} else {
 			readyCount++
 		}
@@ -252,12 +252,12 @@ func (s *Store) calculateReadinessStats(backlogBeads []*BacklogBead, depGraph *g
 	return readyCount, blockedCount
 }
 
-func (s *Store) isBeadBlocked(bead *BacklogBead, depGraph *graph.DepGraph) bool {
+func (s *Store) isMorselBlocked(morsel *BacklogMorsel, depGraph *graph.DepGraph) bool {
 	if depGraph == nil {
-		return len(bead.DependsOn) > 0
+		return len(morsel.DependsOn) > 0
 	}
 
-	for _, depID := range bead.DependsOn {
+	for _, depID := range morsel.DependsOn {
 		if dep, exists := depGraph.Nodes()[depID]; exists {
 			if dep.Status != "closed" {
 				return true
@@ -269,13 +269,13 @@ func (s *Store) isBeadBlocked(bead *BacklogBead, depGraph *graph.DepGraph) bool 
 	return false
 }
 
-func (s *Store) getBlockingReasons(bead *BacklogBead, depGraph *graph.DepGraph) []string {
+func (s *Store) getBlockingReasons(morsel *BacklogMorsel, depGraph *graph.DepGraph) []string {
 	if depGraph == nil {
-		return bead.DependsOn
+		return morsel.DependsOn
 	}
 
 	var blockingReasons []string
-	for _, depID := range bead.DependsOn {
+	for _, depID := range morsel.DependsOn {
 		if dep, exists := depGraph.Nodes()[depID]; exists {
 			if dep.Status != "closed" {
 				blockingReasons = append(blockingReasons, depID)

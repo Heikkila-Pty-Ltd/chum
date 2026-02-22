@@ -560,7 +560,7 @@ func recordEscalation(ctx workflow.Context, logger log.Logger, a *Activities,
 	}
 	actCtx := workflow.WithActivityOptions(ctx, ao)
 	_ = workflow.ExecuteActivity(actCtx, a.RecordEscalationActivity, EscalationEvent{
-		BeadID:         taskID,
+		MorselID:         taskID,
 		Project:        project,
 		FailedProvider: failedProvider,
 		FailedTier:     failedTier,

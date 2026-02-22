@@ -19,7 +19,7 @@ state/
 *.log
 
 # Beads (archived)
-.beads/
+.morsels/
 
 # OpenClaw / agent runtime
 .openclaw/

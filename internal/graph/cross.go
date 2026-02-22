@@ -1,4 +1,4 @@
-// Package graph manages the Beads dependency DAG.
+// Package graph manages the Morsels dependency DAG.
 
 package graph
 

@@ -76,7 +76,7 @@ type Cadence struct {
 // Project configures a single managed project (workspace, branching, DoD).
 type Project struct {
 	Enabled      bool   `toml:"enabled"`
-	BeadsDir     string `toml:"beads_dir"`
+	MorselsDir     string `toml:"morsels_dir"`
 	Workspace    string `toml:"workspace"`
 	Priority     int    `toml:"priority"`
 	MatrixRoom   string `toml:"matrix_room"`   // project-specific Matrix room (optional)
@@ -113,8 +113,8 @@ type RetryPolicy struct {
 type DoDConfig struct {
 	Checks            []string `toml:"checks"`             // commands to run (e.g. "go test ./...", "go vet ./...")
 	CoverageMin       int      `toml:"coverage_min"`       // optional: fail if coverage < N%
-	RequireEstimate   bool     `toml:"require_estimate"`   // bead must have estimate before closing
-	RequireAcceptance bool     `toml:"require_acceptance"` // bead must have acceptance criteria
+	RequireEstimate   bool     `toml:"require_estimate"`   // morsel must have estimate before closing
+	RequireAcceptance bool     `toml:"require_acceptance"` // morsel must have acceptance criteria
 }
 
 // RateLimits configures rolling-window and weekly dispatch caps.
@@ -266,8 +266,8 @@ type DispatchCostControl struct {
 	RiskyReviewLabels           []string `toml:"risky_review_labels"`
 	ForceSparkAtWeeklyUsagePct  float64  `toml:"force_spark_at_weekly_usage_pct"`
 	DailyCostCapUSD             float64  `toml:"daily_cost_cap_usd"`
-	PerBeadCostCapUSD           float64  `toml:"per_bead_cost_cap_usd"`
-	PerBeadStageAttemptLimit    int      `toml:"per_bead_stage_attempt_limit"`
+	PerMorselCostCapUSD           float64  `toml:"per_morsel_cost_cap_usd"`
+	PerMorselStageAttemptLimit    int      `toml:"per_morsel_stage_attempt_limit"`
 	StageAttemptWindow          Duration `toml:"stage_attempt_window"`
 	StageCooldown               Duration `toml:"stage_cooldown"`
 

@@ -16,7 +16,7 @@ type Store struct {
 const schema = `
 CREATE TABLE IF NOT EXISTS dispatches (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	bead_id TEXT NOT NULL,
+	morsel_id TEXT NOT NULL,
 	project TEXT NOT NULL,
 	agent_id TEXT NOT NULL,
 	provider TEXT NOT NULL,
@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS provider_usage (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	provider TEXT NOT NULL,
 	agent_id TEXT NOT NULL,
-	bead_id TEXT NOT NULL,
+	morsel_id TEXT NOT NULL,
 	input_tokens INTEGER NOT NULL DEFAULT 0,
 	output_tokens INTEGER NOT NULL DEFAULT 0,
 	dispatched_at DATETIME NOT NULL DEFAULT (datetime('now'))
@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS provider_usage (
 
 CREATE TABLE IF NOT EXISTS overflow_queue (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	bead_id TEXT NOT NULL,
+	morsel_id TEXT NOT NULL,
 	project TEXT NOT NULL,
 	role TEXT NOT NULL,
 	agent_id TEXT NOT NULL,
@@ -68,7 +68,7 @@ CREATE TABLE IF NOT EXISTS health_events (
 	event_type TEXT NOT NULL,
 	details TEXT NOT NULL DEFAULT '',
 	dispatch_id INTEGER NOT NULL DEFAULT 0,
-	bead_id TEXT NOT NULL DEFAULT '',
+	morsel_id TEXT NOT NULL DEFAULT '',
 	created_at DATETIME NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -76,8 +76,8 @@ CREATE TABLE IF NOT EXISTS tick_metrics (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	tick_at DATETIME NOT NULL DEFAULT (datetime('now')),
 	project TEXT NOT NULL,
-	beads_open INTEGER NOT NULL DEFAULT 0,
-	beads_ready INTEGER NOT NULL DEFAULT 0,
+	morsels_open INTEGER NOT NULL DEFAULT 0,
+	morsels_ready INTEGER NOT NULL DEFAULT 0,
 	dispatched INTEGER NOT NULL DEFAULT 0,
 	completed INTEGER NOT NULL DEFAULT 0,
 	failed INTEGER NOT NULL DEFAULT 0,
@@ -87,7 +87,7 @@ CREATE TABLE IF NOT EXISTS tick_metrics (
 CREATE TABLE IF NOT EXISTS dod_results (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	dispatch_id INTEGER NOT NULL REFERENCES dispatches(id),
-	bead_id TEXT NOT NULL,
+	morsel_id TEXT NOT NULL,
 	project TEXT NOT NULL,
 	checked_at DATETIME NOT NULL DEFAULT (datetime('now')),
 	passed BOOLEAN NOT NULL DEFAULT 0,
@@ -110,7 +110,7 @@ CREATE TABLE IF NOT EXISTS quality_scores (
 	role TEXT NOT NULL DEFAULT '',
 	overall REAL NOT NULL DEFAULT 0,
 	tests_passed INTEGER,
-	bead_closed INTEGER NOT NULL DEFAULT 0,
+	morsel_closed INTEGER NOT NULL DEFAULT 0,
 	commit_made INTEGER NOT NULL DEFAULT 0,
 	files_changed INTEGER NOT NULL DEFAULT 0,
 	lines_changed INTEGER NOT NULL DEFAULT 0,
@@ -118,10 +118,10 @@ CREATE TABLE IF NOT EXISTS quality_scores (
 	recorded_at DATETIME NOT NULL DEFAULT (datetime('now'))
 );
 
-CREATE TABLE IF NOT EXISTS bead_stages (
+CREATE TABLE IF NOT EXISTS morsel_stages (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	project TEXT NOT NULL,
-	bead_id TEXT NOT NULL,
+	morsel_id TEXT NOT NULL,
 	workflow TEXT NOT NULL,
 	current_stage TEXT NOT NULL,
 	stage_index INTEGER NOT NULL DEFAULT 0,
@@ -132,9 +132,9 @@ CREATE TABLE IF NOT EXISTS bead_stages (
 );
 
 CREATE TABLE IF NOT EXISTS claim_leases (
-	bead_id TEXT PRIMARY KEY,
+	morsel_id TEXT PRIMARY KEY,
 	project TEXT NOT NULL,
-	beads_dir TEXT NOT NULL DEFAULT '',
+	morsels_dir TEXT NOT NULL DEFAULT '',
 	agent_id TEXT NOT NULL DEFAULT '',
 	dispatch_id INTEGER NOT NULL DEFAULT 0,
 	claimed_at DATETIME NOT NULL DEFAULT (datetime('now')),
@@ -169,11 +169,11 @@ CREATE TABLE IF NOT EXISTS execution_plan_gate (
 	updated_at DATETIME NOT NULL DEFAULT (datetime('now'))
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_bead_stages_project_bead ON bead_stages(project, bead_id);
-CREATE INDEX IF NOT EXISTS idx_bead_stages_project_stage ON bead_stages(project, current_stage);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_morsel_stages_project_morsel ON morsel_stages(project, morsel_id);
+CREATE INDEX IF NOT EXISTS idx_morsel_stages_project_stage ON morsel_stages(project, current_stage);
 CREATE INDEX IF NOT EXISTS idx_dispatches_status ON dispatches(status);
-CREATE INDEX IF NOT EXISTS idx_dispatches_bead ON dispatches(bead_id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_overflow_queue_bead_role ON overflow_queue(bead_id, role);
+CREATE INDEX IF NOT EXISTS idx_dispatches_morsel ON dispatches(morsel_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_overflow_queue_morsel_role ON overflow_queue(morsel_id, role);
 CREATE INDEX IF NOT EXISTS idx_overflow_queue_priority_enqueued_at ON overflow_queue(priority, enqueued_at);
 CREATE INDEX IF NOT EXISTS idx_claim_leases_project ON claim_leases(project);
 CREATE INDEX IF NOT EXISTS idx_claim_leases_heartbeat ON claim_leases(heartbeat_at);
@@ -191,7 +191,7 @@ CREATE INDEX IF NOT EXISTS idx_quality_scores_provider ON quality_scores(provide
 CREATE TABLE IF NOT EXISTS token_usage (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	dispatch_id INTEGER NOT NULL DEFAULT 0,
-	bead_id TEXT NOT NULL DEFAULT '',
+	morsel_id TEXT NOT NULL DEFAULT '',
 	project TEXT NOT NULL DEFAULT '',
 	activity_name TEXT NOT NULL DEFAULT '',
 	agent TEXT NOT NULL DEFAULT '',
@@ -209,7 +209,7 @@ CREATE INDEX IF NOT EXISTS idx_token_usage_agent ON token_usage(agent, recorded_
 CREATE TABLE IF NOT EXISTS step_metrics (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	dispatch_id INTEGER NOT NULL DEFAULT 0,
-	bead_id TEXT NOT NULL DEFAULT '',
+	morsel_id TEXT NOT NULL DEFAULT '',
 	project TEXT NOT NULL DEFAULT '',
 	step_name TEXT NOT NULL DEFAULT '',
 	duration_s REAL NOT NULL DEFAULT 0,
@@ -307,7 +307,7 @@ func migrate(db *sql.DB) error {
 		ddl    string
 	}{
 		{"dispatch_id", "dispatch_id INTEGER NOT NULL DEFAULT 0"},
-		{"bead_id", "bead_id TEXT NOT NULL DEFAULT ''"},
+		{"morsel_id", "morsel_id TEXT NOT NULL DEFAULT ''"},
 	}
 	for _, col := range healthEventColumns {
 		if err := addColumnIfNotExists(db, "health_events", col.column, col.ddl); err != nil {
@@ -318,8 +318,8 @@ func migrate(db *sql.DB) error {
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_health_events_dispatch ON health_events(dispatch_id)`); err != nil {
 		return fmt.Errorf("create health_events dispatch index: %w", err)
 	}
-	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_health_events_bead ON health_events(bead_id)`); err != nil {
-		return fmt.Errorf("create health_events bead index: %w", err)
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_health_events_morsel ON health_events(morsel_id)`); err != nil {
+		return fmt.Errorf("create health_events morsel index: %w", err)
 	}
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_health_events_created_at ON health_events(created_at)`); err != nil {
 		return fmt.Errorf("create health_events created_at index: %w", err)
@@ -327,9 +327,9 @@ func migrate(db *sql.DB) error {
 
 	if _, err := db.Exec(`
 		CREATE TABLE IF NOT EXISTS claim_leases (
-			bead_id TEXT PRIMARY KEY,
+			morsel_id TEXT PRIMARY KEY,
 			project TEXT NOT NULL,
-			beads_dir TEXT NOT NULL DEFAULT '',
+			morsels_dir TEXT NOT NULL DEFAULT '',
 			agent_id TEXT NOT NULL DEFAULT '',
 			dispatch_id INTEGER NOT NULL DEFAULT 0,
 			claimed_at DATETIME NOT NULL DEFAULT (datetime('now')),
@@ -377,7 +377,7 @@ func migrate(db *sql.DB) error {
 	if _, err := db.Exec(`
 		CREATE TABLE IF NOT EXISTS overflow_queue (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			bead_id TEXT NOT NULL,
+			morsel_id TEXT NOT NULL,
 			project TEXT NOT NULL,
 			role TEXT NOT NULL,
 			agent_id TEXT NOT NULL,
@@ -388,8 +388,8 @@ func migrate(db *sql.DB) error {
 		)`); err != nil {
 		return fmt.Errorf("create overflow_queue table: %w", err)
 	}
-	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_overflow_queue_bead_role ON overflow_queue(bead_id, role)`); err != nil {
-		return fmt.Errorf("create overflow_queue bead+role index: %w", err)
+	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_overflow_queue_morsel_role ON overflow_queue(morsel_id, role)`); err != nil {
+		return fmt.Errorf("create overflow_queue morsel+role index: %w", err)
 	}
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_overflow_queue_priority_enqueued_at ON overflow_queue(priority, enqueued_at)`); err != nil {
 		return fmt.Errorf("create overflow_queue priority index: %w", err)
@@ -420,7 +420,7 @@ func migrate(db *sql.DB) error {
 			role TEXT NOT NULL DEFAULT '',
 			overall REAL NOT NULL DEFAULT 0,
 			tests_passed INTEGER,
-			bead_closed INTEGER NOT NULL DEFAULT 0,
+			morsel_closed INTEGER NOT NULL DEFAULT 0,
 			commit_made INTEGER NOT NULL DEFAULT 0,
 			files_changed INTEGER NOT NULL DEFAULT 0,
 			lines_changed INTEGER NOT NULL DEFAULT 0,
@@ -439,7 +439,7 @@ func migrate(db *sql.DB) error {
 		return fmt.Errorf("create quality_scores provider index: %w", err)
 	}
 
-	if err := migrateBeadStagesTable(db); err != nil {
+	if err := migrateMorselStagesTable(db); err != nil {
 		return err
 	}
 
@@ -463,12 +463,12 @@ func migrate(db *sql.DB) error {
 	return nil
 }
 
-// migrateBeadStagesTable ensures bead_stages uses project+bead keying and indexes.
-func migrateBeadStagesTable(db *sql.DB) error {
+// migrateMorselStagesTable ensures morsel_stages uses project+morsel keying and indexes.
+func migrateMorselStagesTable(db *sql.DB) error {
 	if _, err := db.Exec(`
-		CREATE TABLE IF NOT EXISTS bead_stages (
+		CREATE TABLE IF NOT EXISTS morsel_stages (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			bead_id TEXT NOT NULL,
+			morsel_id TEXT NOT NULL,
 			project TEXT NOT NULL,
 			workflow TEXT NOT NULL,
 			current_stage TEXT NOT NULL,
@@ -479,19 +479,19 @@ func migrateBeadStagesTable(db *sql.DB) error {
 			updated_at DATETIME NOT NULL DEFAULT (datetime('now'))
 		)
 	`); err != nil {
-		return fmt.Errorf("create bead_stages table: %w", err)
+		return fmt.Errorf("create morsel_stages table: %w", err)
 	}
 
-	// Remove legacy bead-only uniqueness to avoid cross-project collisions.
-	if _, err := db.Exec(`DROP INDEX IF EXISTS idx_bead_stages_bead`); err != nil {
-		return fmt.Errorf("drop legacy bead_stages bead-only index: %w", err)
+	// Remove legacy morsel-only uniqueness to avoid cross-project collisions.
+	if _, err := db.Exec(`DROP INDEX IF EXISTS idx_morsel_stages_morsel`); err != nil {
+		return fmt.Errorf("drop legacy morsel_stages morsel-only index: %w", err)
 	}
 
-	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_bead_stages_project_bead ON bead_stages(project, bead_id)`); err != nil {
-		return fmt.Errorf("create bead_stages project_bead index: %w", err)
+	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_morsel_stages_project_morsel ON morsel_stages(project, morsel_id)`); err != nil {
+		return fmt.Errorf("create morsel_stages project_morsel index: %w", err)
 	}
-	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_bead_stages_project_stage ON bead_stages(project, current_stage)`); err != nil {
-		return fmt.Errorf("create bead_stages project_stage index: %w", err)
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_morsel_stages_project_stage ON morsel_stages(project, current_stage)`); err != nil {
+		return fmt.Errorf("create morsel_stages project_stage index: %w", err)
 	}
 	return nil
 }

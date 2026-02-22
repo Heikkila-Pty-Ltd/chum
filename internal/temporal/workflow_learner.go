@@ -8,7 +8,7 @@ import (
 	"go.temporal.io/sdk/workflow"
 )
 
-// ContinuousLearnerWorkflow runs after every bead completion to extract and store lessons.
+// ContinuousLearnerWorkflow runs after every morsel completion to extract and store lessons.
 // Spawned as a fire-and-forget child workflow (ParentClosePolicy: ABANDON).
 //
 // Pipeline: ExtractLessons -> StoreLessons -> GenerateSemgrepRules
@@ -24,7 +24,7 @@ func ContinuousLearnerWorkflow(ctx workflow.Context, req LearnerRequest) error {
 
 	var a *Activities
 
-	// Step 1: Extract lessons from the completed bead
+	// Step 1: Extract lessons from the completed morsel
 	extractOpts := workflow.ActivityOptions{
 		StartToCloseTimeout: 3 * time.Minute,
 		RetryPolicy: &temporal.RetryPolicy{

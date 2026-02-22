@@ -22,7 +22,7 @@ func TestGetSprintReviewData(t *testing.T) {
 	endDate := time.Date(2024, 1, 7, 23, 59, 59, 0, time.UTC)
 	
 	// Insert test dispatches
-	id1, err := store.RecordDispatch("bead-1", "test-project", "agent-1", "openai", "fast", 0, "session1", "Test prompt 1", "/logs/bead1.log", "main", "openclaw")
+	id1, err := store.RecordDispatch("morsel-1", "test-project", "agent-1", "openai", "fast", 0, "session1", "Test prompt 1", "/logs/morsel1.log", "main", "openclaw")
 	if err != nil {
 		t.Fatalf("Failed to record dispatch1: %v", err)
 	}
@@ -37,7 +37,7 @@ func TestGetSprintReviewData(t *testing.T) {
 		t.Fatalf("Failed to update dispatch1 status: %v", err)
 	}
 	
-	id2, err := store.RecordDispatch("bead-2", "test-project", "agent-1", "anthropic", "premium", 0, "session2", "Test prompt 2", "/logs/bead2.log", "main", "openclaw")
+	id2, err := store.RecordDispatch("morsel-2", "test-project", "agent-1", "anthropic", "premium", 0, "session2", "Test prompt 2", "/logs/morsel2.log", "main", "openclaw")
 	if err != nil {
 		t.Fatalf("Failed to record dispatch2: %v", err)
 	}
@@ -52,7 +52,7 @@ func TestGetSprintReviewData(t *testing.T) {
 		t.Fatalf("Failed to update dispatch2 status: %v", err)
 	}
 	
-	id3, err := store.RecordDispatch("bead-3", "another-project", "agent-2", "openai", "fast", 0, "session3", "Test prompt 3", "/logs/bead3.log", "main", "openclaw")
+	id3, err := store.RecordDispatch("morsel-3", "another-project", "agent-2", "openai", "fast", 0, "session3", "Test prompt 3", "/logs/morsel3.log", "main", "openclaw")
 	if err != nil {
 		t.Fatalf("Failed to record dispatch3: %v", err)
 	}
@@ -67,30 +67,30 @@ func TestGetSprintReviewData(t *testing.T) {
 		t.Fatalf("Failed to update dispatch3 status: %v", err)
 	}
 
-	// Insert some bead stages for planned beads
-	stage1 := &BeadStage{
+	// Insert some morsel stages for planned morsels
+	stage1 := &MorselStage{
 		Project:      "test-project",
-		BeadID:       "bead-1",
+		MorselID:       "morsel-1",
 		Workflow:     "standard",
 		CurrentStage: "completed",
 		StageIndex:   2,
 		TotalStages:  3,
 	}
 	
-	stage2 := &BeadStage{
+	stage2 := &MorselStage{
 		Project:      "test-project",
-		BeadID:       "bead-2",
+		MorselID:       "morsel-2",
 		Workflow:     "standard",
 		CurrentStage: "completed",
 		StageIndex:   2,
 		TotalStages:  3,
 	}
 	
-	if err := store.UpsertBeadStage(stage1); err != nil {
-		t.Fatalf("Failed to upsert bead stage 1: %v", err)
+	if err := store.UpsertMorselStage(stage1); err != nil {
+		t.Fatalf("Failed to upsert morsel stage 1: %v", err)
 	}
-	if err := store.UpsertBeadStage(stage2); err != nil {
-		t.Fatalf("Failed to upsert bead stage 2: %v", err)
+	if err := store.UpsertMorselStage(stage2); err != nil {
+		t.Fatalf("Failed to upsert morsel stage 2: %v", err)
 	}
 
 	// Get sprint review data
@@ -100,11 +100,11 @@ func TestGetSprintReviewData(t *testing.T) {
 	}
 
 	// Verify results
-	if data.TotalBeads != 3 {
-		t.Errorf("Expected TotalBeads = 3, got %d", data.TotalBeads)
+	if data.TotalMorsels != 3 {
+		t.Errorf("Expected TotalMorsels = 3, got %d", data.TotalMorsels)
 	}
-	if data.CompletedBeads != 2 {
-		t.Errorf("Expected CompletedBeads = 2, got %d", data.CompletedBeads)
+	if data.CompletedMorsels != 2 {
+		t.Errorf("Expected CompletedMorsels = 2, got %d", data.CompletedMorsels)
 	}
 	if data.CompletionRate != 66.66666666666666 {
 		t.Errorf("Expected CompletionRate = 66.67, got %f", data.CompletionRate)
@@ -119,8 +119,8 @@ func TestGetSprintReviewData(t *testing.T) {
 	if !exists {
 		t.Error("Expected test-project in project stats")
 	} else {
-		if testProjectStat.CompletedBeads != 2 {
-			t.Errorf("Expected test-project CompletedBeads = 2, got %d", testProjectStat.CompletedBeads)
+		if testProjectStat.CompletedMorsels != 2 {
+			t.Errorf("Expected test-project CompletedMorsels = 2, got %d", testProjectStat.CompletedMorsels)
 		}
 		if testProjectStat.CompletionRate != 100.0 {
 			t.Errorf("Expected test-project CompletionRate = 100.0, got %f", testProjectStat.CompletionRate)
@@ -144,7 +144,7 @@ func TestGetFailedDispatchDetails(t *testing.T) {
 	endDate := time.Date(2024, 1, 7, 23, 59, 59, 0, time.UTC)
 
 	// Insert failed dispatch
-	failedID, err := store.RecordDispatch("failed-bead", "test-project", "agent-1", "openai", "fast", 0, "failed-session", "Test failed prompt", "/logs/failed-bead.log", "main", "openclaw")
+	failedID, err := store.RecordDispatch("failed-morsel", "test-project", "agent-1", "openai", "fast", 0, "failed-session", "Test failed prompt", "/logs/failed-morsel.log", "main", "openclaw")
 	if err != nil {
 		t.Fatalf("Failed to record failed dispatch: %v", err)
 	}
@@ -163,18 +163,18 @@ func TestGetFailedDispatchDetails(t *testing.T) {
 		t.Fatalf("Failed to update failure diagnosis: %v", err)
 	}
 
-	// Insert bead stage for context
-	stage := &BeadStage{
+	// Insert morsel stage for context
+	stage := &MorselStage{
 		Project:      "test-project",
-		BeadID:       "failed-bead",
+		MorselID:       "failed-morsel",
 		Workflow:     "standard",
 		CurrentStage: "failed",
 		StageIndex:   1,
 		TotalStages:  3,
 	}
 	
-	if err := store.UpsertBeadStage(stage); err != nil {
-		t.Fatalf("Failed to upsert bead stage: %v", err)
+	if err := store.UpsertMorselStage(stage); err != nil {
+		t.Fatalf("Failed to upsert morsel stage: %v", err)
 	}
 
 	// Get failed dispatch details
@@ -189,8 +189,8 @@ func TestGetFailedDispatchDetails(t *testing.T) {
 	}
 
 	detail := details[0]
-	if detail.BeadID != "failed-bead" {
-		t.Errorf("Expected BeadID = failed-bead, got %s", detail.BeadID)
+	if detail.MorselID != "failed-morsel" {
+		t.Errorf("Expected MorselID = failed-morsel, got %s", detail.MorselID)
 	}
 	if detail.FailureCategory != "timeout" {
 		t.Errorf("Expected FailureCategory = timeout, got %s", detail.FailureCategory)
@@ -198,11 +198,11 @@ func TestGetFailedDispatchDetails(t *testing.T) {
 	if detail.FailureSummary != "Task timed out after 5 minutes" {
 		t.Errorf("Expected FailureSummary = 'Task timed out after 5 minutes', got %s", detail.FailureSummary)
 	}
-	if detail.BeadContext == nil {
-		t.Error("Expected bead context to be present")
+	if detail.MorselContext == nil {
+		t.Error("Expected morsel context to be present")
 	} else {
-		if detail.BeadContext.CurrentStage != "failed" {
-			t.Errorf("Expected bead context CurrentStage = failed, got %s", detail.BeadContext.CurrentStage)
+		if detail.MorselContext.CurrentStage != "failed" {
+			t.Errorf("Expected morsel context CurrentStage = failed, got %s", detail.MorselContext.CurrentStage)
 		}
 	}
 }
@@ -222,7 +222,7 @@ func TestGetStuckDispatchDetails(t *testing.T) {
 	stuckDispatchTime := time.Now().Add(-3 * time.Hour)
 	
 	// Insert stuck dispatch (still running)
-	stuckID, err := store.RecordDispatch("stuck-bead", "test-project", "agent-1", "openai", "premium", 12345, "test-session", "Test stuck prompt", "/logs/stuck-bead.log", "main", "openclaw")
+	stuckID, err := store.RecordDispatch("stuck-morsel", "test-project", "agent-1", "openai", "premium", 12345, "test-session", "Test stuck prompt", "/logs/stuck-morsel.log", "main", "openclaw")
 	if err != nil {
 		t.Fatalf("Failed to record stuck dispatch: %v", err)
 	}
@@ -235,18 +235,18 @@ func TestGetStuckDispatchDetails(t *testing.T) {
 		t.Fatalf("Failed to update stuck dispatch time: %v", err)
 	}
 
-	// Insert bead stage for context
-	stage := &BeadStage{
+	// Insert morsel stage for context
+	stage := &MorselStage{
 		Project:      "test-project",
-		BeadID:       "stuck-bead",
+		MorselID:       "stuck-morsel",
 		Workflow:     "standard",
 		CurrentStage: "running",
 		StageIndex:   1,
 		TotalStages:  3,
 	}
 	
-	if err := store.UpsertBeadStage(stage); err != nil {
-		t.Fatalf("Failed to upsert bead stage: %v", err)
+	if err := store.UpsertMorselStage(stage); err != nil {
+		t.Fatalf("Failed to upsert morsel stage: %v", err)
 	}
 
 	// Get stuck dispatch details with 2-hour timeout (should catch our 3-hour old dispatch)
@@ -262,8 +262,8 @@ func TestGetStuckDispatchDetails(t *testing.T) {
 	}
 
 	detail := details[0]
-	if detail.BeadID != "stuck-bead" {
-		t.Errorf("Expected BeadID = stuck-bead, got %s", detail.BeadID)
+	if detail.MorselID != "stuck-morsel" {
+		t.Errorf("Expected MorselID = stuck-morsel, got %s", detail.MorselID)
 	}
 	if detail.PID != 12345 {
 		t.Errorf("Expected PID = 12345, got %d", detail.PID)
@@ -271,11 +271,11 @@ func TestGetStuckDispatchDetails(t *testing.T) {
 	if detail.StuckDuration < 2.9 || detail.StuckDuration > 3.1 {
 		t.Errorf("Expected StuckDuration around 3 hours, got %f", detail.StuckDuration)
 	}
-	if detail.BeadContext == nil {
-		t.Error("Expected bead context to be present")
+	if detail.MorselContext == nil {
+		t.Error("Expected morsel context to be present")
 	} else {
-		if detail.BeadContext.CurrentStage != "running" {
-			t.Errorf("Expected bead context CurrentStage = running, got %s", detail.BeadContext.CurrentStage)
+		if detail.MorselContext.CurrentStage != "running" {
+			t.Errorf("Expected morsel context CurrentStage = running, got %s", detail.MorselContext.CurrentStage)
 		}
 	}
 }
@@ -297,7 +297,7 @@ func TestGetAgentPerformanceStats(t *testing.T) {
 	
 	// Insert multiple dispatches for agent performance testing
 	// Dispatch 1 - completed
-	id1, err := store.RecordDispatch("bead-1", "test-project", "agent-1", "openai", "fast", 0, "session1", "Test prompt 1", "/logs/bead1.log", "main", "openclaw")
+	id1, err := store.RecordDispatch("morsel-1", "test-project", "agent-1", "openai", "fast", 0, "session1", "Test prompt 1", "/logs/morsel1.log", "main", "openclaw")
 	if err != nil {
 		t.Fatalf("Failed to record dispatch 1: %v", err)
 	}
@@ -315,7 +315,7 @@ func TestGetAgentPerformanceStats(t *testing.T) {
 	}
 	
 	// Dispatch 2 - completed
-	id2, err := store.RecordDispatch("bead-2", "test-project", "agent-1", "anthropic", "premium", 0, "session2", "Test prompt 2", "/logs/bead2.log", "main", "openclaw")
+	id2, err := store.RecordDispatch("morsel-2", "test-project", "agent-1", "anthropic", "premium", 0, "session2", "Test prompt 2", "/logs/morsel2.log", "main", "openclaw")
 	if err != nil {
 		t.Fatalf("Failed to record dispatch 2: %v", err)
 	}
@@ -333,7 +333,7 @@ func TestGetAgentPerformanceStats(t *testing.T) {
 	}
 	
 	// Dispatch 3 - failed
-	id3, err := store.RecordDispatch("bead-3", "test-project", "agent-1", "openai", "fast", 0, "session3", "Test prompt 3", "/logs/bead3.log", "main", "openclaw")
+	id3, err := store.RecordDispatch("morsel-3", "test-project", "agent-1", "openai", "fast", 0, "session3", "Test prompt 3", "/logs/morsel3.log", "main", "openclaw")
 	if err != nil {
 		t.Fatalf("Failed to record dispatch 3: %v", err)
 	}

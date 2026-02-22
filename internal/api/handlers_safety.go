@@ -52,17 +52,17 @@ func (s *Server) handleSafetyBlocks(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, resp)
 }
 
-// GET /dispatches/{bead_id} — dispatch history for a bead
+// GET /dispatches/{morsel_id} — dispatch history for a morsel
 func (s *Server) handleDispatchDetail(w http.ResponseWriter, r *http.Request) {
-	beadID := strings.TrimPrefix(r.URL.Path, "/dispatches/")
-	if beadID == "" {
-		writeError(w, http.StatusBadRequest, "bead_id required")
+	morselID := strings.TrimPrefix(r.URL.Path, "/dispatches/")
+	if morselID == "" {
+		writeError(w, http.StatusBadRequest, "morsel_id required")
 		return
 	}
 
-	dispatches, err := s.store.GetDispatchesByBead(beadID)
+	dispatches, err := s.store.GetDispatchesByMorsel(morselID)
 	if err != nil {
-		s.logger.Error("failed to query dispatches", "bead_id", beadID, "error", err)
+		s.logger.Error("failed to query dispatches", "morsel_id", morselID, "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to query dispatches")
 		return
 	}
@@ -108,7 +108,7 @@ func (s *Server) handleDispatchDetail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := map[string]any{
-		"bead_id":    beadID,
+		"morsel_id":    morselID,
 		"dispatches": dispatchList,
 	}
 

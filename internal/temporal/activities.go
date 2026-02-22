@@ -535,7 +535,7 @@ func formatCriteria(criteria []string) string {
 
 // EscalationEvent is the payload for recording a tier escalation.
 type EscalationEvent struct {
-	BeadID         string
+	MorselID         string
 	Project        string
 	FailedProvider string
 	FailedTier     string
@@ -549,7 +549,7 @@ func (a *Activities) RecordEscalationActivity(ctx context.Context, evt Escalatio
 		return nil
 	}
 	return a.Store.RecordEscalation(store.ProviderEscalation{
-		BeadID:          evt.BeadID,
+		MorselID:          evt.MorselID,
 		Project:         evt.Project,
 		FailedProvider:  evt.FailedProvider,
 		FailedTier:      evt.FailedTier,

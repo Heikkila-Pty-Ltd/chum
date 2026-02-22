@@ -10,7 +10,7 @@ import (
 // Dispatch represents a dispatched agent task.
 type Dispatch struct {
 	ID                int64
-	BeadID            string
+	MorselID            string
 	Project           string
 	AgentID           string
 	Provider          string
@@ -43,7 +43,7 @@ type Dispatch struct {
 // OverflowQueueItem represents a persisted concurrency overflow queue item.
 type OverflowQueueItem struct {
 	ID         int64
-	BeadID     string
+	MorselID     string
 	Project    string
 	Role       string
 	AgentID    string
@@ -53,10 +53,10 @@ type OverflowQueueItem struct {
 	Reason     string
 }
 // RecordDispatch inserts a new dispatch record and returns its ID.
-func (s *Store) RecordDispatch(beadID, project, agent, provider, tier string, handle int, sessionName, prompt, logPath, branch, backend string) (int64, error) {
+func (s *Store) RecordDispatch(morselID, project, agent, provider, tier string, handle int, sessionName, prompt, logPath, branch, backend string) (int64, error) {
 	res, err := s.db.Exec(
-		`INSERT INTO dispatches (bead_id, project, agent_id, provider, tier, pid, session_name, stage, prompt, log_path, branch, backend) VALUES (?, ?, ?, ?, ?, ?, ?, 'dispatched', ?, ?, ?, ?)`,
-		beadID, project, agent, provider, tier, handle, sessionName, prompt, logPath, branch, backend,
+		`INSERT INTO dispatches (morsel_id, project, agent_id, provider, tier, pid, session_name, stage, prompt, log_path, branch, backend) VALUES (?, ?, ?, ?, ?, ?, ?, 'dispatched', ?, ?, ?, ?)`,
+		morselID, project, agent, provider, tier, handle, sessionName, prompt, logPath, branch, backend,
 	)
 	if err != nil {
 		return 0, fmt.Errorf("store: record dispatch: %w", err)
@@ -86,7 +86,7 @@ func (s *Store) maybeFailDispatchPersist(point string) error {
 }
 
 // RecordSchedulerDispatch atomically persists the scheduler's dispatch row plus labels/stage updates.
-func (s *Store) RecordSchedulerDispatch(beadID, project, agent, provider, tier string, handle int, sessionName, prompt, logPath, branch, backend string, labels []string) (int64, error) {
+func (s *Store) RecordSchedulerDispatch(morselID, project, agent, provider, tier string, handle int, sessionName, prompt, logPath, branch, backend string, labels []string) (int64, error) {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return 0, fmt.Errorf("store: begin scheduler dispatch transaction: %w", err)
@@ -98,8 +98,8 @@ func (s *Store) RecordSchedulerDispatch(beadID, project, agent, provider, tier s
 	}
 
 	res, err := tx.Exec(
-		`INSERT INTO dispatches (bead_id, project, agent_id, provider, tier, pid, session_name, stage, prompt, log_path, branch, backend) VALUES (?, ?, ?, ?, ?, ?, ?, 'dispatched', ?, ?, ?, ?)`,
-		beadID, project, agent, provider, tier, handle, sessionName, prompt, logPath, branch, backend,
+		`INSERT INTO dispatches (morsel_id, project, agent_id, provider, tier, pid, session_name, stage, prompt, log_path, branch, backend) VALUES (?, ?, ?, ?, ?, ?, ?, 'dispatched', ?, ?, ?, ?)`,
+		morselID, project, agent, provider, tier, handle, sessionName, prompt, logPath, branch, backend,
 	)
 	if err != nil {
 		return 0, fmt.Errorf("store: record scheduler dispatch: %w", err)
@@ -205,10 +205,10 @@ func (s *Store) UpdateDispatchPR(id int64, prURL string, prNumber int) error {
 	return nil
 }
 
-// GetLastDispatchIDForBead returns the ID of the most recent dispatch for a bead.
-func (s *Store) GetLastDispatchIDForBead(beadID string) (int64, error) {
+// GetLastDispatchIDForMorsel returns the ID of the most recent dispatch for a morsel.
+func (s *Store) GetLastDispatchIDForMorsel(morselID string) (int64, error) {
 	var id int64
-	err := s.db.QueryRow(`SELECT id FROM dispatches WHERE bead_id = ? ORDER BY dispatched_at DESC LIMIT 1`, beadID).Scan(&id)
+	err := s.db.QueryRow(`SELECT id FROM dispatches WHERE morsel_id = ? ORDER BY dispatched_at DESC LIMIT 1`, morselID).Scan(&id)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return 0, nil
@@ -218,9 +218,9 @@ func (s *Store) GetLastDispatchIDForBead(beadID string) (int64, error) {
 	return id, nil
 }
 
-// GetLatestDispatchForBead returns the most recent dispatch row for a bead.
-func (s *Store) GetLatestDispatchForBead(beadID string) (*Dispatch, error) {
-	dispatches, err := s.queryDispatches(`SELECT `+dispatchCols+` FROM dispatches WHERE bead_id = ? ORDER BY id DESC LIMIT 1`, beadID)
+// GetLatestDispatchForMorsel returns the most recent dispatch row for a morsel.
+func (s *Store) GetLatestDispatchForMorsel(morselID string) (*Dispatch, error) {
+	dispatches, err := s.queryDispatches(`SELECT `+dispatchCols+` FROM dispatches WHERE morsel_id = ? ORDER BY id DESC LIMIT 1`, morselID)
 	if err != nil {
 		return nil, err
 	}
@@ -251,7 +251,7 @@ func (s *Store) CountRecentDispatchesByFailureCategory(category string, window t
 	return count, nil
 }
 
-const dispatchCols = `id, bead_id, project, agent_id, provider, tier, pid, session_name, prompt, dispatched_at, completed_at, next_retry_at, status, stage, labels, pr_url, pr_number, exit_code, duration_s, retries, escalated_from_tier, failure_category, failure_summary, log_path, branch, backend, input_tokens, output_tokens, cost_usd`
+const dispatchCols = `id, morsel_id, project, agent_id, provider, tier, pid, session_name, prompt, dispatched_at, completed_at, next_retry_at, status, stage, labels, pr_url, pr_number, exit_code, duration_s, retries, escalated_from_tier, failure_category, failure_summary, log_path, branch, backend, input_tokens, output_tokens, cost_usd`
 
 // GetRunningDispatches returns all dispatches with status 'running'.
 func (s *Store) GetRunningDispatches() ([]Dispatch, error) {
@@ -315,9 +315,9 @@ func (s *Store) GetStuckDispatches(timeout time.Duration) ([]Dispatch, error) {
 	return s.queryDispatches(`SELECT `+dispatchCols+` FROM dispatches WHERE status = 'running' AND dispatched_at < ?`, cutoff)
 }
 
-// GetDispatchesByBead returns all dispatches for a given bead ID, ordered by dispatched_at DESC.
-func (s *Store) GetDispatchesByBead(beadID string) ([]Dispatch, error) {
-	return s.queryDispatches(`SELECT `+dispatchCols+` FROM dispatches WHERE bead_id = ? ORDER BY dispatched_at DESC`, beadID)
+// GetDispatchesByMorsel returns all dispatches for a given morsel ID, ordered by dispatched_at DESC.
+func (s *Store) GetDispatchesByMorsel(morselID string) ([]Dispatch, error) {
+	return s.queryDispatches(`SELECT `+dispatchCols+` FROM dispatches WHERE morsel_id = ? ORDER BY dispatched_at DESC`, morselID)
 }
 
 // GetCompletedDispatchesSince returns all completed dispatches for a project since the given time
@@ -325,15 +325,15 @@ func (s *Store) GetCompletedDispatchesSince(projectName, since string) ([]Dispat
 	return s.queryDispatches(`SELECT `+dispatchCols+` FROM dispatches WHERE project = ? AND status = 'completed' AND dispatched_at >= ? ORDER BY dispatched_at DESC`, projectName, since)
 }
 
-// WasBeadDispatchedRecently checks if a bead has been dispatched within the cooldown period.
-// Returns true if the bead should be skipped due to recent dispatch activity.
-func (s *Store) WasBeadDispatchedRecently(beadID string, cooldownPeriod time.Duration) (bool, error) {
-	return s.WasBeadAgentDispatchedRecently(beadID, "", cooldownPeriod)
+// WasMorselDispatchedRecently checks if a morsel has been dispatched within the cooldown period.
+// Returns true if the morsel should be skipped due to recent dispatch activity.
+func (s *Store) WasMorselDispatchedRecently(morselID string, cooldownPeriod time.Duration) (bool, error) {
+	return s.WasMorselAgentDispatchedRecently(morselID, "", cooldownPeriod)
 }
 
-// WasBeadAgentDispatchedRecently checks if a bead has been dispatched within the cooldown period.
+// WasMorselAgentDispatchedRecently checks if a morsel has been dispatched within the cooldown period.
 // If agentID is empty, checks across all agents.
-func (s *Store) WasBeadAgentDispatchedRecently(beadID, agentID string, cooldownPeriod time.Duration) (bool, error) {
+func (s *Store) WasMorselAgentDispatchedRecently(morselID, agentID string, cooldownPeriod time.Duration) (bool, error) {
 	if cooldownPeriod <= 0 {
 		return false, nil
 	}
@@ -346,20 +346,20 @@ func (s *Store) WasBeadAgentDispatchedRecently(beadID, agentID string, cooldownP
 		err = s.db.QueryRow(`
 		SELECT COUNT(*) 
 		FROM dispatches 
-		WHERE bead_id = ?
+		WHERE morsel_id = ?
 		  AND dispatched_at > ?
 		  AND status IN ('running', 'completed', 'failed', 'cancelled', 'interrupted', 'pending_retry', 'retried')`,
-			beadID, cutoff.Format(time.DateTime),
+			morselID, cutoff.Format(time.DateTime),
 		).Scan(&count)
 	} else {
 		err = s.db.QueryRow(`
 		SELECT COUNT(*)
 		FROM dispatches
-		WHERE bead_id = ?
+		WHERE morsel_id = ?
 		  AND agent_id = ?
 		  AND dispatched_at > ?
 		  AND status IN ('running', 'completed', 'failed', 'cancelled', 'interrupted', 'pending_retry', 'retried')`,
-			beadID, agentID, cutoff.Format(time.DateTime),
+			morselID, agentID, cutoff.Format(time.DateTime),
 		).Scan(&count)
 	}
 
@@ -370,9 +370,9 @@ func (s *Store) WasBeadAgentDispatchedRecently(beadID, agentID string, cooldownP
 	return count > 0, nil
 }
 
-// HasRecentConsecutiveFailures reports whether the most recent dispatches for a bead
+// HasRecentConsecutiveFailures reports whether the most recent dispatches for a morsel
 // are all failed, up to threshold, within the given window.
-func (s *Store) HasRecentConsecutiveFailures(beadID string, threshold int, window time.Duration) (bool, error) {
+func (s *Store) HasRecentConsecutiveFailures(morselID string, threshold int, window time.Duration) (bool, error) {
 	if threshold <= 0 {
 		return false, nil
 	}
@@ -381,12 +381,12 @@ func (s *Store) HasRecentConsecutiveFailures(beadID string, threshold int, windo
 	rows, err := s.db.Query(`
 		SELECT status
 		FROM dispatches
-		WHERE bead_id = ?
+		WHERE morsel_id = ?
 		  AND dispatched_at > ?
 		  AND status IN ('failed', 'completed', 'cancelled', 'interrupted', 'retried', 'pending_retry', 'running')
 		ORDER BY dispatched_at DESC
 		LIMIT ?`,
-		beadID, cutoff, threshold,
+		morselID, cutoff, threshold,
 	)
 	if err != nil {
 		return false, fmt.Errorf("check recent consecutive failures: %w", err)
@@ -470,18 +470,18 @@ func (s *Store) GetPendingRetryDispatches() ([]Dispatch, error) {
 }
 
 // EnqueueOverflowItem stores a workload in the overflow queue for concurrency throttling.
-// Returns the row id, deduplicating bead/role combinations so each pair is tracked once.
-func (s *Store) EnqueueOverflowItem(beadID, project, role, agentID string, priority int, reason string) (int64, error) {
-	beadID = strings.TrimSpace(beadID)
+// Returns the row id, deduplicating morsel/role combinations so each pair is tracked once.
+func (s *Store) EnqueueOverflowItem(morselID, project, role, agentID string, priority int, reason string) (int64, error) {
+	morselID = strings.TrimSpace(morselID)
 	project = strings.TrimSpace(project)
 	role = strings.TrimSpace(role)
 	agentID = strings.TrimSpace(agentID)
 	reason = strings.TrimSpace(reason)
 
 	_, err := s.db.Exec(
-		`INSERT OR IGNORE INTO overflow_queue (bead_id, project, role, agent_id, priority, reason, enqueued_at, attempts)
+		`INSERT OR IGNORE INTO overflow_queue (morsel_id, project, role, agent_id, priority, reason, enqueued_at, attempts)
 		 VALUES (?, ?, ?, ?, ?, ?, datetime('now'), 0)`,
-		beadID, project, role, agentID, priority, reason,
+		morselID, project, role, agentID, priority, reason,
 	)
 	if err != nil {
 		return 0, fmt.Errorf("store: enqueue overflow item: %w", err)
@@ -489,8 +489,8 @@ func (s *Store) EnqueueOverflowItem(beadID, project, role, agentID string, prior
 
 	var id int64
 	err = s.db.QueryRow(
-		`SELECT id FROM overflow_queue WHERE bead_id = ? AND role = ?`,
-		beadID, role,
+		`SELECT id FROM overflow_queue WHERE morsel_id = ? AND role = ?`,
+		morselID, role,
 	).Scan(&id)
 	if err != nil {
 		return 0, fmt.Errorf("store: get overflow queue id: %w", err)
@@ -498,10 +498,10 @@ func (s *Store) EnqueueOverflowItem(beadID, project, role, agentID string, prior
 	return id, nil
 }
 
-// RemoveOverflowItem deletes all persisted queue items for a bead.
-func (s *Store) RemoveOverflowItem(beadID string) (int64, error) {
-	beadID = strings.TrimSpace(beadID)
-	result, err := s.db.Exec(`DELETE FROM overflow_queue WHERE bead_id = ?`, beadID)
+// RemoveOverflowItem deletes all persisted queue items for a morsel.
+func (s *Store) RemoveOverflowItem(morselID string) (int64, error) {
+	morselID = strings.TrimSpace(morselID)
+	result, err := s.db.Exec(`DELETE FROM overflow_queue WHERE morsel_id = ?`, morselID)
 	if err != nil {
 		return 0, fmt.Errorf("store: remove overflow item: %w", err)
 	}
@@ -514,7 +514,7 @@ func (s *Store) RemoveOverflowItem(beadID string) (int64, error) {
 // ListOverflowQueue returns all pending items in the overflow queue ordered by priority.
 func (s *Store) ListOverflowQueue() ([]OverflowQueueItem, error) {
 	rows, err := s.db.Query(
-		`SELECT id, bead_id, project, role, agent_id, priority, enqueued_at, attempts, reason FROM overflow_queue ORDER BY priority ASC, enqueued_at ASC, bead_id ASC`,
+		`SELECT id, morsel_id, project, role, agent_id, priority, enqueued_at, attempts, reason FROM overflow_queue ORDER BY priority ASC, enqueued_at ASC, morsel_id ASC`,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("store: list overflow queue: %w", err)
@@ -524,7 +524,7 @@ func (s *Store) ListOverflowQueue() ([]OverflowQueueItem, error) {
 	var items []OverflowQueueItem
 	for rows.Next() {
 		var item OverflowQueueItem
-		if err := rows.Scan(&item.ID, &item.BeadID, &item.Project, &item.Role, &item.AgentID, &item.Priority, &item.EnqueuedAt, &item.Attempts, &item.Reason); err != nil {
+		if err := rows.Scan(&item.ID, &item.MorselID, &item.Project, &item.Role, &item.AgentID, &item.Priority, &item.EnqueuedAt, &item.Attempts, &item.Reason); err != nil {
 			return nil, fmt.Errorf("store: scan overflow queue row: %w", err)
 		}
 		items = append(items, item)
@@ -577,7 +577,7 @@ func (s *Store) queryDispatches(query string, args ...any) ([]Dispatch, error) {
 	for rows.Next() {
 		var d Dispatch
 		if err := rows.Scan(
-			&d.ID, &d.BeadID, &d.Project, &d.AgentID, &d.Provider, &d.Tier, &d.PID, &d.SessionName,
+			&d.ID, &d.MorselID, &d.Project, &d.AgentID, &d.Provider, &d.Tier, &d.PID, &d.SessionName,
 			&d.Prompt, &d.DispatchedAt, &d.CompletedAt, &d.NextRetryAt, &d.Status, &d.Stage, &d.Labels, &d.PRURL, &d.PRNumber, &d.ExitCode, &d.DurationS,
 			&d.Retries, &d.EscalatedFromTier, &d.FailureCategory, &d.FailureSummary, &d.LogPath, &d.Branch, &d.Backend,
 			&d.InputTokens, &d.OutputTokens, &d.CostUSD,
@@ -588,7 +588,7 @@ func (s *Store) queryDispatches(query string, args ...any) ([]Dispatch, error) {
 	}
 	return dispatches, rows.Err()
 }
-// UpdateDispatchLabels stores bead labels on a dispatch for downstream profiling.
+// UpdateDispatchLabels stores morsel labels on a dispatch for downstream profiling.
 func (s *Store) UpdateDispatchLabels(id int64, labels []string) error {
 	return s.UpdateDispatchLabelsCSV(id, encodeDispatchLabels(labels))
 }
@@ -616,10 +616,10 @@ func (s *Store) UpdateFailureDiagnosis(id int64, category, summary string) error
 }
 
 // RecordProviderUsage records an authed provider dispatch for rate limiting.
-func (s *Store) RecordProviderUsage(provider, agentID, beadID string) (int64, error) {
+func (s *Store) RecordProviderUsage(provider, agentID, morselID string) (int64, error) {
 	res, err := s.db.Exec(
-		`INSERT INTO provider_usage (provider, agent_id, bead_id) VALUES (?, ?, ?)`,
-		provider, agentID, beadID,
+		`INSERT INTO provider_usage (provider, agent_id, morsel_id) VALUES (?, ?, ?)`,
+		provider, agentID, morselID,
 	)
 	if err != nil {
 		return 0, fmt.Errorf("store: record provider usage: %w", err)
@@ -662,12 +662,12 @@ func (s *Store) CountAuthedUsageWeekly() (int, error) {
 	}
 	return count, nil
 }
-// IsBeadDispatched checks if a bead currently has a running dispatch.
-func (s *Store) IsBeadDispatched(beadID string) (bool, error) {
+// IsMorselDispatched checks if a morsel currently has a running dispatch.
+func (s *Store) IsMorselDispatched(morselID string) (bool, error) {
 	var count int
-	err := s.db.QueryRow(`SELECT COUNT(*) FROM dispatches WHERE bead_id = ? AND status = 'running'`, beadID).Scan(&count)
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM dispatches WHERE morsel_id = ? AND status = 'running'`, morselID).Scan(&count)
 	if err != nil {
-		return false, fmt.Errorf("store: check bead dispatched: %w", err)
+		return false, fmt.Errorf("store: check morsel dispatched: %w", err)
 	}
 	return count > 0, nil
 }
@@ -697,10 +697,10 @@ func (s *Store) RecordDispatchCost(dispatchID int64, inputTokens, outputTokens i
 }
 
 // RecordDoDResult records the results of a Definition of Done check.
-func (s *Store) RecordDoDResult(dispatchID int64, beadID, project string, passed bool, failures string, checkResults string) error {
+func (s *Store) RecordDoDResult(dispatchID int64, morselID, project string, passed bool, failures string, checkResults string) error {
 	_, err := s.db.Exec(
-		`INSERT INTO dod_results (dispatch_id, bead_id, project, passed, failures, check_results) VALUES (?, ?, ?, ?, ?, ?)`,
-		dispatchID, beadID, project, passed, failures, checkResults,
+		`INSERT INTO dod_results (dispatch_id, morsel_id, project, passed, failures, check_results) VALUES (?, ?, ?, ?, ?, ?)`,
+		dispatchID, morselID, project, passed, failures, checkResults,
 	)
 	if err != nil {
 		return fmt.Errorf("store: record DoD result: %w", err)

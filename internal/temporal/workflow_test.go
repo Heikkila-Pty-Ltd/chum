@@ -70,7 +70,7 @@ func TestCHUMChildWorkflowsSpawn(t *testing.T) {
 	}).Return(nil)
 
 	env.ExecuteWorkflow(ChumAgentWorkflow, TaskRequest{
-		TaskID:  "test-bead-chum",
+		TaskID:  "test-morsel-chum",
 		Project: "test-project",
 		Prompt:  "add a widget endpoint",
 		Agent:   "claude",
@@ -147,7 +147,7 @@ func TestCHUMNotSpawnedOnFailure(t *testing.T) {
 
 
 	env.ExecuteWorkflow(ChumAgentWorkflow, TaskRequest{
-		TaskID:  "test-bead-fail",
+		TaskID:  "test-morsel-fail",
 		Project: "test-project",
 		Prompt:  "break everything",
 		Agent:   "claude",
@@ -179,8 +179,8 @@ func TestContinuousLearnerWorkflowPipeline(t *testing.T) {
 	var a *Activities
 
 	lessons := []Lesson{
-		{TaskID: "bead-1", Category: "antipattern", Summary: "nil check after error"},
-		{TaskID: "bead-1", Category: "pattern", Summary: "table-driven tests"},
+		{TaskID: "morsel-1", Category: "antipattern", Summary: "nil check after error"},
+		{TaskID: "morsel-1", Category: "pattern", Summary: "table-driven tests"},
 	}
 
 	env.OnActivity(a.ExtractLessonsActivity, mock.Anything, mock.Anything).Return(lessons, nil)
@@ -190,7 +190,7 @@ func TestContinuousLearnerWorkflowPipeline(t *testing.T) {
 	}, nil)
 
 	env.ExecuteWorkflow(ContinuousLearnerWorkflow, LearnerRequest{
-		TaskID:  "bead-1",
+		TaskID:  "morsel-1",
 		Project: "test-project",
 		Tier:    "fast",
 	})
@@ -210,11 +210,11 @@ func TestTacticalGroomWorkflow(t *testing.T) {
 	env.OnActivity(a.MutateTasksActivity, mock.Anything, mock.Anything).Return(&GroomResult{
 		MutationsApplied: 3,
 		MutationsFailed:  0,
-		Details:          []string{"reprioritized bead-1", "closed stale bead-2", "added dep bead-3->bead-4"},
+		Details:          []string{"reprioritized morsel-1", "closed stale morsel-2", "added dep morsel-3->morsel-4"},
 	}, nil)
 
 	env.ExecuteWorkflow(TacticalGroomWorkflow, TacticalGroomRequest{
-		TaskID:  "bead-1",
+		TaskID:  "morsel-1",
 		Project: "test-project",
 		WorkDir: "/tmp/test",
 		Tier:    "fast",
@@ -226,7 +226,7 @@ func TestTacticalGroomWorkflow(t *testing.T) {
 }
 
 // TestStrategicGroomWorkflowPipeline verifies the full daily strategic pipeline:
-// RepoMap -> BeadState -> Analysis -> Mutations -> Briefing
+// RepoMap -> MorselState -> Analysis -> Mutations -> Briefing
 func TestStrategicGroomWorkflowPipeline(t *testing.T) {
 	s := testsuite.WorkflowTestSuite{}
 	env := s.NewTestWorkflowEnvironment()
@@ -241,7 +241,7 @@ func TestStrategicGroomWorkflowPipeline(t *testing.T) {
 		},
 	}, nil)
 
-	env.OnActivity(a.GetBeadStateSummaryActivity, mock.Anything, mock.Anything).Return(
+	env.OnActivity(a.GetMorselStateSummaryActivity, mock.Anything, mock.Anything).Return(
 		"Open: 12, Closed: 45, Blocked: 3", nil)
 
 	env.OnActivity(a.StrategicAnalysisActivity, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&StrategicAnalysis{
@@ -249,7 +249,7 @@ func TestStrategicGroomWorkflowPipeline(t *testing.T) {
 			{Title: "Fix flaky tests", Urgency: "high"},
 		},
 		Risks:     []string{"test coverage declining"},
-		Mutations: []BeadMutation{{TaskID: "bead-5", Action: "update_priority", Priority: intPtr(1)}},
+		Mutations: []MorselMutation{{TaskID: "morsel-5", Action: "update_priority", Priority: intPtr(1)}},
 	}, nil)
 
 	env.OnActivity(a.ApplyStrategicMutationsActivity, mock.Anything, mock.Anything, mock.Anything).Return(&GroomResult{
@@ -275,7 +275,7 @@ func TestStrategicGroomWorkflowPipeline(t *testing.T) {
 
 func TestNormalizeStrategicMutationsAutoDecompositionWithoutActionableFieldsIsDeferred(t *testing.T) {
 	priority := 1
-	mutations := []BeadMutation{{
+	mutations := []MorselMutation{{
 		Action:          "create",
 		Title:           "Auto: break down authentication flow",
 		Description:     "",
@@ -297,7 +297,7 @@ func TestNormalizeStrategicMutationsAutoDecompositionWithoutActionableFieldsIsDe
 }
 
 func TestNormalizeStrategicMutationsActionableDecompositionRemainsExecutable(t *testing.T) {
-	mutations := []BeadMutation{{
+	mutations := []MorselMutation{{
 		Action:          "create",
 		Title:           "Auto decomposition: split request validation into tasks",
 		Description:     "Add one coded task for each phase of request validation rollout.",
@@ -331,12 +331,12 @@ func TestStrategicGroomWorkflowActionableCreatePassesThroughToActivity(t *testin
 		Packages:   []PackageInfo{{ImportPath: "example.com/pkg", Name: "pkg"}},
 	}, nil)
 
-	env.OnActivity(a.GetBeadStateSummaryActivity, mock.Anything, mock.Anything).Return(
+	env.OnActivity(a.GetMorselStateSummaryActivity, mock.Anything, mock.Anything).Return(
 		"Open: 5, Closed: 10", nil)
 
 	env.OnActivity(a.StrategicAnalysisActivity, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&StrategicAnalysis{
 		Priorities: []StrategicItem{{Title: "Add request validation", Urgency: "high"}},
-		Mutations: []BeadMutation{{
+		Mutations: []MorselMutation{{
 			Action:          "create",
 			Title:           "Add input validation for POST /users",
 			Description:     "Validate request body fields before processing.",
@@ -348,10 +348,10 @@ func TestStrategicGroomWorkflowActionableCreatePassesThroughToActivity(t *testin
 		}},
 	}, nil)
 
-	var capturedMutations []BeadMutation
+	var capturedMutations []MorselMutation
 	env.OnActivity(a.ApplyStrategicMutationsActivity, mock.Anything, mock.Anything, mock.Anything).
 		Run(func(args mock.Arguments) {
-			if ms, ok := args.Get(2).([]BeadMutation); ok {
+			if ms, ok := args.Get(2).([]MorselMutation); ok {
 				capturedMutations = ms
 			}
 		}).Return(&GroomResult{MutationsApplied: 1}, nil)
@@ -390,14 +390,14 @@ func TestStrategicGroomWorkflowVagueCreateIsDeferredNotP1(t *testing.T) {
 		Packages:   []PackageInfo{{ImportPath: "example.com/pkg", Name: "pkg"}},
 	}, nil)
 
-	env.OnActivity(a.GetBeadStateSummaryActivity, mock.Anything, mock.Anything).Return(
+	env.OnActivity(a.GetMorselStateSummaryActivity, mock.Anything, mock.Anything).Return(
 		"Open: 5", nil)
 
 	// Strategic analysis returns a vague decomposition suggestion without
 	// required actionable fields — this is the production scenario we're guarding against.
 	env.OnActivity(a.StrategicAnalysisActivity, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&StrategicAnalysis{
 		Priorities: []StrategicItem{{Title: "Break down auth", Urgency: "medium"}},
-		Mutations: []BeadMutation{{
+		Mutations: []MorselMutation{{
 			Action:          "create",
 			Title:           "Break down authentication flow into subtasks",
 			Description:     "The auth system needs decomposition.",
@@ -407,10 +407,10 @@ func TestStrategicGroomWorkflowVagueCreateIsDeferredNotP1(t *testing.T) {
 		}},
 	}, nil)
 
-	var capturedMutations []BeadMutation
+	var capturedMutations []MorselMutation
 	env.OnActivity(a.ApplyStrategicMutationsActivity, mock.Anything, mock.Anything, mock.Anything).
 		Run(func(args mock.Arguments) {
-			if ms, ok := args.Get(2).([]BeadMutation); ok {
+			if ms, ok := args.Get(2).([]MorselMutation); ok {
 				capturedMutations = ms
 			}
 		}).Return(&GroomResult{MutationsApplied: 1}, nil)
@@ -440,7 +440,7 @@ func TestStrategicGroomWorkflowVagueCreateIsDeferredNotP1(t *testing.T) {
 // caught as deferred when it lacks actionable fields. This guards against the prompt
 // telling the LLM not to use "Auto:" prefixes while the detection relies on title heuristics.
 func TestNormalizeStrategicMutationsNonPrefixedVagueCreateIsDeferred(t *testing.T) {
-	mutations := []BeadMutation{{
+	mutations := []MorselMutation{{
 		Action:          "create",
 		Title:           "Break down authentication flow",
 		Description:     "The auth system needs decomposition.",
@@ -461,10 +461,10 @@ func TestNormalizeStrategicMutationsNonPrefixedVagueCreateIsDeferred(t *testing.
 // TestNormalizeStrategicMutationsNonCreatePassesThrough verifies that non-create
 // mutations (update_priority, close, etc.) pass through normalization unmodified.
 func TestNormalizeStrategicMutationsNonCreatePassesThrough(t *testing.T) {
-	mutations := []BeadMutation{
-		{TaskID: "bead-1", Action: "update_priority", Priority: intPtr(0)},
-		{TaskID: "bead-2", Action: "close", Reason: "stale"},
-		{TaskID: "bead-3", Action: "update_notes", Notes: "context from strategic review"},
+	mutations := []MorselMutation{
+		{TaskID: "morsel-1", Action: "update_priority", Priority: intPtr(0)},
+		{TaskID: "morsel-2", Action: "close", Reason: "stale"},
+		{TaskID: "morsel-3", Action: "update_notes", Notes: "context from strategic review"},
 	}
 
 	got := normalizeStrategicMutations(mutations)
@@ -497,7 +497,7 @@ func TestStepDurationLogging(t *testing.T) {
 	}).Return(nil)
 
 	env.ExecuteWorkflow(ChumAgentWorkflow, TaskRequest{
-		TaskID:  "test-bead-steps",
+		TaskID:  "test-morsel-steps",
 		Project: "test-project",
 		Prompt:  "add step metrics",
 		Agent:   "claude",
@@ -567,7 +567,7 @@ func TestStepDurationLoggingWhenReviewActivityFails(t *testing.T) {
 
 
 	env.ExecuteWorkflow(ChumAgentWorkflow, TaskRequest{
-		TaskID:  "test-bead-review-fail",
+		TaskID:  "test-morsel-review-fail",
 		Project: "test-project",
 		Prompt:  "review infra failure path",
 		Agent:   "claude",
@@ -633,7 +633,7 @@ func TestStepDurationLoggingEscalation(t *testing.T) {
 
 
 	env.ExecuteWorkflow(ChumAgentWorkflow, TaskRequest{
-		TaskID:  "test-bead-escalate",
+		TaskID:  "test-morsel-escalate",
 		Project: "test-project",
 		Prompt:  "will fail dod",
 		Agent:   "claude",
@@ -681,7 +681,7 @@ func TestPlanningWorkflowPassesSlowStepThresholdToExecutionTask(t *testing.T) {
 	var captured bool
 
 	env.OnActivity(a.GroomBacklogActivity, mock.Anything, mock.Anything).Return(&BacklogPresentation{
-		Items: []BacklogItem{{ID: "bead-1", Title: "Plan this task"}},
+		Items: []BacklogItem{{ID: "morsel-1", Title: "Plan this task"}},
 	}, nil)
 	env.OnActivity(a.GenerateQuestionsActivity, mock.Anything, mock.Anything, mock.Anything).Return([]PlanningQuestion{}, nil)
 	env.OnActivity(a.SummarizePlanActivity, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&PlanSummary{
@@ -697,7 +697,7 @@ func TestPlanningWorkflowPassesSlowStepThresholdToExecutionTask(t *testing.T) {
 	}).Return(nil)
 
 	env.RegisterDelayedCallback(func() {
-		env.SignalWorkflow("item-selected", "bead-1")
+		env.SignalWorkflow("item-selected", "morsel-1")
 		env.SignalWorkflow("greenlight", "GO")
 	}, 0)
 
@@ -725,7 +725,7 @@ func TestDispatcherAppliesSlowStepThresholdFallback(t *testing.T) {
 
 	env.OnActivity(da.ScanCandidatesActivity, mock.Anything).Return(&ScanCandidatesResult{
 		Candidates: []DispatchCandidate{{
-			TaskID:            "bead-1",
+			TaskID:            "morsel-1",
 			Title:             "Build dashboard",
 			Project:           "project-1",
 			WorkDir:           "/tmp/test",

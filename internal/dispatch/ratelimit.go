@@ -65,11 +65,11 @@ func (r *RateLimiter) canDispatchAuthedLocked() (bool, string) {
 }
 
 // RecordAuthedDispatch records a provider usage event and returns the usage ID.
-func (r *RateLimiter) RecordAuthedDispatch(provider, agentID, beadID string) (int64, error) {
+func (r *RateLimiter) RecordAuthedDispatch(provider, agentID, morselID string) (int64, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	usageID, _, err := r.recordAuthedDispatchLocked(provider, agentID, beadID)
+	usageID, _, err := r.recordAuthedDispatchLocked(provider, agentID, morselID)
 	return usageID, err
 }
 
@@ -117,7 +117,7 @@ func (r *RateLimiter) IsInHeadroomWarning() bool {
 // PickAndReserveProvider selects a provider from the given tier, respecting and reserving rate limits.
 // Returns (provider, usageID, cleanupFunc) if successful.
 // If cleanupFunc is non-nil, the caller MUST call it if the dispatch subsequently fails.
-func (r *RateLimiter) PickAndReserveProvider(tier string, providers map[string]config.Provider, tiers config.Tiers, agentID, beadID string) (*config.Provider, int64, func(), error) {
+func (r *RateLimiter) PickAndReserveProvider(tier string, providers map[string]config.Provider, tiers config.Tiers, agentID, morselID string) (*config.Provider, int64, func(), error) {
 	var tierProviders []string
 	switch tier {
 	case "fast":
@@ -131,7 +131,7 @@ func (r *RateLimiter) PickAndReserveProvider(tier string, providers map[string]c
 	}
 
 	// Call internal implementation and discard provider name for backward compatibility
-	p, _, usageID, cleanup, err := r.pickAndReserveFromCandidates(tierProviders, providers, nil, agentID, beadID)
+	p, _, usageID, cleanup, err := r.pickAndReserveFromCandidates(tierProviders, providers, nil, agentID, morselID)
 	return p, usageID, cleanup, err
 }
 
@@ -143,9 +143,9 @@ func (r *RateLimiter) PickAndReserveProviderFromCandidates(
 	candidates []string,
 	providers map[string]config.Provider,
 	excludeModels map[string]bool,
-	agentID, beadID string,
+	agentID, morselID string,
 ) (*config.Provider, string, int64, func(), error) {
-	return r.pickAndReserveFromCandidates(candidates, providers, excludeModels, agentID, beadID)
+	return r.pickAndReserveFromCandidates(candidates, providers, excludeModels, agentID, morselID)
 }
 
 // pickAndReserveFromCandidates is the core implementation used by both public methods.
@@ -153,7 +153,7 @@ func (r *RateLimiter) pickAndReserveFromCandidates(
 	candidates []string,
 	providers map[string]config.Provider,
 	excludeModels map[string]bool,
-	agentID, beadID string,
+	agentID, morselID string,
 ) (*config.Provider, string, int64, func(), error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -175,7 +175,7 @@ func (r *RateLimiter) pickAndReserveFromCandidates(
 		}
 
 		// Check authed gates (optimistic check)
-		usageID, reserveResult, err := r.recordAuthedDispatchLocked(p.Model, agentID, beadID)
+		usageID, reserveResult, err := r.recordAuthedDispatchLocked(p.Model, agentID, morselID)
 		if err != nil {
 			if reserveResult == dispatchReservePostLimit {
 				return nil, "", 0, nil, err
@@ -262,13 +262,13 @@ func UpgradeTier(tier string) string {
 // - dispatchReservePreLimit when the limit was already exceeded
 // - dispatchReservePostLimit when reservation temporarily overshot the limit
 // - dispatchReserveOK for no known rate limit breach
-func (r *RateLimiter) recordAuthedDispatchLocked(provider, agentID, beadID string) (int64, dispatchReserveResult, error) {
+func (r *RateLimiter) recordAuthedDispatchLocked(provider, agentID, morselID string) (int64, dispatchReserveResult, error) {
 	ok, reason := r.canDispatchAuthedLocked()
 	if !ok {
 		return 0, dispatchReservePreLimit, fmt.Errorf("rate limit exceeded before recording dispatch: %s", reason)
 	}
 
-	usageID, err := r.store.RecordProviderUsage(provider, agentID, beadID)
+	usageID, err := r.store.RecordProviderUsage(provider, agentID, morselID)
 	if err != nil {
 		return 0, dispatchReserveOK, err
 	}

@@ -11,10 +11,10 @@ import (
 
 var ErrMergeConflict = errors.New("git merge conflict")
 
-// CreateFeatureBranch creates and checks out a branch for a bead
-// Branch name: feat/{bead-id} (e.g. feat/chum-abc)
-func CreateFeatureBranch(workspace, beadID, baseBranch string) error {
-	branchName := fmt.Sprintf("feat/%s", beadID)
+// CreateFeatureBranch creates and checks out a branch for a morsel
+// Branch name: feat/{morsel-id} (e.g. feat/chum-abc)
+func CreateFeatureBranch(workspace, morselID, baseBranch string) error {
+	branchName := fmt.Sprintf("feat/%s", morselID)
 
 	// Create and checkout the new branch from the base branch
 	cmd := exec.Command("git", "checkout", "-b", branchName, baseBranch)
@@ -55,8 +55,8 @@ func BranchExists(workspace, branch string) (bool, error) {
 }
 
 // EnsureFeatureBranch creates branch if not exists, checks out if exists
-func EnsureFeatureBranch(workspace, beadID string) error {
-	branchName := fmt.Sprintf("feat/%s", beadID)
+func EnsureFeatureBranch(workspace, morselID string) error {
+	branchName := fmt.Sprintf("feat/%s", morselID)
 
 	// Check if the branch already exists
 	exists, err := BranchExists(workspace, branchName)
@@ -81,7 +81,7 @@ func EnsureFeatureBranch(workspace, beadID string) error {
 		}
 
 		// Create the new branch from origin/main (assuming main is the base)
-		if err := CreateFeatureBranch(workspace, beadID, "origin/main"); err != nil {
+		if err := CreateFeatureBranch(workspace, morselID, "origin/main"); err != nil {
 			return err
 		}
 	}
@@ -90,8 +90,8 @@ func EnsureFeatureBranch(workspace, beadID string) error {
 }
 
 // EnsureFeatureBranchWithBase creates branch if not exists, checks out if exists, with custom base branch
-func EnsureFeatureBranchWithBase(workspace, beadID, baseBranch, branchPrefix string) error {
-	branchName := fmt.Sprintf("%s%s", branchPrefix, beadID)
+func EnsureFeatureBranchWithBase(workspace, morselID, baseBranch, branchPrefix string) error {
+	branchName := fmt.Sprintf("%s%s", branchPrefix, morselID)
 
 	// Check if the branch already exists
 	exists, err := BranchExists(workspace, branchName)

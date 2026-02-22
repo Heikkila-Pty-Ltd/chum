@@ -120,23 +120,23 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// --- Per-bead cost (top 20 spenders) ---
-	fmt.Fprintf(&b, "# HELP chum_bead_cost_usd Per-bead estimated USD cost (top spenders)\n")
-	fmt.Fprintf(&b, "# TYPE chum_bead_cost_usd gauge\n")
+	// --- Per-morsel cost (top 20 spenders) ---
+	fmt.Fprintf(&b, "# HELP chum_morsel_cost_usd Per-morsel estimated USD cost (top spenders)\n")
+	fmt.Fprintf(&b, "# TYPE chum_morsel_cost_usd gauge\n")
 
-	beadCostRows, err := db.Query(`
-		SELECT bead_id, project, COALESCE(SUM(cost_usd), 0) as total_cost,
+	morselCostRows, err := db.Query(`
+		SELECT morsel_id, project, COALESCE(SUM(cost_usd), 0) as total_cost,
 			COALESCE(SUM(input_tokens + output_tokens), 0) as total_tokens
-		FROM token_usage GROUP BY bead_id ORDER BY total_cost DESC LIMIT 20`)
+		FROM token_usage GROUP BY morsel_id ORDER BY total_cost DESC LIMIT 20`)
 	if err == nil {
-		defer beadCostRows.Close()
-		for beadCostRows.Next() {
-			var beadID, proj string
+		defer morselCostRows.Close()
+		for morselCostRows.Next() {
+			var morselID, proj string
 			var cost float64
 			var tokens int64
-			if beadCostRows.Scan(&beadID, &proj, &cost, &tokens) == nil {
-				fmt.Fprintf(&b, "chum_bead_cost_usd{bead_id=%q,project=%q} %.6f\n", beadID, proj, cost)
-				fmt.Fprintf(&b, "chum_bead_tokens_total{bead_id=%q,project=%q} %d\n", beadID, proj, tokens)
+			if morselCostRows.Scan(&morselID, &proj, &cost, &tokens) == nil {
+				fmt.Fprintf(&b, "chum_morsel_cost_usd{morsel_id=%q,project=%q} %.6f\n", morselID, proj, cost)
+				fmt.Fprintf(&b, "chum_morsel_tokens_total{morsel_id=%q,project=%q} %d\n", morselID, proj, tokens)
 			}
 		}
 	}
@@ -202,21 +202,21 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// --- Retry / handoff overhead (beads with multiple dispatches) ---
-	fmt.Fprintf(&b, "# HELP chum_bead_retry_overhead Beads with highest dispatch attempts (inefficiency indicator)\n")
-	fmt.Fprintf(&b, "# TYPE chum_bead_retry_overhead gauge\n")
+	// --- Retry / handoff overhead (morsels with multiple dispatches) ---
+	fmt.Fprintf(&b, "# HELP chum_morsel_retry_overhead Morsels with highest dispatch attempts (inefficiency indicator)\n")
+	fmt.Fprintf(&b, "# TYPE chum_morsel_retry_overhead gauge\n")
 
 	retryRows, err := db.Query(`
-		SELECT bead_id, COUNT(*) as attempts FROM dispatches
-		GROUP BY bead_id HAVING attempts > 1
+		SELECT morsel_id, COUNT(*) as attempts FROM dispatches
+		GROUP BY morsel_id HAVING attempts > 1
 		ORDER BY attempts DESC LIMIT 10`)
 	if err == nil {
 		defer retryRows.Close()
 		for retryRows.Next() {
-			var beadID string
+			var morselID string
 			var attempts int
-			if retryRows.Scan(&beadID, &attempts) == nil {
-				fmt.Fprintf(&b, "chum_bead_retry_overhead{bead_id=%q} %d\n", beadID, attempts)
+			if retryRows.Scan(&morselID, &attempts) == nil {
+				fmt.Fprintf(&b, "chum_morsel_retry_overhead{morsel_id=%q} %d\n", morselID, attempts)
 			}
 		}
 	}

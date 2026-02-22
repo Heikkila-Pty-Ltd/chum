@@ -10,7 +10,7 @@ state_db = "~/.local/share/chum/chum.db"
 
 [projects.chum]
 enabled = true
-beads_dir = "~/projects/chum/.beads"
+morsels_dir = "~/projects/chum/.morsels"
 workspace = "~/projects/chum-runner"
 priority = 0
 
@@ -26,7 +26,7 @@ require_acceptance = true
 
 [projects.hg-website]
 enabled = true
-beads_dir = "~/projects/hg-website/.beads"
+morsels_dir = "~/projects/hg-website/.morsels"
 workspace = "~/projects/hg-website"
 priority = 1
 
@@ -137,7 +137,7 @@ retry_escalation_attempt = 2
 complexity_escalation_minutes = 180
 risky_review_labels = ["risk:high", "security", "migration", "breaking-change", "database"]
 force_spark_at_weekly_usage_pct = 65
-per_bead_stage_attempt_limit = 2
+per_morsel_stage_attempt_limit = 2
 stage_attempt_window = "6h"
 stage_cooldown = "45m"
 

@@ -185,7 +185,7 @@ type EscalationRequest struct {
 }
 
 // --- Planning Ceremony Types ---
-// Planning happens BEFORE any code is written. Beads are written, arranged,
+// Planning happens BEFORE any code is written. Morsels are written, arranged,
 // deps aligned, structure emerges. Nothing goes to the sharks until it's chum.
 
 // PlanningRequest starts a planning session.
@@ -248,15 +248,15 @@ type PlanningState struct {
 }
 
 // --- CHUM (Continuous Hyper-Kanban Utility Module) Types ---
-// Event-driven learning + grooming triggered after every bead completion,
+// Event-driven learning + grooming triggered after every morsel completion,
 // plus a daily strategic grooming cycle at 5 AM.
 
-// LearnerRequest is passed to ContinuousLearnerWorkflow after a bead completes.
+// LearnerRequest is passed to ContinuousLearnerWorkflow after a morsel completes.
 type LearnerRequest struct {
 	TaskID         string   `json:"task_id"`
 	Project        string   `json:"project"`
 	WorkDir        string   `json:"work_dir"`
-	Agent          string   `json:"agent"`           // which agent completed the bead
+	Agent          string   `json:"agent"`           // which agent completed the morsel
 	DoDPassed      bool     `json:"dod_passed"`
 	DoDFailures    string   `json:"dod_failures"`
 	FilesChanged   []string `json:"files_changed,omitempty"`
@@ -265,7 +265,7 @@ type LearnerRequest struct {
 	Tier           string   `json:"tier"`                      // LLM tier: "fast" or "premium"
 }
 
-// Lesson is a single extracted lesson from a completed bead.
+// Lesson is a single extracted lesson from a completed morsel.
 type Lesson struct {
 	ID            int64    `json:"id,omitempty"`
 	TaskID        string   `json:"task_id"`
@@ -303,9 +303,9 @@ type TacticalGroomRequest struct {
 	Tier    string `json:"tier"` // "fast" for tactical
 }
 
-// BeadMutation is a single mutation the groombot wants to apply to the backlog.
+// MorselMutation is a single mutation the groombot wants to apply to the backlog.
 // The Action field determines which other fields are meaningful.
-type BeadMutation struct {
+type MorselMutation struct {
 	TaskID      string   `json:"task_id"`
 	Action      string   `json:"action"`                  // update_priority, add_dependency, update_notes, create, close
 	Priority    *int     `json:"priority,omitempty"`
@@ -325,7 +325,7 @@ type BeadMutation struct {
 const (
 	// StrategicMutationSource identifies strategic-groomer-generated mutations.
 	StrategicMutationSource = "strategic"
-	// StrategicSourceLabel marks bead metadata sourced from strategic grooming.
+	// StrategicSourceLabel marks morsel metadata sourced from strategic grooming.
 	StrategicSourceLabel = "source:strategic"
 	// StrategicDeferredLabel marks deferred strategic suggestions.
 	StrategicDeferredLabel = "strategy:deferred"
@@ -368,7 +368,7 @@ type StrategicAnalysis struct {
 	Priorities   []StrategicItem `json:"priorities"`
 	Risks        []string        `json:"risks"`
 	Observations []string        `json:"observations"`
-	Mutations    []BeadMutation  `json:"mutations"` // suggested bead mutations
+	Mutations    []MorselMutation  `json:"mutations"` // suggested morsel mutations
 }
 
 // StrategicItem is a single priority from strategic analysis.
@@ -379,7 +379,7 @@ type StrategicItem struct {
 	Urgency   string `json:"urgency"` // critical, high, medium, low
 }
 
-// MorningBriefing is the daily briefing written to .beads/morning_briefing.md.
+// MorningBriefing is the daily briefing written to .morsels/morning_briefing.md.
 type MorningBriefing struct {
 	Date          string          `json:"date"`
 	Project       string          `json:"project"`
@@ -390,10 +390,10 @@ type MorningBriefing struct {
 }
 
 // --- Dispatcher Types ---
-// DispatcherWorkflow scans for ready beads and starts ChumAgentWorkflow
+// DispatcherWorkflow scans for ready morsels and starts ChumAgentWorkflow
 // children. Runs on a Temporal Schedule every tick_interval.
 
-// DispatchCandidate is a ready bead with its project context, returned by
+// DispatchCandidate is a ready morsel with its project context, returned by
 // ScanCandidatesActivity and dispatched as a child workflow.
 type DispatchCandidate struct {
 	TaskID          string   `json:"task_id"`
@@ -463,7 +463,7 @@ type ClarificationResult struct {
 type ClarificationEntry struct {
 	Question string `json:"question"`
 	Answer   string `json:"answer"`
-	Source   string `json:"source"` // "lessons_db", "existing_beads", "chief_llm", "human"
+	Source   string `json:"source"` // "lessons_db", "existing_morsels", "chief_llm", "human"
 }
 
 // CandidateWhale is a proposed whale (epic-level grouping) from decomposition.

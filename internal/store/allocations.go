@@ -12,7 +12,7 @@ import (
 // AllocationDecision represents a Chief SM allocation decision for a sprint planning ceremony
 type AllocationDecision struct {
 	ID               int64                      `json:"id"`
-	CeremonyID       string                     `json:"ceremony_id"`       // Links to ceremony bead ID
+	CeremonyID       string                     `json:"ceremony_id"`       // Links to ceremony morsel ID
 	SprintStartDate  time.Time                  `json:"sprint_start_date"` 
 	SprintEndDate    time.Time                  `json:"sprint_end_date"`
 	TotalCapacity    int                        `json:"total_capacity"`    // Total capacity points available
@@ -29,7 +29,7 @@ type ProjectAllocation struct {
 	Project           string  `json:"project"`
 	AllocatedCapacity int     `json:"allocated_capacity"` // Capacity points
 	CapacityPercent   float64 `json:"capacity_percent"`   // Percentage of total
-	PriorityBeads     []string `json:"priority_beads"`     // Bead IDs to prioritize
+	PriorityMorsels     []string `json:"priority_morsels"`     // Morsel IDs to prioritize
 	ProviderTier      string  `json:"provider_tier"`      // "fast", "balanced", "premium"
 	Notes             string  `json:"notes"`              // Additional context
 }
@@ -38,7 +38,7 @@ type ProjectAllocation struct {
 type CrossProjectDependency struct {
 	FromProject string `json:"from_project"` // Dependent project
 	ToProject   string `json:"to_project"`   // Dependency project
-	BeadID      string `json:"bead_id"`      // Specific bead that's needed
+	MorselID      string `json:"morsel_id"`      // Specific morsel that's needed
 	Priority    string `json:"priority"`     // "critical", "high", "medium"
 	Description string `json:"description"`  // Dependency description
 }

@@ -85,7 +85,7 @@ You are the scrum master for this project. Your job is to refine incoming tasks.
 - Break large tasks into smaller, actionable sub-tasks
 - Estimate effort when missing
 
-## Bead Spec Minimum (before handoff)
+## Morsel Spec Minimum (before handoff)
 - Description has clear scope (what is in/out)
 - Acceptance includes a concrete test line
 - Acceptance includes a DoD line

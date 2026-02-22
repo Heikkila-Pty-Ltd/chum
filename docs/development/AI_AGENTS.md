@@ -1,6 +1,6 @@
 # Agent Instructions
 
-This project uses **bd** (beads) for issue tracking. Run `bd onboard` to get started.
+This project uses **bd** (morsels) for issue tracking. Run `bd onboard` to get started.
 
 ## Branch and Worktree Onboarding
 
@@ -24,7 +24,7 @@ Team training checkpoint:
 - Confirm PR review enforcement:
   - Open a draft PR and verify workflow check runs in CI.
 
-For all code changes, keep PRs on branches only (never direct `master` commits), and include reviewable commits before finishing a bead.
+For all code changes, keep PRs on branches only (never direct `master` commits), and include reviewable commits before finishing a morsel.
 
 ## Quick Reference
 
@@ -72,9 +72,9 @@ scripts/test-safe.sh ./internal/temporal/...  # Locked + timeout + JSON go test
 
 ---
 
-## Beads Workflow Integration
+## Morsels Workflow Integration
 
-This project uses [beads_viewer](https://github.com/Dicklesworthstone/beads_viewer) for issue tracking. Issues are stored in `.beads/` and tracked in git.
+This project uses [beads_viewer](https://github.com/Dicklesworthstone/beads_viewer) for issue tracking. Issues are stored in `.morsels/` and tracked in git.
 
 ### Essential Commands
 
@@ -116,9 +116,9 @@ bd sync               # Commit and push changes
 git status              # Check what changed
 scripts/test-safe.sh ./...  # Run tests with lock/timeout/json output
 git add <files>         # Stage code changes
-bd sync                 # Commit beads changes
+bd sync                 # Commit morsels changes
 git commit -m "..."     # Commit code
-bd sync                 # Commit any new beads changes
+bd sync                 # Commit any new morsels changes
 git push                # Push to remote
 ```
 
@@ -147,9 +147,9 @@ TEST_SAFE_LOCK_WAIT_SEC=600 scripts/test-safe.sh ./internal/temporal ./internal/
 - Use descriptive titles and set appropriate priority/type
 - Always `bd sync` before ending session
 
-### OpenClaw Main: Creating Beads (Required Format)
+### OpenClaw Main: Creating Morsels (Required Format)
 
-For `open`/`in_progress` beads, CHUM dispatch expects proper structure. Missing fields will block assignment.
+For `open`/`in_progress` morsels, CHUM dispatch expects proper structure. Missing fields will block assignment.
 
 - Required before work can dispatch:
   - Clear scope in `description`
@@ -160,7 +160,7 @@ For `open`/`in_progress` beads, CHUM dispatch expects proper structure. Missing 
 Use this pattern:
 
 ```bash
-# 1) Create scoped bead
+# 1) Create scoped morsel
 bd create \
   --type task \
   --priority 2 \
@@ -179,7 +179,7 @@ bd dep add <id> <depends-on-id>
 # or
 bd update <id> --parent <parent-id>
 
-# 4) Verify bead shape before leaving it open
+# 4) Verify morsel shape before leaving it open
 bd show <id>
 bd show <id>  # verify task shape
 ```

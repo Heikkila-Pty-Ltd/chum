@@ -22,7 +22,7 @@ func tempStore(t *testing.T) *Store {
 func TestOpenAndSchema(t *testing.T) {
 	s := tempStore(t)
 	// Verify tables exist by inserting a row
-	_, err := s.RecordDispatch("bead-1", "proj", "agent-1", "cerebras", "fast", 12345, "", "do stuff", "", "", "")
+	_, err := s.RecordDispatch("morsel-1", "proj", "agent-1", "cerebras", "fast", 12345, "", "do stuff", "", "", "")
 	if err != nil {
 		t.Fatalf("RecordDispatch failed: %v", err)
 	}
@@ -31,7 +31,7 @@ func TestOpenAndSchema(t *testing.T) {
 func TestRecordAndGetDispatches(t *testing.T) {
 	s := tempStore(t)
 
-	id, err := s.RecordDispatch("bead-1", "proj", "agent-1", "cerebras", "fast", 100, "", "prompt1", "", "", "")
+	id, err := s.RecordDispatch("morsel-1", "proj", "agent-1", "cerebras", "fast", 100, "", "prompt1", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,8 +43,8 @@ func TestRecordAndGetDispatches(t *testing.T) {
 	if len(running) != 1 {
 		t.Fatalf("expected 1 running, got %d", len(running))
 	}
-	if running[0].BeadID != "bead-1" {
-		t.Errorf("expected bead-1, got %s", running[0].BeadID)
+	if running[0].MorselID != "morsel-1" {
+		t.Errorf("expected morsel-1, got %s", running[0].MorselID)
 	}
 
 	err = s.UpdateDispatchStatus(id, "completed", 0, 45.5)
@@ -65,7 +65,7 @@ func TestProviderUsageCounting(t *testing.T) {
 	s := tempStore(t)
 
 	for i := 0; i < 5; i++ {
-		if _, err := s.RecordProviderUsage("claude", "agent-1", "bead-1"); err != nil {
+		if _, err := s.RecordProviderUsage("claude", "agent-1", "morsel-1"); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -107,20 +107,20 @@ func TestHealthEvents(t *testing.T) {
 	if events[0].DispatchID != 0 {
 		t.Errorf("expected dispatch_id=0, got %d", events[0].DispatchID)
 	}
-	if events[0].BeadID != "" {
-		t.Errorf("expected empty bead_id, got %q", events[0].BeadID)
+	if events[0].MorselID != "" {
+		t.Errorf("expected empty morsel_id, got %q", events[0].MorselID)
 	}
 }
 
 func TestHealthEventsWithDispatchCorrelation(t *testing.T) {
 	s := tempStore(t)
 
-	dispatchID, err := s.RecordDispatch("bead-ctx", "proj", "agent-1", "cerebras", "fast", 100, "ctx-test-session", "prompt", "", "", "")
+	dispatchID, err := s.RecordDispatch("morsel-ctx", "proj", "agent-1", "cerebras", "fast", 100, "ctx-test-session", "prompt", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if err := s.RecordHealthEventWithDispatch("zombie_killed", "dead session ctx-test-session linked to running dispatch", dispatchID, "bead-ctx"); err != nil {
+	if err := s.RecordHealthEventWithDispatch("zombie_killed", "dead session ctx-test-session linked to running dispatch", dispatchID, "morsel-ctx"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -135,19 +135,19 @@ func TestHealthEventsWithDispatchCorrelation(t *testing.T) {
 	if events[0].DispatchID != dispatchID {
 		t.Fatalf("expected dispatch_id %d, got %d", dispatchID, events[0].DispatchID)
 	}
-	if events[0].BeadID != "bead-ctx" {
-		t.Fatalf("expected bead_id bead-ctx, got %q", events[0].BeadID)
+	if events[0].MorselID != "morsel-ctx" {
+		t.Fatalf("expected morsel_id morsel-ctx, got %q", events[0].MorselID)
 	}
 }
 
 func TestGetLatestDispatchBySession(t *testing.T) {
 	s := tempStore(t)
 
-	firstID, err := s.RecordDispatch("bead-1", "proj", "agent-1", "cerebras", "fast", 100, "ctx-shared", "prompt", "", "", "")
+	firstID, err := s.RecordDispatch("morsel-1", "proj", "agent-1", "cerebras", "fast", 100, "ctx-shared", "prompt", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	secondID, err := s.RecordDispatch("bead-2", "proj", "agent-1", "cerebras", "fast", 101, "ctx-shared", "prompt", "", "", "")
+	secondID, err := s.RecordDispatch("morsel-2", "proj", "agent-1", "cerebras", "fast", 101, "ctx-shared", "prompt", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,11 +167,11 @@ func TestGetLatestDispatchBySession(t *testing.T) {
 func TestGetLatestDispatchByPID(t *testing.T) {
 	s := tempStore(t)
 
-	firstID, err := s.RecordDispatch("bead-1", "proj", "agent-1", "cerebras", "fast", 777, "ctx-first", "prompt", "", "", "")
+	firstID, err := s.RecordDispatch("morsel-1", "proj", "agent-1", "cerebras", "fast", 777, "ctx-first", "prompt", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	secondID, err := s.RecordDispatch("bead-2", "proj", "agent-1", "cerebras", "fast", 777, "ctx-second", "prompt", "", "", "")
+	secondID, err := s.RecordDispatch("morsel-2", "proj", "agent-1", "cerebras", "fast", 777, "ctx-second", "prompt", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -204,28 +204,28 @@ func TestTickMetrics(t *testing.T) {
 	}
 }
 
-func TestIsBeadDispatched(t *testing.T) {
+func TestIsMorselDispatched(t *testing.T) {
 	s := tempStore(t)
 
-	dispatched, err := s.IsBeadDispatched("bead-1")
+	dispatched, err := s.IsMorselDispatched("morsel-1")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if dispatched {
-		t.Error("bead should not be dispatched yet")
+		t.Error("morsel should not be dispatched yet")
 	}
 
-	_, err = s.RecordDispatch("bead-1", "proj", "agent-1", "cerebras", "fast", 100, "", "prompt", "", "", "")
+	_, err = s.RecordDispatch("morsel-1", "proj", "agent-1", "cerebras", "fast", 100, "", "prompt", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	dispatched, err = s.IsBeadDispatched("bead-1")
+	dispatched, err = s.IsMorselDispatched("morsel-1")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !dispatched {
-		t.Error("bead should be dispatched")
+		t.Error("morsel should be dispatched")
 	}
 }
 
@@ -267,7 +267,7 @@ func TestGetProjectDispatchStatusCounts(t *testing.T) {
 func TestGetStuckDispatches(t *testing.T) {
 	s := tempStore(t)
 
-	_, err := s.RecordDispatch("bead-1", "proj", "agent-1", "cerebras", "fast", 100, "", "prompt", "", "", "")
+	_, err := s.RecordDispatch("morsel-1", "proj", "agent-1", "cerebras", "fast", 100, "", "prompt", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -293,7 +293,7 @@ func TestIsAgentBusy(t *testing.T) {
 		t.Error("agent should not be busy yet")
 	}
 
-	_, err = s.RecordDispatch("bead-1", "proj", "proj-coder", "cerebras", "fast", 100, "", "prompt", "", "", "")
+	_, err = s.RecordDispatch("morsel-1", "proj", "proj-coder", "cerebras", "fast", 100, "", "prompt", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -331,7 +331,7 @@ func TestConcurrentAccess(t *testing.T) {
 	done := make(chan bool, 10)
 	for i := 0; i < 10; i++ {
 		go func(n int) {
-			_, _ = s.RecordProviderUsage("provider", "agent", "bead")
+			_, _ = s.RecordProviderUsage("provider", "agent", "morsel")
 			done <- true
 		}(i)
 	}
@@ -352,7 +352,7 @@ func TestCaptureAndGetOutput(t *testing.T) {
 	s := tempStore(t)
 
 	// Create a dispatch first
-	dispatchID, err := s.RecordDispatch("bead-1", "proj", "agent-1", "cerebras", "fast", 100, "", "test prompt", "", "", "")
+	dispatchID, err := s.RecordDispatch("morsel-1", "proj", "agent-1", "cerebras", "fast", 100, "", "test prompt", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -388,7 +388,7 @@ func TestCaptureOutputSizeLimit(t *testing.T) {
 	s := tempStore(t)
 
 	// Create a dispatch first
-	dispatchID, err := s.RecordDispatch("bead-1", "proj", "agent-1", "cerebras", "fast", 100, "", "test prompt", "", "", "")
+	dispatchID, err := s.RecordDispatch("morsel-1", "proj", "agent-1", "cerebras", "fast", 100, "", "test prompt", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -422,7 +422,7 @@ func TestCaptureOutputTail(t *testing.T) {
 	s := tempStore(t)
 
 	// Create a dispatch first
-	dispatchID, err := s.RecordDispatch("bead-1", "proj", "agent-1", "cerebras", "fast", 100, "", "test prompt", "", "", "")
+	dispatchID, err := s.RecordDispatch("morsel-1", "proj", "agent-1", "cerebras", "fast", 100, "", "test prompt", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -456,7 +456,7 @@ func TestSessionNameStorage(t *testing.T) {
 	s := tempStore(t)
 
 	// Record dispatch with session name
-	id, err := s.RecordDispatch("bead-1", "proj", "agent-1", "cerebras", "fast", 42, "ctx-proj-bead1-12345", "prompt", "", "", "")
+	id, err := s.RecordDispatch("morsel-1", "proj", "agent-1", "cerebras", "fast", 42, "ctx-proj-morsel1-12345", "prompt", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -471,8 +471,8 @@ func TestSessionNameStorage(t *testing.T) {
 	if len(running) != 1 {
 		t.Fatalf("expected 1 running, got %d", len(running))
 	}
-	if running[0].SessionName != "ctx-proj-bead1-12345" {
-		t.Errorf("expected session name ctx-proj-bead1-12345, got %q", running[0].SessionName)
+	if running[0].SessionName != "ctx-proj-morsel1-12345" {
+		t.Errorf("expected session name ctx-proj-morsel1-12345, got %q", running[0].SessionName)
 	}
 	if running[0].PID != 42 {
 		t.Errorf("expected PID 42, got %d", running[0].PID)
@@ -507,7 +507,7 @@ func TestGetPendingRetryDispatches(t *testing.T) {
 	}
 
 	// Create a failed dispatch
-	id, err := s.RecordDispatch("bead-1", "proj", "agent-1", "cerebras", "fast", 100, "", "test prompt", "", "", "")
+	id, err := s.RecordDispatch("morsel-1", "proj", "agent-1", "cerebras", "fast", 100, "", "test prompt", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -532,8 +532,8 @@ func TestGetPendingRetryDispatches(t *testing.T) {
 	if len(retries) != 1 {
 		t.Errorf("expected 1 pending retry, got %d", len(retries))
 	}
-	if retries[0].BeadID != "bead-1" {
-		t.Errorf("expected bead-1, got %s", retries[0].BeadID)
+	if retries[0].MorselID != "morsel-1" {
+		t.Errorf("expected morsel-1, got %s", retries[0].MorselID)
 	}
 	if retries[0].Status != "pending_retry" {
 		t.Errorf("expected pending_retry status, got %s", retries[0].Status)
@@ -543,7 +543,7 @@ func TestGetPendingRetryDispatches(t *testing.T) {
 func TestGetPendingRetryDispatchesRespectsNextRetryAt(t *testing.T) {
 	s := tempStore(t)
 
-	id, err := s.RecordDispatch("bead-next", "proj", "agent-1", "cerebras", "fast", 100, "", "test prompt", "", "", "")
+	id, err := s.RecordDispatch("morsel-next", "proj", "agent-1", "cerebras", "fast", 100, "", "test prompt", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -583,7 +583,7 @@ func TestGetPendingRetryDispatchesRespectsNextRetryAt(t *testing.T) {
 func TestOverflowQueuePersistence(t *testing.T) {
 	s := tempStore(t)
 
-	id1, err := s.EnqueueOverflowItem("bead-a", "proj", "coder", "agent-a", 1, "role_limit")
+	id1, err := s.EnqueueOverflowItem("morsel-a", "proj", "coder", "agent-a", 1, "role_limit")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -591,7 +591,7 @@ func TestOverflowQueuePersistence(t *testing.T) {
 		t.Fatal("expected non-zero overflow row id")
 	}
 
-	id2, err := s.EnqueueOverflowItem("bead-a", "proj", "coder", "agent-a", 2, "global_limit")
+	id2, err := s.EnqueueOverflowItem("morsel-a", "proj", "coder", "agent-a", 2, "global_limit")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -615,14 +615,14 @@ func TestOverflowQueuePersistence(t *testing.T) {
 		t.Fatalf("expected 1 queued item, got %d", len(items))
 	}
 	item := items[0]
-	if item.BeadID != "bead-a" || item.Role != "coder" || item.AgentID != "agent-a" || item.Priority != 1 || item.Project != "proj" {
+	if item.MorselID != "morsel-a" || item.Role != "coder" || item.AgentID != "agent-a" || item.Priority != 1 || item.Project != "proj" {
 		t.Fatalf("unexpected queue item: %+v", item)
 	}
 	if item.Reason != "role_limit" {
 		t.Fatalf("expected original reason 'role_limit', got %q", item.Reason)
 	}
 
-	removed, err := s.RemoveOverflowItem("bead-a")
+	removed, err := s.RemoveOverflowItem("morsel-a")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -645,15 +645,15 @@ func TestCountDispatchesSinceAndCostWindow(t *testing.T) {
 	oldTime := time.Now().Add(-2 * time.Hour)
 	cutoff := time.Now().Add(-1 * time.Hour)
 
-	oldID, err := s.RecordDispatch("bead-old", "proj-a", "agent-1", "cerebras", "fast", 100, "", "old prompt", "", "", "")
+	oldID, err := s.RecordDispatch("morsel-old", "proj-a", "agent-1", "cerebras", "fast", 100, "", "old prompt", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	recentID, err := s.RecordDispatch("bead-recent", "proj-a", "agent-1", "cerebras", "fast", 101, "", "recent prompt", "", "", "")
+	recentID, err := s.RecordDispatch("morsel-recent", "proj-a", "agent-1", "cerebras", "fast", 101, "", "recent prompt", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	otherID, err := s.RecordDispatch("bead-other", "proj-b", "agent-1", "cerebras", "fast", 102, "", "other prompt", "", "", "")
+	otherID, err := s.RecordDispatch("morsel-other", "proj-b", "agent-1", "cerebras", "fast", 102, "", "other prompt", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -718,7 +718,7 @@ func TestCountDispatchesSinceAndCostWindow(t *testing.T) {
 func TestMarkDispatchPendingRetryUpdatesStageAndCompletion(t *testing.T) {
 	s := tempStore(t)
 
-	id, err := s.RecordDispatch("bead-retry", "proj", "agent-1", "cerebras", "fast", 100, "", "prompt", "", "", "")
+	id, err := s.RecordDispatch("morsel-retry", "proj", "agent-1", "cerebras", "fast", 100, "", "prompt", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -756,11 +756,11 @@ func TestMarkDispatchPendingRetryUpdatesStageAndCompletion(t *testing.T) {
 func TestClaimLeaseLifecycle(t *testing.T) {
 	s := tempStore(t)
 
-	if err := s.UpsertClaimLease("bead-lease", "proj", "/tmp/proj/.beads", "proj-coder"); err != nil {
+	if err := s.UpsertClaimLease("morsel-lease", "proj", "/tmp/proj/.morsels", "proj-coder"); err != nil {
 		t.Fatal(err)
 	}
 
-	lease, err := s.GetClaimLease("bead-lease")
+	lease, err := s.GetClaimLease("morsel-lease")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -771,18 +771,18 @@ func TestClaimLeaseLifecycle(t *testing.T) {
 		t.Fatalf("expected project proj, got %s", lease.Project)
 	}
 
-	dispatchID, err := s.RecordDispatch("bead-lease", "proj", "proj-coder", "cerebras", "fast", 120, "", "prompt", "", "", "")
+	dispatchID, err := s.RecordDispatch("morsel-lease", "proj", "proj-coder", "cerebras", "fast", 120, "", "prompt", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.AttachDispatchToClaimLease("bead-lease", dispatchID); err != nil {
+	if err := s.AttachDispatchToClaimLease("morsel-lease", dispatchID); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.HeartbeatClaimLease("bead-lease"); err != nil {
+	if err := s.HeartbeatClaimLease("morsel-lease"); err != nil {
 		t.Fatal(err)
 	}
 
-	lease, err = s.GetClaimLease("bead-lease")
+	lease, err = s.GetClaimLease("morsel-lease")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -790,7 +790,7 @@ func TestClaimLeaseLifecycle(t *testing.T) {
 		t.Fatalf("expected dispatch_id=%d, got %d", dispatchID, lease.DispatchID)
 	}
 
-	_, err = s.db.Exec(`UPDATE claim_leases SET heartbeat_at = datetime('now', '-10 minutes') WHERE bead_id = ?`, "bead-lease")
+	_, err = s.db.Exec(`UPDATE claim_leases SET heartbeat_at = datetime('now', '-10 minutes') WHERE morsel_id = ?`, "morsel-lease")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -802,14 +802,14 @@ func TestClaimLeaseLifecycle(t *testing.T) {
 	if len(expired) != 1 {
 		t.Fatalf("expected 1 expired lease, got %d", len(expired))
 	}
-	if expired[0].BeadID != "bead-lease" {
-		t.Fatalf("expected expired lease for bead-lease, got %s", expired[0].BeadID)
+	if expired[0].MorselID != "morsel-lease" {
+		t.Fatalf("expected expired lease for morsel-lease, got %s", expired[0].MorselID)
 	}
 
-	if err := s.DeleteClaimLease("bead-lease"); err != nil {
+	if err := s.DeleteClaimLease("morsel-lease"); err != nil {
 		t.Fatal(err)
 	}
-	lease, err = s.GetClaimLease("bead-lease")
+	lease, err = s.GetClaimLease("morsel-lease")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -821,7 +821,7 @@ func TestClaimLeaseLifecycle(t *testing.T) {
 func TestCountRecentDispatchesByFailureCategory(t *testing.T) {
 	s := tempStore(t)
 
-	id1, err := s.RecordDispatch("bead-gw-1", "proj", "agent-1", "cerebras", "fast", 100, "", "prompt", "", "", "")
+	id1, err := s.RecordDispatch("morsel-gw-1", "proj", "agent-1", "cerebras", "fast", 100, "", "prompt", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -832,7 +832,7 @@ func TestCountRecentDispatchesByFailureCategory(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	id2, err := s.RecordDispatch("bead-gw-2", "proj", "agent-1", "cerebras", "fast", 101, "", "prompt", "", "", "")
+	id2, err := s.RecordDispatch("morsel-gw-2", "proj", "agent-1", "cerebras", "fast", 101, "", "prompt", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -847,7 +847,7 @@ func TestCountRecentDispatchesByFailureCategory(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	id3, err := s.RecordDispatch("bead-other", "proj", "agent-1", "cerebras", "fast", 102, "", "prompt", "", "", "")
+	id3, err := s.RecordDispatch("morsel-other", "proj", "agent-1", "cerebras", "fast", 102, "", "prompt", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -869,11 +869,11 @@ func TestCountRecentDispatchesByFailureCategory(t *testing.T) {
 
 func TestHasRecentConsecutiveFailures_IncludesFailureLikeStatuses(t *testing.T) {
 	s := tempStore(t)
-	beadID := "bead-failure-like"
+	morselID := "morsel-failure-like"
 
 	statuses := []string{"failed", "failed", "cancelled"}
 	for i, status := range statuses {
-		id, err := s.RecordDispatch(beadID, "proj", "agent-1", "cerebras", "fast", 100+i, "", "prompt", "", "", "")
+		id, err := s.RecordDispatch(morselID, "proj", "agent-1", "cerebras", "fast", 100+i, "", "prompt", "", "", "")
 		if err != nil {
 			t.Fatalf("record dispatch %d: %v", i, err)
 		}
@@ -888,7 +888,7 @@ func TestHasRecentConsecutiveFailures_IncludesFailureLikeStatuses(t *testing.T) 
 		}
 	}
 
-	got, err := s.HasRecentConsecutiveFailures(beadID, 3, time.Hour)
+	got, err := s.HasRecentConsecutiveFailures(morselID, 3, time.Hour)
 	if err != nil {
 		t.Fatalf("HasRecentConsecutiveFailures returned error: %v", err)
 	}
@@ -899,11 +899,11 @@ func TestHasRecentConsecutiveFailures_IncludesFailureLikeStatuses(t *testing.T) 
 
 func TestHasRecentConsecutiveFailures_CompletedBreaksStreak(t *testing.T) {
 	s := tempStore(t)
-	beadID := "bead-streak-break"
+	morselID := "morsel-streak-break"
 
 	statuses := []string{"failed", "completed", "failed"}
 	for i, status := range statuses {
-		id, err := s.RecordDispatch(beadID, "proj", "agent-1", "cerebras", "fast", 200+i, "", "prompt", "", "", "")
+		id, err := s.RecordDispatch(morselID, "proj", "agent-1", "cerebras", "fast", 200+i, "", "prompt", "", "", "")
 		if err != nil {
 			t.Fatalf("record dispatch %d: %v", i, err)
 		}
@@ -918,7 +918,7 @@ func TestHasRecentConsecutiveFailures_CompletedBreaksStreak(t *testing.T) {
 		}
 	}
 
-	got, err := s.HasRecentConsecutiveFailures(beadID, 3, time.Hour)
+	got, err := s.HasRecentConsecutiveFailures(morselID, 3, time.Hour)
 	if err != nil {
 		t.Fatalf("HasRecentConsecutiveFailures returned error: %v", err)
 	}
@@ -931,7 +931,7 @@ func TestRecordDispatchCost(t *testing.T) {
 	s := tempStore(t)
 
 	// Create a dispatch
-	dispatchID, err := s.RecordDispatch("bead-1", "proj", "agent-1", "claude", "premium", 100, "", "test prompt", "", "", "")
+	dispatchID, err := s.RecordDispatch("morsel-1", "proj", "agent-1", "claude", "premium", 100, "", "test prompt", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -973,7 +973,7 @@ func TestGetDispatchCost(t *testing.T) {
 	s := tempStore(t)
 
 	// Create a dispatch
-	dispatchID, err := s.RecordDispatch("test-bead", "test-proj", "agent1", "claude-sonnet", "premium", 200, "", "test prompt", "", "", "")
+	dispatchID, err := s.RecordDispatch("test-morsel", "test-proj", "agent1", "claude-sonnet", "premium", 200, "", "test prompt", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1037,8 +1037,8 @@ func TestGetTotalCost(t *testing.T) {
 	}
 
 	for i, d := range dispatches {
-		beadID := fmt.Sprintf("bead-%d", i)
-		dispatchID, err := s.RecordDispatch(beadID, d.project, "agent-1", "claude", "premium", 100+i, "", "prompt", "", "", "")
+		morselID := fmt.Sprintf("morsel-%d", i)
+		dispatchID, err := s.RecordDispatch(morselID, d.project, "agent-1", "claude", "premium", 100+i, "", "prompt", "", "", "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1094,15 +1094,15 @@ func TestGetTotalCostSince(t *testing.T) {
 
 	now := time.Now()
 
-	dispatchID1, err := s.RecordDispatch("bead-1", "proj-a", "agent-1", "claude", "premium", 100, "", "prompt", "", "", "")
+	dispatchID1, err := s.RecordDispatch("morsel-1", "proj-a", "agent-1", "claude", "premium", 100, "", "prompt", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	dispatchID2, err := s.RecordDispatch("bead-2", "proj-a", "agent-1", "claude", "premium", 100, "", "prompt", "", "", "")
+	dispatchID2, err := s.RecordDispatch("morsel-2", "proj-a", "agent-1", "claude", "premium", 100, "", "prompt", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	dispatchID3, err := s.RecordDispatch("bead-3", "proj-a", "agent-1", "claude", "premium", 100, "", "prompt", "", "", "")
+	dispatchID3, err := s.RecordDispatch("morsel-3", "proj-a", "agent-1", "claude", "premium", 100, "", "prompt", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1164,15 +1164,15 @@ func TestCountDispatchesSince(t *testing.T) {
 	s := tempStore(t)
 	now := time.Now()
 
-	dispatchID1, err := s.RecordDispatch("bead-1", "proj-a", "agent-1", "claude", "premium", 100, "", "prompt", "", "", "")
+	dispatchID1, err := s.RecordDispatch("morsel-1", "proj-a", "agent-1", "claude", "premium", 100, "", "prompt", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	dispatchID2, err := s.RecordDispatch("bead-2", "proj-a", "agent-1", "claude", "premium", 101, "", "prompt", "", "", "")
+	dispatchID2, err := s.RecordDispatch("morsel-2", "proj-a", "agent-1", "claude", "premium", 101, "", "prompt", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	dispatchID3, err := s.RecordDispatch("bead-3", "proj-a", "agent-1", "claude", "premium", 102, "", "prompt", "", "", "")
+	dispatchID3, err := s.RecordDispatch("morsel-3", "proj-a", "agent-1", "claude", "premium", 102, "", "prompt", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1220,17 +1220,17 @@ func TestInterruptRunningDispatches(t *testing.T) {
 	s := tempStore(t)
 
 	// Create some running dispatches
-	id1, err := s.RecordDispatch("bead-1", "proj", "agent-1", "cerebras", "fast", 100, "", "prompt1", "", "", "")
+	id1, err := s.RecordDispatch("morsel-1", "proj", "agent-1", "cerebras", "fast", 100, "", "prompt1", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	id2, err := s.RecordDispatch("bead-2", "proj", "agent-2", "cerebras", "fast", 101, "", "prompt2", "", "", "")
+	id2, err := s.RecordDispatch("morsel-2", "proj", "agent-2", "cerebras", "fast", 101, "", "prompt2", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	_, err = s.RecordDispatch("bead-3", "proj", "agent-3", "cerebras", "fast", 102, "", "prompt3", "", "", "")
+	_, err = s.RecordDispatch("morsel-3", "proj", "agent-3", "cerebras", "fast", 102, "", "prompt3", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1264,7 +1264,7 @@ func TestInterruptRunningDispatches(t *testing.T) {
 	// Verify the interrupted dispatches have status and completed_at set correctly
 	var d Dispatch
 	err = s.db.QueryRow(`SELECT `+dispatchCols+` FROM dispatches WHERE id = ?`, id2).Scan(
-		&d.ID, &d.BeadID, &d.Project, &d.AgentID, &d.Provider, &d.Tier, &d.PID, &d.SessionName,
+		&d.ID, &d.MorselID, &d.Project, &d.AgentID, &d.Provider, &d.Tier, &d.PID, &d.SessionName,
 		&d.Prompt, &d.DispatchedAt, &d.CompletedAt, &d.NextRetryAt, &d.Status, &d.Stage, &d.Labels, &d.PRURL, &d.PRNumber, &d.ExitCode, &d.DurationS, &d.Retries, &d.EscalatedFromTier,
 		&d.FailureCategory, &d.FailureSummary, &d.LogPath, &d.Branch, &d.Backend,
 		&d.InputTokens, &d.OutputTokens, &d.CostUSD,
@@ -1283,7 +1283,7 @@ func TestInterruptRunningDispatches(t *testing.T) {
 func TestUpdateFailureDiagnosis(t *testing.T) {
 	s := tempStore(t)
 
-	id, err := s.RecordDispatch("bead-diag", "proj", "agent1", "provider1", "fast", 100, "", "prompt", "", "", "")
+	id, err := s.RecordDispatch("morsel-diag", "proj", "agent1", "provider1", "fast", 100, "", "prompt", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1298,8 +1298,8 @@ func TestUpdateFailureDiagnosis(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Verify via GetDispatchesByBead
-	dispatches, err := s.GetDispatchesByBead("bead-diag")
+	// Verify via GetDispatchesByMorsel
+	dispatches, err := s.GetDispatchesByMorsel("morsel-diag")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1319,7 +1319,7 @@ func TestNewColumnsStorage(t *testing.T) {
 
 	// Record a dispatch with all new fields
 	id, err := s.RecordDispatch(
-		"test-bead",
+		"test-morsel",
 		"test-project",
 		"test-agent",
 		"test-provider",
@@ -1336,9 +1336,9 @@ func TestNewColumnsStorage(t *testing.T) {
 	}
 
 	// Retrieve the dispatch
-	dispatches, err := s.GetDispatchesByBead("test-bead")
+	dispatches, err := s.GetDispatchesByMorsel("test-morsel")
 	if err != nil {
-		t.Fatalf("GetDispatchesByBead failed: %v", err)
+		t.Fatalf("GetDispatchesByMorsel failed: %v", err)
 	}
 
 	if len(dispatches) != 1 {
@@ -1365,7 +1365,7 @@ func TestNewColumnsStorage(t *testing.T) {
 func TestUpdateDispatchLabelsPersistsNormalizedCSV(t *testing.T) {
 	s := tempStore(t)
 
-	id, err := s.RecordDispatch("bead-labels", "proj", "agent-1", "cerebras", "fast", 100, "", "prompt", "", "", "")
+	id, err := s.RecordDispatch("morsel-labels", "proj", "agent-1", "cerebras", "fast", 100, "", "prompt", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1398,7 +1398,7 @@ func TestUpdateDispatchLabelsPersistsNormalizedCSV(t *testing.T) {
 func TestGetProviderLabelStats(t *testing.T) {
 	s := tempStore(t)
 
-	id1, err := s.RecordDispatch("bead-1", "proj", "agent-1", "openai", "fast", 100, "", "prompt", "", "", "")
+	id1, err := s.RecordDispatch("morsel-1", "proj", "agent-1", "openai", "fast", 100, "", "prompt", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1409,7 +1409,7 @@ func TestGetProviderLabelStats(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	id2, err := s.RecordDispatch("bead-2", "proj", "agent-1", "openai", "fast", 101, "", "prompt", "", "", "")
+	id2, err := s.RecordDispatch("morsel-2", "proj", "agent-1", "openai", "fast", 101, "", "prompt", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1420,7 +1420,7 @@ func TestGetProviderLabelStats(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	id3, err := s.RecordDispatch("bead-3", "proj", "agent-1", "anthropic", "balanced", 102, "", "prompt", "", "", "")
+	id3, err := s.RecordDispatch("morsel-3", "proj", "agent-1", "anthropic", "balanced", 102, "", "prompt", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1470,7 +1470,7 @@ func TestQualityScorePersistenceAndAverages(t *testing.T) {
 	pass := true
 	fail := false
 
-	d1, err := s.RecordDispatch("bead-quality-1", "proj", "agent-1", "openai", "fast", 100, "", "prompt", "", "", "")
+	d1, err := s.RecordDispatch("morsel-quality-1", "proj", "agent-1", "openai", "fast", 100, "", "prompt", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1480,7 +1480,7 @@ func TestQualityScorePersistenceAndAverages(t *testing.T) {
 		Role:         "coder",
 		Overall:      0.8,
 		TestsPassed:  &pass,
-		BeadClosed:   true,
+		MorselClosed:   true,
 		CommitMade:   true,
 		FilesChanged: 3,
 		LinesChanged: 10,
@@ -1489,7 +1489,7 @@ func TestQualityScorePersistenceAndAverages(t *testing.T) {
 		t.Fatalf("failed to upsert quality score 1: %v", err)
 	}
 
-	d2, err := s.RecordDispatch("bead-quality-2", "proj", "agent-1", "openai", "fast", 101, "", "prompt", "", "", "")
+	d2, err := s.RecordDispatch("morsel-quality-2", "proj", "agent-1", "openai", "fast", 101, "", "prompt", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1499,7 +1499,7 @@ func TestQualityScorePersistenceAndAverages(t *testing.T) {
 		Role:         "coder",
 		Overall:      0.2,
 		TestsPassed:  &fail,
-		BeadClosed:   false,
+		MorselClosed:   false,
 		CommitMade:   false,
 		FilesChanged: 1,
 		LinesChanged: -5,
@@ -1508,7 +1508,7 @@ func TestQualityScorePersistenceAndAverages(t *testing.T) {
 		t.Fatalf("failed to upsert quality score 2: %v", err)
 	}
 
-	d3, err := s.RecordDispatch("bead-quality-3", "proj", "agent-1", "anthropic", "fast", 102, "", "prompt", "", "", "")
+	d3, err := s.RecordDispatch("morsel-quality-3", "proj", "agent-1", "anthropic", "fast", 102, "", "prompt", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1517,7 +1517,7 @@ func TestQualityScorePersistenceAndAverages(t *testing.T) {
 		Provider:    "anthropic",
 		Role:        "reviewer",
 		Overall:     0.9,
-		BeadClosed:  true,
+		MorselClosed:  true,
 		CommitMade:  true,
 		Duration:    22,
 		TestsPassed: nil,
@@ -1555,7 +1555,7 @@ func TestProviderStatsExcludeNonTerminalDispatches(t *testing.T) {
 	s := tempStore(t)
 
 	// Terminal completed dispatch.
-	id1, err := s.RecordDispatch("bead-term-ok", "proj", "agent-1", "openai", "fast", 100, "", "prompt", "", "", "")
+	id1, err := s.RecordDispatch("morsel-term-ok", "proj", "agent-1", "openai", "fast", 100, "", "prompt", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1567,7 +1567,7 @@ func TestProviderStatsExcludeNonTerminalDispatches(t *testing.T) {
 	}
 
 	// Terminal failed dispatch.
-	id2, err := s.RecordDispatch("bead-term-fail", "proj", "agent-1", "openai", "fast", 101, "", "prompt", "", "", "")
+	id2, err := s.RecordDispatch("morsel-term-fail", "proj", "agent-1", "openai", "fast", 101, "", "prompt", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1579,7 +1579,7 @@ func TestProviderStatsExcludeNonTerminalDispatches(t *testing.T) {
 	}
 
 	// Running dispatch should be excluded.
-	id3, err := s.RecordDispatch("bead-running", "proj", "agent-1", "openai", "fast", 102, "", "prompt", "", "", "")
+	id3, err := s.RecordDispatch("morsel-running", "proj", "agent-1", "openai", "fast", 102, "", "prompt", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1588,7 +1588,7 @@ func TestProviderStatsExcludeNonTerminalDispatches(t *testing.T) {
 	}
 
 	// Pending retry (in-flight) should be excluded.
-	id4, err := s.RecordDispatch("bead-pending-retry", "proj", "agent-1", "openai", "fast", 103, "", "prompt", "", "", "")
+	id4, err := s.RecordDispatch("morsel-pending-retry", "proj", "agent-1", "openai", "fast", 103, "", "prompt", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1633,22 +1633,22 @@ func TestProviderStatsExcludeNonTerminalDispatches(t *testing.T) {
 	}
 }
 
-func TestBeadStagesCrossProjectCollisions(t *testing.T) {
+func TestMorselStagesCrossProjectCollisions(t *testing.T) {
 	s := tempStore(t)
 
-	// Test that identical bead IDs across projects maintain separate state
-	stage1 := &BeadStage{
+	// Test that identical morsel IDs across projects maintain separate state
+	stage1 := &MorselStage{
 		Project:      "project-a",
-		BeadID:       "same-bead-id",
+		MorselID:       "same-morsel-id",
 		Workflow:     "dev",
 		CurrentStage: "coding",
 		StageIndex:   1,
 		TotalStages:  3,
 	}
 
-	stage2 := &BeadStage{
+	stage2 := &MorselStage{
 		Project:      "project-b",
-		BeadID:       "same-bead-id", // Same bead ID, different project
+		MorselID:       "same-morsel-id", // Same morsel ID, different project
 		Workflow:     "content",
 		CurrentStage: "review",
 		StageIndex:   2,
@@ -1656,15 +1656,15 @@ func TestBeadStagesCrossProjectCollisions(t *testing.T) {
 	}
 
 	// Insert both stages
-	if err := s.UpsertBeadStage(stage1); err != nil {
+	if err := s.UpsertMorselStage(stage1); err != nil {
 		t.Fatalf("failed to insert stage1: %v", err)
 	}
-	if err := s.UpsertBeadStage(stage2); err != nil {
+	if err := s.UpsertMorselStage(stage2); err != nil {
 		t.Fatalf("failed to insert stage2: %v", err)
 	}
 
 	// Retrieve project A stage and verify it wasn't overwritten
-	retrievedA, err := s.GetBeadStage("project-a", "same-bead-id")
+	retrievedA, err := s.GetMorselStage("project-a", "same-morsel-id")
 	if err != nil {
 		t.Fatalf("failed to get project-a stage: %v", err)
 	}
@@ -1676,7 +1676,7 @@ func TestBeadStagesCrossProjectCollisions(t *testing.T) {
 	}
 
 	// Retrieve project B stage and verify it's separate
-	retrievedB, err := s.GetBeadStage("project-b", "same-bead-id")
+	retrievedB, err := s.GetMorselStage("project-b", "same-morsel-id")
 	if err != nil {
 		t.Fatalf("failed to get project-b stage: %v", err)
 	}
@@ -1688,12 +1688,12 @@ func TestBeadStagesCrossProjectCollisions(t *testing.T) {
 	}
 }
 
-func TestBeadStagesUpsertCompositeKey(t *testing.T) {
+func TestMorselStagesUpsertCompositeKey(t *testing.T) {
 	s := tempStore(t)
 
-	stage := &BeadStage{
+	stage := &MorselStage{
 		Project:      "test-project",
-		BeadID:       "test-bead",
+		MorselID:       "test-morsel",
 		Workflow:     "dev",
 		CurrentStage: "planning",
 		StageIndex:   0,
@@ -1701,19 +1701,19 @@ func TestBeadStagesUpsertCompositeKey(t *testing.T) {
 	}
 
 	// First upsert - should insert
-	if err := s.UpsertBeadStage(stage); err != nil {
+	if err := s.UpsertMorselStage(stage); err != nil {
 		t.Fatalf("first upsert failed: %v", err)
 	}
 
-	// Second upsert with same project+bead - should update
+	// Second upsert with same project+morsel - should update
 	stage.CurrentStage = "coding"
 	stage.StageIndex = 1
-	if err := s.UpsertBeadStage(stage); err != nil {
+	if err := s.UpsertMorselStage(stage); err != nil {
 		t.Fatalf("second upsert failed: %v", err)
 	}
 
 	// Verify update worked
-	retrieved, err := s.GetBeadStage("test-project", "test-bead")
+	retrieved, err := s.GetMorselStage("test-project", "test-morsel")
 	if err != nil {
 		t.Fatalf("failed to retrieve stage: %v", err)
 	}
@@ -1725,25 +1725,25 @@ func TestBeadStagesUpsertCompositeKey(t *testing.T) {
 	}
 }
 
-func TestBeadStagesListByProject(t *testing.T) {
+func TestMorselStagesListByProject(t *testing.T) {
 	s := tempStore(t)
 
 	// Add stages for multiple projects
-	stages := []*BeadStage{
-		{Project: "proj-a", BeadID: "bead-1", Workflow: "dev", CurrentStage: "coding", StageIndex: 1, TotalStages: 3},
-		{Project: "proj-a", BeadID: "bead-2", Workflow: "dev", CurrentStage: "review", StageIndex: 2, TotalStages: 3},
-		{Project: "proj-b", BeadID: "bead-1", Workflow: "content", CurrentStage: "draft", StageIndex: 0, TotalStages: 2},
-		{Project: "proj-b", BeadID: "bead-3", Workflow: "content", CurrentStage: "publish", StageIndex: 1, TotalStages: 2},
+	stages := []*MorselStage{
+		{Project: "proj-a", MorselID: "morsel-1", Workflow: "dev", CurrentStage: "coding", StageIndex: 1, TotalStages: 3},
+		{Project: "proj-a", MorselID: "morsel-2", Workflow: "dev", CurrentStage: "review", StageIndex: 2, TotalStages: 3},
+		{Project: "proj-b", MorselID: "morsel-1", Workflow: "content", CurrentStage: "draft", StageIndex: 0, TotalStages: 2},
+		{Project: "proj-b", MorselID: "morsel-3", Workflow: "content", CurrentStage: "publish", StageIndex: 1, TotalStages: 2},
 	}
 
 	for _, stage := range stages {
-		if err := s.UpsertBeadStage(stage); err != nil {
+		if err := s.UpsertMorselStage(stage); err != nil {
 			t.Fatalf("failed to insert stage: %v", err)
 		}
 	}
 
 	// List stages for project A
-	projAStages, err := s.ListBeadStagesForProject("proj-a")
+	projAStages, err := s.ListMorselStagesForProject("proj-a")
 	if err != nil {
 		t.Fatalf("failed to list proj-a stages: %v", err)
 	}
@@ -1752,7 +1752,7 @@ func TestBeadStagesListByProject(t *testing.T) {
 	}
 
 	// List stages for project B
-	projBStages, err := s.ListBeadStagesForProject("proj-b")
+	projBStages, err := s.ListMorselStagesForProject("proj-b")
 	if err != nil {
 		t.Fatalf("failed to list proj-b stages: %v", err)
 	}
@@ -1773,38 +1773,38 @@ func TestBeadStagesListByProject(t *testing.T) {
 	}
 }
 
-func TestBeadStagesAmbiguousLookup(t *testing.T) {
+func TestMorselStagesAmbiguousLookup(t *testing.T) {
 	s := tempStore(t)
 
-	// Add same bead ID to multiple projects
-	stage1 := &BeadStage{
-		Project: "proj-1", BeadID: "ambiguous-bead", Workflow: "dev",
+	// Add same morsel ID to multiple projects
+	stage1 := &MorselStage{
+		Project: "proj-1", MorselID: "ambiguous-morsel", Workflow: "dev",
 		CurrentStage: "coding", StageIndex: 1, TotalStages: 3,
 	}
-	stage2 := &BeadStage{
-		Project: "proj-2", BeadID: "ambiguous-bead", Workflow: "content",
+	stage2 := &MorselStage{
+		Project: "proj-2", MorselID: "ambiguous-morsel", Workflow: "content",
 		CurrentStage: "review", StageIndex: 2, TotalStages: 4,
 	}
 
-	if err := s.UpsertBeadStage(stage1); err != nil {
+	if err := s.UpsertMorselStage(stage1); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.UpsertBeadStage(stage2); err != nil {
+	if err := s.UpsertMorselStage(stage2); err != nil {
 		t.Fatal(err)
 	}
 
-	// GetBeadStagesByBeadIDOnly should return error for ambiguous bead_id
-	_, err := s.GetBeadStagesByBeadIDOnly("ambiguous-bead")
+	// GetMorselStagesByMorselIDOnly should return error for ambiguous morsel_id
+	_, err := s.GetMorselStagesByMorselIDOnly("ambiguous-morsel")
 	if err == nil {
-		t.Fatal("GetBeadStagesByBeadIDOnly should fail for ambiguous bead_id")
+		t.Fatal("GetMorselStagesByMorselIDOnly should fail for ambiguous morsel_id")
 	}
-	expectedErrMsg := "ambiguous bead_id=ambiguous-bead found in multiple projects"
+	expectedErrMsg := "ambiguous morsel_id=ambiguous-morsel found in multiple projects"
 	if !strings.Contains(err.Error(), expectedErrMsg) {
 		t.Errorf("expected ambiguity error, got: %v", err)
 	}
 
 	// Single project lookup should work fine
-	single, err := s.GetBeadStage("proj-1", "ambiguous-bead")
+	single, err := s.GetMorselStage("proj-1", "ambiguous-morsel")
 	if err != nil {
 		t.Fatalf("single project lookup failed: %v", err)
 	}
@@ -1859,10 +1859,10 @@ func TestSprintBoundariesRejectInvalidInput(t *testing.T) {
 	}
 }
 
-func seedDispatchAtTime(t *testing.T, s *Store, beadID, projectName, status string, dispatchedAt time.Time, durationS float64) {
+func seedDispatchAtTime(t *testing.T, s *Store, morselID, projectName, status string, dispatchedAt time.Time, durationS float64) {
 	t.Helper()
 
-	id, err := s.RecordDispatch(beadID, projectName, "agent-1", "cerebras", "fast", 123, "", "prompt", "", "", "")
+	id, err := s.RecordDispatch(morselID, projectName, "agent-1", "cerebras", "fast", 123, "", "prompt", "", "", "")
 	if err != nil {
 		t.Fatalf("RecordDispatch failed: %v", err)
 	}
@@ -1885,13 +1885,13 @@ func TestStoreTokenUsage(t *testing.T) {
 	s := tempStore(t)
 
 	// Create a dispatch to reference
-	dispatchID, err := s.RecordDispatch("bead-tok-1", "proj-a", "claude", "anthropic", "premium", 0, "", "test", "", "", "temporal")
+	dispatchID, err := s.RecordDispatch("morsel-tok-1", "proj-a", "claude", "anthropic", "premium", 0, "", "test", "", "", "temporal")
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Store per-activity token usage
-	err = s.StoreTokenUsage(dispatchID, "bead-tok-1", "proj-a", "execute", "claude", TokenUsage{
+	err = s.StoreTokenUsage(dispatchID, "morsel-tok-1", "proj-a", "execute", "claude", TokenUsage{
 		InputTokens:         1500,
 		OutputTokens:        800,
 		CacheReadTokens:     200,
@@ -1901,7 +1901,7 @@ func TestStoreTokenUsage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = s.StoreTokenUsage(dispatchID, "bead-tok-1", "proj-a", "review", "codex", TokenUsage{
+	err = s.StoreTokenUsage(dispatchID, "morsel-tok-1", "proj-a", "review", "codex", TokenUsage{
 		InputTokens:         500,
 		OutputTokens:        300,
 		CacheReadTokens:     0,
@@ -1953,27 +1953,27 @@ func TestStoreTokenUsage(t *testing.T) {
 func TestGetTokenUsageSummary(t *testing.T) {
 	s := tempStore(t)
 
-	dispatchID, err := s.RecordDispatch("bead-sum-1", "proj-a", "claude", "anthropic", "premium", 0, "", "test", "", "", "temporal")
+	dispatchID, err := s.RecordDispatch("morsel-sum-1", "proj-a", "claude", "anthropic", "premium", 0, "", "test", "", "", "temporal")
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Store several records
-	s.StoreTokenUsage(dispatchID, "bead-sum-1", "proj-a", "execute", "claude", TokenUsage{
+	s.StoreTokenUsage(dispatchID, "morsel-sum-1", "proj-a", "execute", "claude", TokenUsage{
 		InputTokens:         1000,
 		OutputTokens:        500,
 		CacheReadTokens:     100,
 		CacheCreationTokens: 50,
 		CostUSD:             0.03,
 	})
-	s.StoreTokenUsage(dispatchID, "bead-sum-1", "proj-a", "review", "codex", TokenUsage{
+	s.StoreTokenUsage(dispatchID, "morsel-sum-1", "proj-a", "review", "codex", TokenUsage{
 		InputTokens:         800,
 		OutputTokens:        400,
 		CacheReadTokens:     0,
 		CacheCreationTokens: 0,
 		CostUSD:             0.02,
 	})
-	s.StoreTokenUsage(dispatchID, "bead-sum-1", "proj-a", "execute", "claude", TokenUsage{
+	s.StoreTokenUsage(dispatchID, "morsel-sum-1", "proj-a", "execute", "claude", TokenUsage{
 		InputTokens:         600,
 		OutputTokens:        300,
 		CacheReadTokens:     50,

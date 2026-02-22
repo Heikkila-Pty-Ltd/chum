@@ -26,7 +26,7 @@ func setupTestServer(t *testing.T) *Server {
 
 	cfg := &config.Config{
 		Projects: map[string]config.Project{
-			"test-proj": {Enabled: true, BeadsDir: "/tmp/beads", Workspace: "/tmp/ws", Priority: 1},
+			"test-proj": {Enabled: true, MorselsDir: "/tmp/morsels", Workspace: "/tmp/ws", Priority: 1},
 		},
 		API: config.API{Bind: "127.0.0.1:0"},
 		General: config.General{
@@ -136,7 +136,7 @@ func TestHandleHealth(t *testing.T) {
 func TestHandleMetrics(t *testing.T) {
 	srv := setupTestServer(t)
 
-	_, err := srv.store.RecordDispatch("metric-bead", "test-proj", "test-proj-coder", "claude-sonnet-4", "balanced", 777, "metric-sess", "prompt", "", "", "")
+	_, err := srv.store.RecordDispatch("metric-morsel", "test-proj", "test-proj-coder", "claude-sonnet-4", "balanced", 777, "metric-sess", "prompt", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,7 +180,7 @@ func TestHandleSafetyBlocks(t *testing.T) {
 	if err := srv.store.SetBlock("proj-a", "churn_block", time.Now().Add(5*time.Minute), "high failure rate"); err != nil {
 		t.Fatal(err)
 	}
-	if err := srv.store.SetBlock("bead-xyz", "quarantine", time.Now().Add(10*time.Minute), "consecutive failures"); err != nil {
+	if err := srv.store.SetBlock("morsel-xyz", "quarantine", time.Now().Add(10*time.Minute), "consecutive failures"); err != nil {
 		t.Fatal(err)
 	}
 	if err := srv.store.SetBlockWithMetadata("system", "circuit_breaker", time.Now().Add(15*time.Minute), "gateway tripped", map[string]interface{}{"failures": 5}); err != nil {
@@ -240,7 +240,7 @@ func TestHandleMetricsSafetyBlocks(t *testing.T) {
 	if err := srv.store.SetBlock("proj-a", "churn_block", time.Now().Add(5*time.Minute), "high failure rate"); err != nil {
 		t.Fatal(err)
 	}
-	if err := srv.store.SetBlock("bead-xyz", "quarantine", time.Now().Add(10*time.Minute), "consecutive failures"); err != nil {
+	if err := srv.store.SetBlock("morsel-xyz", "quarantine", time.Now().Add(10*time.Minute), "consecutive failures"); err != nil {
 		t.Fatal(err)
 	}
 

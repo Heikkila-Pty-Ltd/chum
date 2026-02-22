@@ -100,7 +100,7 @@ Return empty array [] if no mutations are needed.`,
 		return &GroomResult{}, nil
 	}
 
-	var mutations []BeadMutation
+	var mutations []MorselMutation
 	if err := json.Unmarshal([]byte(jsonStr), &mutations); err != nil {
 		logger.Warn(RemoraPrefix+" Failed to parse mutations JSON", "error", err)
 		return &GroomResult{}, nil
@@ -131,7 +131,7 @@ Return empty array [] if no mutations are needed.`,
 // ApplyStrategicMutationsActivity applies pre-normalized strategic mutations
 // directly without re-invoking the LLM. This is the correct path for mutations
 // produced by StrategicAnalysisActivity + normalizeStrategicMutations.
-func (a *Activities) ApplyStrategicMutationsActivity(ctx context.Context, project string, mutations []BeadMutation) (*GroomResult, error) {
+func (a *Activities) ApplyStrategicMutationsActivity(ctx context.Context, project string, mutations []MorselMutation) (*GroomResult, error) {
 	logger := activity.GetLogger(ctx)
 	logger.Info(RemoraPrefix+" Applying strategic mutations", "count", len(mutations))
 
@@ -152,8 +152,8 @@ func (a *Activities) ApplyStrategicMutationsActivity(ctx context.Context, projec
 	return result, nil
 }
 
-// applyMutation executes a single BeadMutation against the DAG.
-func (a *Activities) applyMutation(ctx context.Context, project string, m BeadMutation) error {
+// applyMutation executes a single MorselMutation against the DAG.
+func (a *Activities) applyMutation(ctx context.Context, project string, m MorselMutation) error {
 	switch m.Action {
 	case "update_priority":
 		if m.Priority == nil {
@@ -213,7 +213,7 @@ func (a *Activities) applyMutation(ctx context.Context, project string, m BeadMu
 	}
 }
 
-func isCreateMutationActionable(m BeadMutation) bool {
+func isCreateMutationActionable(m MorselMutation) bool {
 	return strings.TrimSpace(m.Title) != "" &&
 		strings.TrimSpace(m.Description) != "" &&
 		strings.TrimSpace(m.Acceptance) != "" &&
@@ -221,7 +221,7 @@ func isCreateMutationActionable(m BeadMutation) bool {
 		m.EstimateMinutes > 0
 }
 
-func isStrategicMutation(m BeadMutation) bool {
+func isStrategicMutation(m MorselMutation) bool {
 	return strings.EqualFold(strings.TrimSpace(m.StrategicSource), StrategicMutationSource)
 }
 
@@ -337,8 +337,8 @@ func firstLine(s string) string {
 	return s
 }
 
-// GetBeadStateSummaryActivity returns a compressed text summary of the open backlog.
-func (a *Activities) GetBeadStateSummaryActivity(ctx context.Context, req StrategicGroomRequest) (string, error) {
+// GetMorselStateSummaryActivity returns a compressed text summary of the open backlog.
+func (a *Activities) GetMorselStateSummaryActivity(ctx context.Context, req StrategicGroomRequest) (string, error) {
 	allTasks, err := a.DAG.ListTasks(ctx, req.Project)
 	if err != nil {
 		return "", fmt.Errorf("listing tasks: %w", err)
@@ -389,7 +389,7 @@ func (a *Activities) StrategicAnalysisActivity(ctx context.Context, req Strategi
 		} else if len(lessons) > 0 {
 			var lb strings.Builder
 			for i := range lessons {
-				lb.WriteString(fmt.Sprintf("- [%s] %s (task: %s)\n", lessons[i].Category, lessons[i].Summary, lessons[i].BeadID))
+				lb.WriteString(fmt.Sprintf("- [%s] %s (task: %s)\n", lessons[i].Category, lessons[i].Summary, lessons[i].MorselID))
 			}
 			lessonsContext = "RECENT LESSONS:\n" + lb.String()
 		}
@@ -504,7 +504,7 @@ func (a *Activities) GenerateMorningBriefingActivity(ctx context.Context, req St
 		}
 		for i := range stored {
 			recentLessons = append(recentLessons, Lesson{
-				TaskID:   stored[i].BeadID,
+				TaskID:   stored[i].MorselID,
 				Category: stored[i].Category,
 				Summary:  stored[i].Summary,
 			})
@@ -528,11 +528,11 @@ func (a *Activities) GenerateMorningBriefingActivity(ctx context.Context, req St
 	urgencyMarker := map[string]string{"critical": " [!!!]", "high": " [!!]", "medium": " [!]", "low": ""}
 	for i, p := range analysis.Priorities {
 		marker := urgencyMarker[p.Urgency]
-		beadRef := ""
+		morselRef := ""
 		if p.TaskID != "" {
-			beadRef = fmt.Sprintf(" (`%s`)", p.TaskID)
+			morselRef = fmt.Sprintf(" (`%s`)", p.TaskID)
 		}
-		md.WriteString(fmt.Sprintf("%d. **%s**%s%s\n   %s\n\n", i+1, p.Title, beadRef, marker, p.Rationale))
+		md.WriteString(fmt.Sprintf("%d. **%s**%s%s\n   %s\n\n", i+1, p.Title, morselRef, marker, p.Rationale))
 	}
 
 	if len(analysis.Risks) > 0 {

@@ -193,12 +193,12 @@ func TestRecordFindingUsesDefaults(t *testing.T) {
 	}
 
 	var scannedRunID int64
-	var filePath, evidence, beadID, status string
+	var filePath, evidence, morselID, status string
 	if err := s.DB().QueryRow(`
-		SELECT run_id, file_path, evidence, bead_id, status
+		SELECT run_id, file_path, evidence, morsel_id, status
 		FROM stingray_findings
 		WHERE id = ?
-	`, findingID).Scan(&scannedRunID, &filePath, &evidence, &beadID, &status); err != nil {
+	`, findingID).Scan(&scannedRunID, &filePath, &evidence, &morselID, &status); err != nil {
 		t.Fatalf("query finding failed: %v", err)
 	}
 
@@ -211,8 +211,8 @@ func TestRecordFindingUsesDefaults(t *testing.T) {
 	if evidence != "" {
 		t.Errorf("evidence = %q, want empty", evidence)
 	}
-	if beadID != "" {
-		t.Errorf("bead_id = %q, want empty", beadID)
+	if morselID != "" {
+		t.Errorf("morsel_id = %q, want empty", morselID)
 	}
 	if status != "open" {
 		t.Errorf("status = %q, want open", status)
@@ -281,22 +281,22 @@ func TestUpdateFindingStatus(t *testing.T) {
 	}
 }
 
-func TestUpdateFindingBeadID(t *testing.T) {
+func TestUpdateFindingMorselID(t *testing.T) {
 	s := tempStore(t)
 
 	runID, _ := s.RecordRun("proj", 1, 1, 0, "{}")
 	fID, _ := s.RecordFinding(runID, "proj", "god_object", "high", "Big file", "too many methods", "store.go", "")
 
-	if err := s.UpdateFindingBeadID(fID, "beads-abc123"); err != nil {
-		t.Fatalf("UpdateFindingBeadID failed: %v", err)
+	if err := s.UpdateFindingMorselID(fID, "morsels-abc123"); err != nil {
+		t.Fatalf("UpdateFindingMorselID failed: %v", err)
 	}
 
 	findings, _ := s.GetRecentFindings("proj", 10)
 	if len(findings) != 1 {
 		t.Fatalf("expected 1 finding, got %d", len(findings))
 	}
-	if findings[0].BeadID != "beads-abc123" {
-		t.Errorf("bead_id = %q, want %q", findings[0].BeadID, "beads-abc123")
+	if findings[0].MorselID != "morsels-abc123" {
+		t.Errorf("morsel_id = %q, want %q", findings[0].MorselID, "morsels-abc123")
 	}
 	if findings[0].Status != "filed" {
 		t.Errorf("status = %q, want %q (should auto-set to filed)", findings[0].Status, "filed")
@@ -548,7 +548,7 @@ func TestOpenMigratesLegacyDBWithoutStingrayTables(t *testing.T) {
 	if _, err := db.Exec(`
 		CREATE TABLE dispatches (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			bead_id TEXT NOT NULL,
+			morsel_id TEXT NOT NULL,
 			project TEXT NOT NULL,
 			agent_id TEXT NOT NULL,
 			provider TEXT NOT NULL,
@@ -684,7 +684,7 @@ func TestUpdateFindingStatusRejectsInvalidStatus(t *testing.T) {
 	}
 }
 
-func TestUpdateFindingBeadIDTrimsWhitespace(t *testing.T) {
+func TestUpdateFindingMorselIDTrimsWhitespace(t *testing.T) {
 	s := tempStore(t)
 
 	runID, err := s.RecordRun("proj", 1, 1, 0, "{}")
@@ -695,8 +695,8 @@ func TestUpdateFindingBeadIDTrimsWhitespace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RecordFinding failed: %v", err)
 	}
-	if err := s.UpdateFindingBeadID(fID, "  bead-whitespace  "); err != nil {
-		t.Fatalf("UpdateFindingBeadID failed: %v", err)
+	if err := s.UpdateFindingMorselID(fID, "  morsel-whitespace  "); err != nil {
+		t.Fatalf("UpdateFindingMorselID failed: %v", err)
 	}
 
 	finding, err := s.GetFindingByTitleAndFile("proj", "trim", "")
@@ -706,8 +706,8 @@ func TestUpdateFindingBeadIDTrimsWhitespace(t *testing.T) {
 	if finding == nil {
 		t.Fatal("expected finding")
 	}
-	if finding.BeadID != "bead-whitespace" {
-		t.Fatalf("bead_id = %q, want %q", finding.BeadID, "bead-whitespace")
+	if finding.MorselID != "morsel-whitespace" {
+		t.Fatalf("morsel_id = %q, want %q", finding.MorselID, "morsel-whitespace")
 	}
 }
 
@@ -794,8 +794,8 @@ func TestGetTrendingFindingsIncludesFiledStatusTransitions(t *testing.T) {
 
 	run2, _ := s.RecordRun("proj", 1, 1, 0, "{}")
 	f2, _ := s.RecordFinding(run2, "proj", "tech_debt", "low", "API drift", "still present", "api.go", "")
-	if err := s.UpdateFindingBeadID(f1, "bead-123"); err != nil {
-		t.Fatalf("UpdateFindingBeadID failed: %v", err)
+	if err := s.UpdateFindingMorselID(f1, "morsel-123"); err != nil {
+		t.Fatalf("UpdateFindingMorselID failed: %v", err)
 	}
 
 	trending, err := s.GetTrendingFindings("proj", 2)
@@ -1111,14 +1111,14 @@ func TestStingraySchemaMatchesDesignDefaultsAndIndexes(t *testing.T) {
 		t.Fatalf("last insert id failed: %v", err)
 	}
 
-	var filePath, evidence, beadID, status, firstSeen, lastSeen string
+	var filePath, evidence, morselID, status, firstSeen, lastSeen string
 	var findingIDFromDB, scannedRunID int64
 	if err := s.DB().QueryRow(`
-		SELECT id, run_id, file_path, evidence, bead_id, status, first_seen, last_seen
+		SELECT id, run_id, file_path, evidence, morsel_id, status, first_seen, last_seen
 		FROM stingray_findings
 		WHERE id = ?
 	`, findingID).Scan(
-		&findingIDFromDB, &scannedRunID, &filePath, &evidence, &beadID, &status, &firstSeen, &lastSeen,
+		&findingIDFromDB, &scannedRunID, &filePath, &evidence, &morselID, &status, &firstSeen, &lastSeen,
 	); err != nil {
 		t.Fatalf("query default finding failed: %v", err)
 	}
@@ -1134,8 +1134,8 @@ func TestStingraySchemaMatchesDesignDefaultsAndIndexes(t *testing.T) {
 	if evidence != "" {
 		t.Fatalf("expected default evidence to be empty, got %q", evidence)
 	}
-	if beadID != "" {
-		t.Fatalf("expected default bead_id to be empty, got %q", beadID)
+	if morselID != "" {
+		t.Fatalf("expected default morsel_id to be empty, got %q", morselID)
 	}
 	if status != stingrayFindingStatusOpen {
 		t.Fatalf("expected default status=%q, got %q", stingrayFindingStatusOpen, status)
@@ -1173,7 +1173,7 @@ func TestOpenIsIdempotentForStingrayMigration(t *testing.T) {
 	if _, err := legacy.Exec(`
 		CREATE TABLE dispatches (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			bead_id TEXT NOT NULL,
+			morsel_id TEXT NOT NULL,
 			project TEXT NOT NULL,
 			agent_id TEXT NOT NULL,
 			provider TEXT NOT NULL,

@@ -30,7 +30,7 @@ state_db = "/tmp/chum-test.db"
 
 [projects.test]
 enabled = true
-beads_dir = "/tmp/test/.beads"
+morsels_dir = "/tmp/test/.morsels"
 workspace = "/tmp/test"
 priority = 1
 
@@ -168,7 +168,7 @@ func TestLoadProjectMergeDefaults(t *testing.T) {
 
 [projects.merge-defaults]
 enabled = true
-beads_dir = "/tmp/merge-defaults/.beads"
+morsels_dir = "/tmp/merge-defaults/.morsels"
 workspace = "/tmp/merge-defaults"
 priority = 1
 `
@@ -194,7 +194,7 @@ func TestLoadProjectMergeConfigInvalidMergeMethod(t *testing.T) {
 
 [projects.merge-invalid]
 enabled = true
-beads_dir = "/tmp/merge-invalid/.beads"
+morsels_dir = "/tmp/merge-invalid/.morsels"
 workspace = "/tmp/merge-invalid"
 priority = 1
 merge_method = "invalid"
@@ -210,7 +210,7 @@ func TestLoadProjectMergeConfigEmptyMergeMethod(t *testing.T) {
 
 [projects.merge-empty]
 enabled = true
-beads_dir = "/tmp/merge-empty/.beads"
+morsels_dir = "/tmp/merge-empty/.morsels"
 workspace = "/tmp/merge-empty"
 priority = 1
 merge_method = ""
@@ -226,7 +226,7 @@ func TestLoadProjectMergeConfigCustom(t *testing.T) {
 
 [projects.merge-custom]
 enabled = true
-beads_dir = "/tmp/merge-custom/.beads"
+morsels_dir = "/tmp/merge-custom/.morsels"
 workspace = "/tmp/merge-custom"
 priority = 1
 merge_method = "rebase"
@@ -256,7 +256,7 @@ func TestLoadProjectMergeConfigExplicitAutoRevertSetting(t *testing.T) {
 
 [projects.merge-explicit-false]
 enabled = true
-beads_dir = "/tmp/merge-explicit-false/.beads"
+morsels_dir = "/tmp/merge-explicit-false/.morsels"
 workspace = "/tmp/merge-explicit-false"
 priority = 1
 auto_revert_on_failure = false
@@ -280,7 +280,7 @@ state_db = "/tmp/chum-test.db"
 
 [projects.test]
 enabled = false
-beads_dir = "/tmp/test/.beads"
+morsels_dir = "/tmp/test/.morsels"
 workspace = "/tmp/test"
 priority = 1
 
@@ -453,7 +453,7 @@ state_db = "/tmp/chum-test.db"
 
 [projects.test]
 enabled = true
-beads_dir = "/tmp/test/.beads"
+morsels_dir = "/tmp/test/.morsels"
 workspace = "/tmp/test"
 priority = 1
 
@@ -1201,7 +1201,7 @@ func TestLoadSprintPlanningConfigValid(t *testing.T) {
 
 [projects.sprint-project]
 enabled = true
-beads_dir = "/tmp/sprint-test/.beads"
+morsels_dir = "/tmp/sprint-test/.morsels"
 workspace = "/tmp/sprint-test"
 priority = 1
 sprint_planning_day = "Monday"
@@ -1258,7 +1258,7 @@ func TestLoadSprintPlanningConfigInvalidDay(t *testing.T) {
 
 [projects.sprint-project]
 enabled = true
-beads_dir = "/tmp/sprint-test/.beads"
+morsels_dir = "/tmp/sprint-test/.morsels"
 workspace = "/tmp/sprint-test"
 sprint_planning_day = "InvalidDay"
 `
@@ -1293,7 +1293,7 @@ func TestLoadSprintPlanningConfigInvalidTime(t *testing.T) {
 
 [projects.sprint-project]
 enabled = true
-beads_dir = "/tmp/sprint-test/.beads"
+morsels_dir = "/tmp/sprint-test/.morsels"
 workspace = "/tmp/sprint-test"
 sprint_planning_time = "%s"
 `, tt.time)
@@ -1319,7 +1319,7 @@ func TestLoadSprintPlanningConfigValidTimes(t *testing.T) {
 
 [projects.sprint-project]
 enabled = true
-beads_dir = "/tmp/sprint-test/.beads"
+morsels_dir = "/tmp/sprint-test/.morsels"
 workspace = "/tmp/sprint-test"
 sprint_planning_time = "%s"
 `, validTime)
@@ -1341,7 +1341,7 @@ func TestLoadSprintPlanningConfigNegativeCapacity(t *testing.T) {
 
 [projects.sprint-project]
 enabled = true
-beads_dir = "/tmp/sprint-test/.beads"
+morsels_dir = "/tmp/sprint-test/.morsels"
 workspace = "/tmp/sprint-test"
 sprint_capacity = -1
 `
@@ -1361,7 +1361,7 @@ func TestLoadSprintPlanningConfigExcessiveCapacity(t *testing.T) {
 
 [projects.sprint-project]
 enabled = true
-beads_dir = "/tmp/sprint-test/.beads"
+morsels_dir = "/tmp/sprint-test/.morsels"
 workspace = "/tmp/sprint-test"
 sprint_capacity = 1001
 `
@@ -1381,7 +1381,7 @@ func TestLoadSprintPlanningConfigNegativeThreshold(t *testing.T) {
 
 [projects.sprint-project]
 enabled = true
-beads_dir = "/tmp/sprint-test/.beads"
+morsels_dir = "/tmp/sprint-test/.morsels"
 workspace = "/tmp/sprint-test"
 backlog_threshold = -1
 `
@@ -1401,7 +1401,7 @@ func TestLoadSprintPlanningConfigExcessiveThreshold(t *testing.T) {
 
 [projects.sprint-project]
 enabled = true
-beads_dir = "/tmp/sprint-test/.beads"
+morsels_dir = "/tmp/sprint-test/.morsels"
 workspace = "/tmp/sprint-test"
 backlog_threshold = 501
 `
@@ -1421,7 +1421,7 @@ func TestLoadSprintPlanningConfigThresholdLessThanCapacity(t *testing.T) {
 
 [projects.sprint-project]
 enabled = true
-beads_dir = "/tmp/sprint-test/.beads"
+morsels_dir = "/tmp/sprint-test/.morsels"
 workspace = "/tmp/sprint-test"
 sprint_capacity = 50
 backlog_threshold = 30
@@ -1446,7 +1446,7 @@ func TestLoadSprintPlanningConfigValidDays(t *testing.T) {
 
 [projects.sprint-project]
 enabled = true
-beads_dir = "/tmp/sprint-test/.beads"
+morsels_dir = "/tmp/sprint-test/.morsels"
 workspace = "/tmp/sprint-test"
 sprint_planning_day = "%s"
 `, validDay)
@@ -1515,7 +1515,7 @@ backlog_threshold = 40
 
 [projects.sprint-project]
 enabled = true
-beads_dir = "/tmp/sprint-test/.beads"
+morsels_dir = "/tmp/sprint-test/.morsels"
 workspace = "/tmp/sprint-test"
 %s
 `, tt.config)
@@ -1535,7 +1535,7 @@ func TestLoadDoDConfigValid(t *testing.T) {
 
 [projects.dod-project]
 enabled = true
-beads_dir = "/tmp/dod-test/.beads"
+morsels_dir = "/tmp/dod-test/.morsels"
 workspace = "/tmp/dod-test"
 priority = 1
 
@@ -1671,7 +1671,7 @@ require_acceptance = false
 
 [projects.dod-project]
 enabled = true
-beads_dir = "/tmp/dod-test/.beads"
+morsels_dir = "/tmp/dod-test/.morsels"
 workspace = "/tmp/dod-test"
 priority = 1
 
@@ -1694,7 +1694,7 @@ func TestLoadDoDConfigInvalidCoverageMin(t *testing.T) {
 
 [projects.dod-project]
 enabled = true
-beads_dir = "/tmp/dod-test/.beads"
+morsels_dir = "/tmp/dod-test/.morsels"
 workspace = "/tmp/dod-test"
 
 [projects.dod-project.dod]
@@ -1716,7 +1716,7 @@ func TestLoadDoDConfigExcessiveCoverageMin(t *testing.T) {
 
 [projects.dod-project]
 enabled = true
-beads_dir = "/tmp/dod-test/.beads"
+morsels_dir = "/tmp/dod-test/.morsels"
 workspace = "/tmp/dod-test"
 
 [projects.dod-project.dod]
@@ -1739,7 +1739,7 @@ func TestLoadDoDConfigEmptyChecks(t *testing.T) {
 
 [projects.dod-project]
 enabled = true
-beads_dir = "/tmp/dod-test/.beads"
+morsels_dir = "/tmp/dod-test/.morsels"
 workspace = "/tmp/dod-test"
 
 [projects.dod-project.dod]
@@ -1768,7 +1768,7 @@ func TestLoadExpandsHomeInProjectPaths(t *testing.T) {
 		t.Skip("user home dir unavailable")
 	}
 
-	cfg := strings.Replace(validConfig, `beads_dir = "/tmp/test/.beads"`, `beads_dir = "~/projects/demo/.beads"`, 1)
+	cfg := strings.Replace(validConfig, `morsels_dir = "/tmp/test/.morsels"`, `morsels_dir = "~/projects/demo/.morsels"`, 1)
 	cfg = strings.Replace(cfg, `workspace = "/tmp/test"`, `workspace = "~/projects/demo"`, 1)
 
 	path := writeTestConfig(t, cfg)
@@ -1778,9 +1778,9 @@ func TestLoadExpandsHomeInProjectPaths(t *testing.T) {
 	}
 
 	project := loaded.Projects["test"]
-	wantBeads := filepath.Join(home, "projects/demo/.beads")
-	if project.BeadsDir != wantBeads {
-		t.Fatalf("beads_dir = %q, want %q", project.BeadsDir, wantBeads)
+	wantMorsels := filepath.Join(home, "projects/demo/.morsels")
+	if project.MorselsDir != wantMorsels {
+		t.Fatalf("morsels_dir = %q, want %q", project.MorselsDir, wantMorsels)
 	}
 	wantWorkspace := filepath.Join(home, "projects/demo")
 	if project.Workspace != wantWorkspace {

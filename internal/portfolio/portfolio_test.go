@@ -35,9 +35,9 @@ func TestProjectBacklogStructure(t *testing.T) {
 		ProjectName:     "test",
 		Workspace:       "/tmp",
 		Priority:        1,
-		UnrefinedBeads:  []graph.Task{},
-		RefinedBeads:    []graph.Task{},
-		AllBeads:        []graph.Task{},
+		UnrefinedMorsels:  []graph.Task{},
+		RefinedMorsels:    []graph.Task{},
+		AllMorsels:        []graph.Task{},
 		ReadyToWork:     []graph.Task{},
 		TotalEstimate:   0,
 		CapacityPercent: 50,
@@ -99,23 +99,23 @@ func TestGetCrossProjectBlockersForProject(t *testing.T) {
 		CrossProjectDeps: []CrossProjectDependency{
 			{
 				SourceProject: "project-a",
-				SourceBeadID:  "a-1",
+				SourceMorselID:  "a-1",
 				TargetProject: "project-b",
-				TargetBeadID:  "b-1",
+				TargetMorselID:  "b-1",
 				IsResolved:    false,
 			},
 			{
 				SourceProject: "project-a",
-				SourceBeadID:  "a-2",
+				SourceMorselID:  "a-2",
 				TargetProject: "project-b",
-				TargetBeadID:  "b-2",
+				TargetMorselID:  "b-2",
 				IsResolved:    true, // Resolved, should not be blocker
 			},
 			{
 				SourceProject: "project-c", // Different source project
-				SourceBeadID:  "c-1",
+				SourceMorselID:  "c-1",
 				TargetProject: "project-b",
-				TargetBeadID:  "b-3",
+				TargetMorselID:  "b-3",
 				IsResolved:    false,
 			},
 		},
@@ -128,8 +128,8 @@ func TestGetCrossProjectBlockersForProject(t *testing.T) {
 		t.Errorf("Expected 1 blocker, got %d", len(blockers))
 	}
 
-	if len(blockers) > 0 && blockers[0].SourceBeadID != "a-1" {
-		t.Errorf("Expected blocker a-1, got %s", blockers[0].SourceBeadID)
+	if len(blockers) > 0 && blockers[0].SourceMorselID != "a-1" {
+		t.Errorf("Expected blocker a-1, got %s", blockers[0].SourceMorselID)
 	}
 }
 

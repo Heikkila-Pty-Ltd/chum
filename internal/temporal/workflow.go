@@ -9,6 +9,8 @@ import (
 	"go.temporal.io/sdk/log"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
+
+	"github.com/antigravity-dev/chum/internal/store"
 )
 
 const (
@@ -494,6 +496,25 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 				// ===== CHUM LOOP — spawn async learner + groomer =====
 				spawnCHUMWorkflows(ctx, logger, req, plan)
 
+				// ===== GENOME EVOLUTION — DoD pass feeds DNA =====
+				// The organism succeeded. Its approach becomes a pattern (DNA)
+				// in the species genome. The organism dies. The gene lives.
+				species := classifySpecies(req.TaskID, req.Prompt, plan.FilesToModify)
+				genomeEntry := store.GenomeEntry{
+					Pattern: plan.Summary,
+					Reason:  "DoD passed",
+					Files:   plan.FilesToModify,
+					Agent:   req.Agent,
+				}
+				genomeCtx := workflow.WithActivityOptions(ctx, recordOpts)
+				if err := workflow.ExecuteActivity(genomeCtx, a.EvolveGenomeActivity,
+					species, true, genomeEntry).Get(ctx, nil); err != nil {
+					logger.Warn(SharkPrefix+" Genome evolution failed (non-fatal)", "species", species, "error", err)
+				} else {
+					logger.Info(SharkPrefix+" Genome evolved — pattern added",
+						"Species", species, "Pattern", truncate(plan.Summary, 80))
+				}
+
 				cleanupWorktree()
 				return nil
 			}
@@ -595,6 +616,25 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 	failureLearnerFut := workflow.ExecuteChildWorkflow(failureLearnerCtx, ContinuousLearnerWorkflow, failureLearnerReq)
 	_ = failureLearnerFut.GetChildWorkflowExecution().Get(ctx, nil)
 	logger.Info(SharkPrefix+" Spawned failure learner — octopus will extract antibodies", "TaskID", req.TaskID)
+
+	// ===== GENOME EVOLUTION — escalation feeds antibodies =====
+	// The organism failed. Its approach becomes an antibody in the species genome.
+	// If this antibody appears 3+ times, it auto-promotes to fossil (EXTINCT).
+	species := classifySpecies(req.TaskID, req.Prompt, plan.FilesToModify)
+	genomeEntry := store.GenomeEntry{
+		Pattern: plan.Summary,
+		Reason:  fmt.Sprintf("escalated after %d attempts: %s", escalationAttempt, truncate(strings.Join(allFailures, "; "), 200)),
+		Files:   plan.FilesToModify,
+		Agent:   req.Agent,
+	}
+	genomeCtx := workflow.WithActivityOptions(ctx, recordOpts)
+	if err := workflow.ExecuteActivity(genomeCtx, a.EvolveGenomeActivity,
+		species, false, genomeEntry).Get(ctx, nil); err != nil {
+		logger.Warn(SharkPrefix+" Genome evolution failed (non-fatal)", "species", species, "error", err)
+	} else {
+		logger.Info(SharkPrefix+" Genome evolved — antibody added",
+			"Species", species, "Antibody", truncate(plan.Summary, 80))
+	}
 
 	cleanupWorktree()
 	return fmt.Errorf("task escalated after %d attempts: %s", escalationAttempt, strings.Join(allFailures, "; "))

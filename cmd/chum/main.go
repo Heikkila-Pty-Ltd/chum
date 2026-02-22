@@ -44,7 +44,10 @@ func configureLogger(logLevel string, useDev bool) *slog.Logger {
 }
 
 func registerTemporalSearchAttributes(ctx context.Context, temporalHostPort, temporalNamespace string, logger *slog.Logger) error {
-	if temporalNamespace == "" {
+	if strings.TrimSpace(temporalHostPort) == "" {
+		temporalHostPort = temporal.DefaultTemporalHostPort
+	}
+	if strings.TrimSpace(temporalNamespace) == "" {
 		temporalNamespace = tclient.DefaultNamespace
 	}
 
@@ -59,7 +62,7 @@ func registerTemporalSearchAttributes(ctx context.Context, temporalHostPort, tem
 	defer tc.Close()
 
 	logger.Info("registering temporal search attributes", "host", temporalHostPort, "namespace", temporalNamespace)
-	if err := temporal.RegisterSearchAttributes(ctx, tc, temporalNamespace); err != nil {
+	if err := temporal.RegisterChumSearchAttributesWithNamespace(ctx, tc, temporalNamespace); err != nil {
 		return err
 	}
 	logger.Info("temporal search attributes ready", "host", temporalHostPort, "namespace", temporalNamespace)

@@ -34,10 +34,21 @@ func (a *Activities) StructuredPlanActivity(ctx context.Context, req TaskRequest
 	logger := activity.GetLogger(ctx)
 	logger.Info(SharkPrefix+" Generating structured plan", "Agent", req.Agent, "TaskID", req.TaskID)
 
+	// Inject species genome — the accumulated evolutionary memory.
+	// The genome IS the real product; the plan is just metabolism.
+	var genomeContext string
+	if a.Store != nil {
+		species := classifySpecies(req.Project, req.TaskID, req.Prompt, nil)
+		if genome, err := a.Store.GetGenomeForPrompt(species); err == nil && genome != "" {
+			genomeContext = "\n" + genome + "\n"
+			logger.Info(SharkPrefix+" Genome injected into planning prompt", "Species", species)
+		}
+	}
+
 	prompt := fmt.Sprintf(`You are a senior engineering planner. Analyze this task and produce a structured execution plan.
 
 TASK: %s
-
+%s
 OUTPUT FORMAT: You MUST respond with ONLY a JSON object (no markdown, no commentary) with this exact structure:
 {
   "summary": "one-line summary of the task",
@@ -48,7 +59,7 @@ OUTPUT FORMAT: You MUST respond with ONLY a JSON object (no markdown, no comment
   "risk_assessment": "what could go wrong"
 }
 
-Be thorough. Planning space is cheap — implementation is expensive.`, req.Prompt)
+Be thorough. Planning space is cheap — implementation is expensive.`, req.Prompt, genomeContext)
 
 	cliResult, err := runAgent(ctx, req.Agent, prompt, req.WorkDir)
 	if err != nil {
@@ -364,6 +375,18 @@ func (a *Activities) RecordOutcomeActivity(ctx context.Context, outcome OutcomeR
 		logger.Error(OrcaPrefix+" Failed to record DoD result", "error", err)
 	}
 
+	// Close task in DAG when DoD passes — this ungates downstream dependencies.
+	// When DoD fails, the task stays "ready" — the organism dies but the substrate
+	// persists for the next attempt. Task mortality never ungates dependencies.
+	if outcome.DoDPassed && a.DAG != nil {
+		if err := a.DAG.CloseTask(ctx, outcome.TaskID); err != nil {
+			logger.Error(OrcaPrefix+" Failed to close task in DAG", "error", err, "TaskID", outcome.TaskID)
+		} else {
+			logger.Info(OrcaPrefix+" Task closed in DAG — downstream dependencies ungated",
+				"TaskID", outcome.TaskID, "Project", outcome.Project)
+		}
+	}
+
 	// Record aggregate token cost on the dispatch
 	totalInput := outcome.TotalTokens.InputTokens
 	totalOutput := outcome.TotalTokens.OutputTokens
@@ -534,6 +557,81 @@ func truncate(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen] + "..."
+}
+
+// SetupWorktreeActivity creates an isolated git worktree for this shark organism.
+// Each organism gets its own workspace so concurrent sharks don't compete for
+// build locks, .next/ directories, or other stateful artifacts.
+// Returns the absolute path to the worktree directory.
+func (a *Activities) SetupWorktreeActivity(ctx context.Context, baseDir, taskID string) (string, error) {
+	logger := activity.GetLogger(ctx)
+
+	// Worktree path: /tmp/chum-wt-{taskID} (unique per organism)
+	wtDir := fmt.Sprintf("/tmp/chum-wt-%s", taskID)
+	branch := fmt.Sprintf("chum/%s", taskID)
+
+	logger.Info(SharkPrefix+" Setting up worktree", "base", baseDir, "worktree", wtDir, "branch", branch)
+
+	// Remove stale worktree if exists (from a dead organism)
+	rmCmd := exec.CommandContext(ctx, "git", "worktree", "remove", "--force", wtDir)
+	rmCmd.Dir = baseDir
+	_ = rmCmd.Run() // ignore error — worktree may not exist
+
+	// Delete stale branch if exists
+	delBranch := exec.CommandContext(ctx, "git", "branch", "-D", branch)
+	delBranch.Dir = baseDir
+	_ = delBranch.Run() // ignore error
+
+	// Create fresh worktree with a new branch from HEAD
+	addCmd := exec.CommandContext(ctx, "git", "worktree", "add", "-b", branch, wtDir)
+	addCmd.Dir = baseDir
+	if out, err := addCmd.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("git worktree add failed: %w\n%s", err, string(out))
+	}
+
+	// If the base project has node_modules but the worktree doesn't, symlink them.
+	// This avoids expensive `npm install` per organism.
+	nmSrc := baseDir + "/node_modules"
+	nmDst := wtDir + "/node_modules"
+	if _, err := exec.LookPath("node"); err == nil {
+		// Check if package.json exists and node_modules doesn't in worktree
+		pkgCmd := exec.CommandContext(ctx, "test", "-f", wtDir+"/package.json")
+		nmCheck := exec.CommandContext(ctx, "test", "-d", nmDst)
+		if pkgCmd.Run() == nil && nmCheck.Run() != nil {
+			// Try symlink first (fast), fall back to npm install
+			lnCmd := exec.CommandContext(ctx, "ln", "-sf", nmSrc, nmDst)
+			if lnCmd.Run() != nil {
+				// Symlink failed, install fresh
+				installCmd := exec.CommandContext(ctx, "npm", "install", "--prefer-offline")
+				installCmd.Dir = wtDir
+				_ = installCmd.Run()
+			}
+		}
+	}
+
+	logger.Info(SharkPrefix+" Worktree ready", "path", wtDir)
+	return wtDir, nil
+}
+
+// CleanupWorktreeActivity removes the git worktree after the organism completes.
+// Called at both success and failure paths — organisms are mortal.
+func (a *Activities) CleanupWorktreeActivity(ctx context.Context, baseDir, wtDir string) error {
+	logger := activity.GetLogger(ctx)
+	logger.Info(SharkPrefix+" Cleaning up worktree", "worktree", wtDir)
+
+	// Remove the worktree
+	rmCmd := exec.CommandContext(ctx, "git", "worktree", "remove", "--force", wtDir)
+	rmCmd.Dir = baseDir
+	if out, err := rmCmd.CombinedOutput(); err != nil {
+		logger.Warn(SharkPrefix+" Worktree removal failed (best-effort)", "error", err, "output", string(out))
+	}
+
+	// Prune stale worktree entries
+	pruneCmd := exec.CommandContext(ctx, "git", "worktree", "prune")
+	pruneCmd.Dir = baseDir
+	_ = pruneCmd.Run()
+
+	return nil
 }
 
 // ResetWorkspaceActivity hard resets the codebase and cleans untracked files

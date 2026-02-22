@@ -35,16 +35,31 @@ const (
 	chumWorkflowStatusEscalated = "escalated"
 )
 
+var chumSearchAttributeDefsMap = map[string]enumspb.IndexedValueType{
+	SearchAttributeProject:      enumspb.INDEXED_VALUE_TYPE_KEYWORD,
+	SearchAttributePriority:     enumspb.INDEXED_VALUE_TYPE_INT,
+	SearchAttributeAgent:        enumspb.INDEXED_VALUE_TYPE_KEYWORD,
+	SearchAttributeCurrentStage: enumspb.INDEXED_VALUE_TYPE_KEYWORD,
+	SearchAttributeTaskTitle:    enumspb.INDEXED_VALUE_TYPE_TEXT,
+}
+
+var chumRunningStages = []string{
+	chumWorkflowStatusRunning,
+	chumWorkflowStatusPlan,
+	chumWorkflowStatusGate,
+	chumWorkflowStatusExecute,
+	chumWorkflowStatusReview,
+	chumWorkflowStatusDoD,
+}
+
 var upsertChumSearchAttributesFn = workflow.UpsertSearchAttributes //nolint:staticcheck
 
 func chumSearchAttributeDefs() map[string]enumspb.IndexedValueType {
-	return map[string]enumspb.IndexedValueType{
-		SearchAttributeProject:      enumspb.INDEXED_VALUE_TYPE_KEYWORD,
-		SearchAttributePriority:     enumspb.INDEXED_VALUE_TYPE_INT,
-		SearchAttributeAgent:        enumspb.INDEXED_VALUE_TYPE_KEYWORD,
-		SearchAttributeCurrentStage: enumspb.INDEXED_VALUE_TYPE_KEYWORD,
-		SearchAttributeTaskTitle:    enumspb.INDEXED_VALUE_TYPE_TEXT,
+	defs := make(map[string]enumspb.IndexedValueType, len(chumSearchAttributeDefsMap))
+	for name, value := range chumSearchAttributeDefsMap {
+		defs[name] = value
 	}
+	return defs
 }
 
 // ChumAgentRunningVisibilityQuery returns the visibility query for running Chum
@@ -62,17 +77,8 @@ func ChumAgentRunningVisibilityQueryForProject(project string) string {
 // ChumAgentRunningVisibilityQueryForProjectAndAgent returns the visibility query for
 // running Chum agent workflows, optionally filtered by project and/or agent.
 func ChumAgentRunningVisibilityQueryForProjectAndAgent(project, agent string) string {
-	activeStatuses := []string{
-		chumWorkflowStatusRunning,
-		chumWorkflowStatusPlan,
-		chumWorkflowStatusGate,
-		chumWorkflowStatusExecute,
-		chumWorkflowStatusReview,
-		chumWorkflowStatusDoD,
-	}
-
-	queryClauses := make([]string, 0, len(activeStatuses))
-	for _, status := range activeStatuses {
+	queryClauses := make([]string, 0, len(chumRunningStages))
+	for _, status := range chumRunningStages {
 		queryClauses = append(queryClauses, fmt.Sprintf("%s = '%s'", SearchAttributeCurrentStage, status))
 	}
 
@@ -135,11 +141,7 @@ func RegisterChumSearchAttributesWithNamespace(ctx context.Context, c client.Cli
 		return fmt.Errorf("temporal client is nil")
 	}
 
-	ns := strings.TrimSpace(namespace)
-	if ns == "" {
-		ns = client.DefaultNamespace
-	}
-
+	ns := normalizeSearchAttributeNamespace(namespace)
 	if err := registerSearchAttributes(ctx, c.OperatorService(), ns); err != nil {
 		return err
 	}
@@ -147,6 +149,7 @@ func RegisterChumSearchAttributesWithNamespace(ctx context.Context, c client.Cli
 }
 
 func registerSearchAttributes(ctx context.Context, reg searchAttributeRegistrar, namespace string) error {
+	namespace = normalizeSearchAttributeNamespace(namespace)
 	_, err := reg.AddSearchAttributes(ctx, &operatorservice.AddSearchAttributesRequest{
 		Namespace:        namespace,
 		SearchAttributes: chumSearchAttributeDefs(),
@@ -179,6 +182,14 @@ func isChumSearchAttributeAlreadyExistsError(err error) bool {
 		return true
 	}
 	return strings.Contains(strings.ToLower(err.Error()), "already exists")
+}
+
+func normalizeSearchAttributeNamespace(namespace string) string {
+	ns := strings.TrimSpace(namespace)
+	if ns == "" {
+		return client.DefaultNamespace
+	}
+	return ns
 }
 
 func normalizePriority(priority int) int {

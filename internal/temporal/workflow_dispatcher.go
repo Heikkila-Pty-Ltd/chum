@@ -230,7 +230,7 @@ func (da *DispatchActivities) ScanCandidatesActivity(ctx context.Context) (*Scan
 	}
 
 	// --- List open workflows ---
-	openWFs, err := listOpenAgentWorkflows(ctx, da.TC, "")
+	openWFs, err := listOpenAgentWorkflowsForAgent(ctx, da.TC, "", "")
 	if err != nil {
 		return nil, fmt.Errorf("list open workflows: %w", err)
 	}
@@ -284,7 +284,7 @@ func (da *DispatchActivities) ScanCandidatesActivity(ctx context.Context) (*Scan
 			continue
 		}
 
-		projectOpenWFs, err := listOpenAgentWorkflows(ctx, da.TC, name)
+		projectOpenWFs, err := listOpenAgentWorkflowsForAgent(ctx, da.TC, name, "")
 		if err != nil {
 			logger.Warn(SharkPrefix+" Dispatcher: failed to count project running workflows", "project", name, "error", err)
 			projectOpenWFs = nil
@@ -396,10 +396,6 @@ func (da *DispatchActivities) ScanCandidatesActivity(ctx context.Context) (*Scan
 
 // listOpenAgentWorkflows returns all currently running ChumAgentWorkflow
 // executions. Extracted from the old scheduler for reuse in the activity.
-func listOpenAgentWorkflows(ctx context.Context, tc workflowListClient, project string) ([]openWorkflowExecution, error) {
-	return listOpenAgentWorkflowsForAgent(ctx, tc, project, "")
-}
-
 // listOpenAgentWorkflowsForAgent returns running Chum workflows filtered by project
 // and optional agent. It is future-ready for targeted drain/review batches.
 func listOpenAgentWorkflowsForAgent(ctx context.Context, tc workflowListClient, project, agent string) ([]openWorkflowExecution, error) {
@@ -446,6 +442,10 @@ func listOpenAgentWorkflowsForAgent(ctx context.Context, tc workflowListClient, 
 		pageToken = resp.NextPageToken
 	}
 	return executions, nil
+}
+
+func listOpenAgentWorkflows(ctx context.Context, tc workflowListClient, project string) ([]openWorkflowExecution, error) {
+	return listOpenAgentWorkflowsForAgent(ctx, tc, project, "")
 }
 
 func buildOpenAgentWorkflowQuery(project string) string {

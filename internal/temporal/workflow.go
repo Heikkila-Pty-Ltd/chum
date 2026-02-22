@@ -95,6 +95,7 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 		}
 	}
 
+	// Normalize once at workflow entry so every stage upsert has stable indexed fields.
 	req = normalizeSearchMetadataForVisibility(req)
 	if req.Reviewer == "" {
 		req.Reviewer = DefaultReviewer(req.Agent)
@@ -166,6 +167,35 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 	}
 
 	var a *Activities
+
+	// === WORKTREE ISOLATION ===
+	// Each organism gets its own git worktree so concurrent sharks don't
+	// compete for .next/lock, build artifacts, or stateful directories.
+	baseWorkDir := req.WorkDir
+	worktreeOpts := workflow.ActivityOptions{
+		StartToCloseTimeout: 2 * time.Minute,
+		RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 2},
+	}
+	wtCtx := workflow.WithActivityOptions(ctx, worktreeOpts)
+	var worktreePath string
+	if err := workflow.ExecuteActivity(wtCtx, a.SetupWorktreeActivity, baseWorkDir, req.TaskID).Get(ctx, &worktreePath); err != nil {
+		logger.Warn(SharkPrefix+" Worktree setup failed, falling back to shared workspace", "error", err)
+		worktreePath = "" // signal: no worktree, use shared workspace
+	} else {
+		req.WorkDir = worktreePath
+		logger.Info(SharkPrefix+" Worktree isolated", "path", worktreePath)
+	}
+
+	// cleanupWorktree removes the worktree on any exit path.
+	cleanupWorktree := func() {
+		if worktreePath == "" {
+			return // no worktree to clean
+		}
+		cleanCtx := workflow.WithActivityOptions(ctx, worktreeOpts)
+		if err := workflow.ExecuteActivity(cleanCtx, a.CleanupWorktreeActivity, baseWorkDir, worktreePath).Get(ctx, nil); err != nil {
+			logger.Warn(SharkPrefix+" Worktree cleanup failed (best-effort)", "error", err)
+		}
+	}
 
 	// notify is a fire-and-forget helper — errors never block the pipeline.
 	notify := func(event string, extra map[string]string) {
@@ -464,6 +494,7 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 				// ===== CHUM LOOP — spawn async learner + groomer =====
 				spawnCHUMWorkflows(ctx, logger, req, plan)
 
+				cleanupWorktree()
 				return nil
 			}
 
@@ -565,6 +596,7 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 	_ = failureLearnerFut.GetChildWorkflowExecution().Get(ctx, nil)
 	logger.Info(SharkPrefix+" Spawned failure learner — octopus will extract antibodies", "TaskID", req.TaskID)
 
+	cleanupWorktree()
 	return fmt.Errorf("task escalated after %d attempts: %s", escalationAttempt, strings.Join(allFailures, "; "))
 }
 

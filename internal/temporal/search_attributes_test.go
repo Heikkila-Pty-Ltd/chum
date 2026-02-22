@@ -5,6 +5,9 @@ import (
 	"errors"
 	"testing"
 
+	"go.temporal.io/sdk/client"
+	"go.temporal.io/sdk/workflow"
+
 	"github.com/stretchr/testify/require"
 	enumspb "go.temporal.io/api/enums/v1"
 	"go.temporal.io/api/operatorservice/v1"
@@ -51,6 +54,14 @@ func TestRegisterSearchAttributesSkipsAlreadyExistsError(t *testing.T) {
 	require.Equal(t, "chum", registrar.requests[0].Namespace)
 }
 
+func TestRegisterSearchAttributesDefaultsAndTrimsNamespace(t *testing.T) {
+	registrar := &fakeSearchAttributeRegistrar{}
+	err := registerSearchAttributes(t.Context(), registrar, "  ")
+	require.NoError(t, err)
+	require.Len(t, registrar.requests, 1)
+	require.Equal(t, client.DefaultNamespace, registrar.requests[0].Namespace)
+}
+
 func TestRegisterSearchAttributesReturnsUnexpectedErrors(t *testing.T) {
 	otherErr := errors.New("search attribute registration failed")
 	registrar := &fakeSearchAttributeRegistrar{
@@ -79,4 +90,34 @@ func TestChumAgentRunningVisibilityQueryForProjectAndAgent(t *testing.T) {
 func TestChumAgentRunningVisibilityQueryEscapesProject(t *testing.T) {
 	q := ChumAgentRunningVisibilityQueryForProject("acme's")
 	require.Contains(t, q, SearchAttributeProject+" = 'acme''s'")
+}
+
+func TestUpsertChumWorkflowSearchAttributesNormalizesRequest(t *testing.T) {
+	var capturedAttrs map[string]interface{}
+	original := upsertChumSearchAttributesFn
+	var workflowCtx workflow.Context
+	t.Cleanup(func() {
+		upsertChumSearchAttributesFn = original
+	})
+
+	upsertChumSearchAttributesFn = func(_ workflow.Context, attrs map[string]interface{}) error {
+		capturedAttrs = attrs
+		return nil
+	}
+
+	err := upsertChumWorkflowSearchAttributes(workflowCtx, TaskRequest{
+		Project:   "  ",
+		Agent:     " ",
+		TaskTitle: "",
+		TaskID:    "task-42",
+		Prompt:    "build search index",
+		Priority:  99,
+	}, chumWorkflowStatusPlan)
+	require.NoError(t, err)
+	require.NotNil(t, capturedAttrs)
+	require.Equal(t, "unknown", capturedAttrs[SearchAttributeProject])
+	require.Equal(t, 4, capturedAttrs[SearchAttributePriority])
+	require.Equal(t, "claude", capturedAttrs[SearchAttributeAgent])
+	require.Equal(t, "task-42", capturedAttrs[SearchAttributeTaskTitle])
+	require.Equal(t, chumWorkflowStatusPlan, capturedAttrs[SearchAttributeCurrentStage])
 }

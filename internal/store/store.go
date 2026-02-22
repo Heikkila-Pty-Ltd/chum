@@ -247,7 +247,15 @@ func Open(dbPath string) (*Store, error) {
 		return nil, fmt.Errorf("store: migrate: %w", err)
 	}
 
-	return &Store{db: db}, nil
+	s := &Store{db: db}
+
+	// Ensure evolutionary genome table exists
+	if err := s.ensureGenomesTable(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("store: genomes table: %w", err)
+	}
+
+	return s, nil
 }
 
 // addColumnIfNotExists checks whether a column exists on a table and adds it

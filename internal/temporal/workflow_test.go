@@ -134,6 +134,7 @@ func TestCHUMNotSpawnedOnFailure(t *testing.T) {
 	var outcome OutcomeRecord
 	outcomeSet := false
 	var capturedAttrs []map[string]interface{}
+	var capturedStages []string
 	env.OnActivity(a.RecordOutcomeActivity, mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
 		arg := args.Get(1)
 		if o, ok := arg.(OutcomeRecord); ok {
@@ -153,6 +154,7 @@ func TestCHUMNotSpawnedOnFailure(t *testing.T) {
 			copyAttrs[k] = v
 		}
 		capturedAttrs = append(capturedAttrs, copyAttrs)
+		capturedStages = append(capturedStages, fmt.Sprintf("%v", copyAttrs[SearchAttributeCurrentStage]))
 		return nil
 	}
 
@@ -199,6 +201,14 @@ func TestCHUMNotSpawnedOnFailure(t *testing.T) {
 	require.Greater(t, stages[chumWorkflowStatusDoD], 0)
 	require.Greater(t, stages[chumWorkflowStatusEscalated], 0)
 	require.Zero(t, stages[chumWorkflowStatusCompleted])
+	require.Equal(t, []string{
+		chumWorkflowStatusPlan,
+		chumWorkflowStatusGate,
+		chumWorkflowStatusExecute,
+		chumWorkflowStatusReview,
+		chumWorkflowStatusDoD,
+		chumWorkflowStatusEscalated,
+	}, capturedStages)
 }
 
 func TestChumAgentWorkflowUpsertsSearchAttributesAtLifecycleStages(t *testing.T) {
@@ -207,6 +217,7 @@ func TestChumAgentWorkflowUpsertsSearchAttributesAtLifecycleStages(t *testing.T)
 
 	stubActivities(env)
 	var capturedAttrs []map[string]interface{}
+	var capturedStages []string
 
 	// Ensure optional CHUM child workflows are mocked to avoid environment
 	// child-workflow registration issues when using testsuite with minimal mocks.
@@ -223,15 +234,16 @@ func TestChumAgentWorkflowUpsertsSearchAttributesAtLifecycleStages(t *testing.T)
 			copyAttrs[k] = v
 		}
 		capturedAttrs = append(capturedAttrs, copyAttrs)
+		capturedStages = append(capturedStages, fmt.Sprintf("%v", copyAttrs[SearchAttributeCurrentStage]))
 		return nil
 	}
 
 	env.ExecuteWorkflow(ChumAgentWorkflow, TaskRequest{
 		TaskID:            "test-task-id",
-		Project:           "my-project",
-		TaskTitle:         "Priority hotfix",
+		Project:           "   ",
+		TaskTitle:         "",
 		Prompt:            "fix auth bug",
-		Agent:             "claude",
+		Agent:             "   ",
 		Priority:          7,
 		WorkDir:           "/tmp/test",
 		SlowStepThreshold: defaultSlowStepThreshold,
@@ -246,12 +258,20 @@ func TestChumAgentWorkflowUpsertsSearchAttributesAtLifecycleStages(t *testing.T)
 		stage := fmt.Sprintf("%v", attrs[SearchAttributeCurrentStage])
 		stages[stage]++
 
-		require.Equal(t, "my-project", attrs[SearchAttributeProject])
+		require.Equal(t, "unknown", attrs[SearchAttributeProject])
 		require.Equal(t, "claude", attrs[SearchAttributeAgent])
-		require.Equal(t, "Priority hotfix", attrs[SearchAttributeTaskTitle])
+		require.Equal(t, "test-task-id", attrs[SearchAttributeTaskTitle])
 		require.Equal(t, 4, attrs[SearchAttributePriority])
 	}
 
+	require.Equal(t, []string{
+		chumWorkflowStatusPlan,
+		chumWorkflowStatusGate,
+		chumWorkflowStatusExecute,
+		chumWorkflowStatusReview,
+		chumWorkflowStatusDoD,
+		chumWorkflowStatusCompleted,
+	}, capturedStages)
 	require.Equal(t, 1, stages[chumWorkflowStatusPlan])
 	require.Equal(t, 1, stages[chumWorkflowStatusGate])
 	require.Equal(t, 1, stages[chumWorkflowStatusExecute])
@@ -279,6 +299,16 @@ func TestListOpenAgentWorkflowsUsesProjectFilter(t *testing.T) {
 	require.Len(t, fakeTC.queries, 1)
 	require.Equal(t, 1, len(fakeTC.queries))
 	require.Contains(t, fakeTC.queries[0], fmt.Sprintf("%s = 'alpha-proj'", SearchAttributeProject))
+}
+
+func TestListOpenAgentWorkflowsForAgentUsesAgentFilter(t *testing.T) {
+	fakeTC := &fakeWorkflowListClient{}
+	_, err := listOpenAgentWorkflowsForAgent(t.Context(), fakeTC, "alpha-proj", "gemini")
+	require.NoError(t, err)
+	require.Len(t, fakeTC.queries, 1)
+	require.Contains(t, fakeTC.queries[0], fmt.Sprintf("%s = 'alpha-proj'", SearchAttributeProject))
+	require.Contains(t, fakeTC.queries[0], fmt.Sprintf("%s = 'gemini'", SearchAttributeAgent))
+	require.Contains(t, fakeTC.queries[0], SearchAttributeCurrentStage)
 }
 
 func TestChumAgentWorkflowPausesForDrainUntilResume(t *testing.T) {

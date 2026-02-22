@@ -4,7 +4,6 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
-	"strings"
 
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/worker"
@@ -25,10 +24,7 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 	if temporalHostPort == "" {
 		temporalHostPort = DefaultTemporalHostPort
 	}
-	ns := strings.TrimSpace(temporalNamespace)
-	if ns == "" {
-		ns = client.DefaultNamespace
-	}
+	ns := normalizeSearchAttributeNamespace(temporalNamespace)
 	c, err := client.Dial(client.Options{
 		HostPort:  temporalHostPort,
 		Namespace: ns,
@@ -85,6 +81,8 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 	w.RegisterActivity(acts.DoDVerifyActivity)
 	w.RegisterActivity(acts.GatherMetricsActivity)
 	w.RegisterActivity(acts.ResetWorkspaceActivity)
+	w.RegisterActivity(acts.SetupWorktreeActivity)
+	w.RegisterActivity(acts.CleanupWorktreeActivity)
 	w.RegisterActivity(acts.RecordOutcomeActivity)
 	w.RegisterActivity(acts.CloseTaskActivity)
 	w.RegisterActivity(acts.RecordHealthEventActivity)
@@ -106,6 +104,10 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 	w.RegisterActivity(acts.RecordEscalationActivity)
 	w.RegisterActivity(acts.AutoFixLintActivity)
 	w.RegisterActivity(acts.CalcifyPatternActivity)
+
+	// --- Genome Evolution ---
+	w.RegisterActivity(acts.EvolveGenomeActivity)
+	w.RegisterActivity(acts.GetGenomeForPromptActivity)
 
 	// --- CHUM Groom Activities ---
 	w.RegisterActivity(acts.MutateTasksActivity)

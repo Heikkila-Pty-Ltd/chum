@@ -642,9 +642,9 @@ func (a *Activities) SetupWorktreeActivity(ctx context.Context, baseDir, taskID,
 		pkgCmd := exec.CommandContext(ctx, "test", "-f", wtDir+"/package.json")
 		nmCheck := exec.CommandContext(ctx, "test", "-d", nmDst)
 		if pkgCmd.Run() == nil && nmCheck.Run() != nil {
-			// Try symlink first (fast), fall back to npm install
-			lnCmd := exec.CommandContext(ctx, "ln", "-sf", nmSrc, nmDst)
-			if lnCmd.Run() != nil {
+			// Copy node_modules instead of symlinking to avoid Next.js Turbopack symlink-out-of-root errors
+			cpCmd := exec.CommandContext(ctx, "cp", "-a", nmSrc, nmDst)
+			if cpCmd.Run() != nil {
 				// Symlink failed, install fresh
 				installCmd := exec.CommandContext(ctx, "npm", "install", "--prefer-offline")
 				installCmd.Dir = wtDir

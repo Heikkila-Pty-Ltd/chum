@@ -15,10 +15,12 @@ import (
 	"go.temporal.io/sdk/workflow"
 )
 
+var a *Activities
+
 // stubActivities mocks all activities used by ChumAgentWorkflow for a clean
+
 // success path: plan → approve → execute → review(approved) → semgrep(pass) → dod(pass) → record.
 func stubActivities(env *testsuite.TestWorkflowEnvironment) {
-	var a *Activities
 
 	env.OnActivity(a.StructuredPlanActivity, mock.Anything, mock.Anything).Return(&StructuredPlan{
 		Summary:            "Add widget endpoint",
@@ -54,7 +56,6 @@ func stubActivities(env *testsuite.TestWorkflowEnvironment) {
 func TestCHUMChildWorkflowsSpawn(t *testing.T) {
 	s := testsuite.WorkflowTestSuite{}
 	env := s.NewTestWorkflowEnvironment()
-	var a *Activities
 
 	stubActivities(env)
 	var outcome OutcomeRecord
@@ -103,8 +104,6 @@ func TestCHUMChildWorkflowsSpawn(t *testing.T) {
 func TestCHUMNotSpawnedOnFailure(t *testing.T) {
 	s := testsuite.WorkflowTestSuite{}
 	env := s.NewTestWorkflowEnvironment()
-
-	var a *Activities
 
 	env.OnActivity(a.StructuredPlanActivity, mock.Anything, mock.Anything).Return(&StructuredPlan{
 		Summary:            "broken feature",
@@ -176,8 +175,7 @@ func TestChumAgentWorkflowUpsertsSearchAttributesAtLifecycleStages(t *testing.T)
 	env := s.NewTestWorkflowEnvironment()
 
 	stubActivities(env)
-	var captured []map[string]interface{}
-	var a *Activities
+	var capturedAttrs []map[string]interface{}
 
 	// Ensure optional CHUM child workflows are mocked to avoid environment
 	// child-workflow registration issues when using testsuite with minimal mocks.
@@ -188,12 +186,12 @@ func TestChumAgentWorkflowUpsertsSearchAttributesAtLifecycleStages(t *testing.T)
 	t.Cleanup(func() {
 		upsertChumSearchAttributesFn = original
 	})
-	upsertChumSearchAttributesFn = func(ctx workflow.Context, attrs map[string]interface{}) error {
+	upsertChumSearchAttributesFn = func(_ workflow.Context, attrs map[string]interface{}) error {
 		copyAttrs := make(map[string]interface{}, len(attrs))
 		for k, v := range attrs {
 			copyAttrs[k] = v
 		}
-		captured = append(captured, copyAttrs)
+		capturedAttrs = append(capturedAttrs, copyAttrs)
 		return nil
 	}
 
@@ -210,10 +208,10 @@ func TestChumAgentWorkflowUpsertsSearchAttributesAtLifecycleStages(t *testing.T)
 
 	require.True(t, env.IsWorkflowCompleted())
 	require.NoError(t, env.GetWorkflowError())
-	require.GreaterOrEqual(t, len(captured), 5)
+	require.GreaterOrEqual(t, len(capturedAttrs), 5)
 
 	stages := make(map[string]int)
-	for _, attrs := range captured {
+	for _, attrs := range capturedAttrs {
 		stage := fmt.Sprintf("%v", attrs[SearchAttributeCurrentStage])
 		stages[stage]++
 
@@ -250,7 +248,6 @@ func TestListOpenAgentWorkflowsUsesProjectFilter(t *testing.T) {
 func TestChumAgentWorkflowPausesForDrainUntilResume(t *testing.T) {
 	s := testsuite.WorkflowTestSuite{}
 	env := s.NewTestWorkflowEnvironment()
-	var a *Activities
 
 	var executeCalls int32
 	var resumeSignalSent int32
@@ -329,8 +326,6 @@ func TestContinuousLearnerWorkflowPipeline(t *testing.T) {
 	s := testsuite.WorkflowTestSuite{}
 	env := s.NewTestWorkflowEnvironment()
 
-	var a *Activities
-
 	lessons := []Lesson{
 		{TaskID: "morsel-1", Category: "antipattern", Summary: "nil check after error"},
 		{TaskID: "morsel-1", Category: "pattern", Summary: "table-driven tests"},
@@ -358,8 +353,6 @@ func TestTacticalGroomWorkflow(t *testing.T) {
 	s := testsuite.WorkflowTestSuite{}
 	env := s.NewTestWorkflowEnvironment()
 
-	var a *Activities
-
 	env.OnActivity(a.MutateTasksActivity, mock.Anything, mock.Anything).Return(&GroomResult{
 		MutationsApplied: 3,
 		MutationsFailed:  0,
@@ -383,8 +376,6 @@ func TestTacticalGroomWorkflow(t *testing.T) {
 func TestStrategicGroomWorkflowPipeline(t *testing.T) {
 	s := testsuite.WorkflowTestSuite{}
 	env := s.NewTestWorkflowEnvironment()
-
-	var a *Activities
 
 	env.OnActivity(a.GenerateRepoMapActivity, mock.Anything, mock.Anything).Return(&RepoMap{
 		TotalFiles: 42,
@@ -476,8 +467,6 @@ func TestStrategicGroomWorkflowActionableCreatePassesThroughToActivity(t *testin
 	s := testsuite.WorkflowTestSuite{}
 	env := s.NewTestWorkflowEnvironment()
 
-	var a *Activities
-
 	env.OnActivity(a.GenerateRepoMapActivity, mock.Anything, mock.Anything).Return(&RepoMap{
 		TotalFiles: 10,
 		Packages:   []PackageInfo{{ImportPath: "example.com/pkg", Name: "pkg"}},
@@ -534,8 +523,6 @@ func TestStrategicGroomWorkflowActionableCreatePassesThroughToActivity(t *testin
 func TestStrategicGroomWorkflowVagueCreateIsDeferredNotP1(t *testing.T) {
 	s := testsuite.WorkflowTestSuite{}
 	env := s.NewTestWorkflowEnvironment()
-
-	var a *Activities
 
 	env.OnActivity(a.GenerateRepoMapActivity, mock.Anything, mock.Anything).Return(&RepoMap{
 		TotalFiles: 10,
@@ -744,8 +731,6 @@ func TestStepDurationLoggingEscalation(t *testing.T) {
 	s := testsuite.WorkflowTestSuite{}
 	env := s.NewTestWorkflowEnvironment()
 
-	var a *Activities
-
 	env.OnActivity(a.StructuredPlanActivity, mock.Anything, mock.Anything).Return(&StructuredPlan{
 		Summary:            "will fail dod",
 		Steps:              []PlanStep{{Description: "break things", File: "main.go", Rationale: "test"}},
@@ -821,7 +806,6 @@ func TestPlanningWorkflowPassesSlowStepThresholdToExecutionTask(t *testing.T) {
 	s := testsuite.WorkflowTestSuite{}
 	env := s.NewTestWorkflowEnvironment()
 
-	var a *Activities
 	var capturedReq TaskRequest
 	var captured bool
 

@@ -48,18 +48,31 @@ func (a *Activities) StructuredPlanActivity(ctx context.Context, req TaskRequest
 		}
 	}
 
-	// Inject semgrep gates — the ecological niche.
-	// A system optimizing for survival tells organisms what they'll be tested on.
-	// DoD rules ARE the environment. Don't set organisms up for failure.
 	semgrepContext := loadSemgrepContext(req.WorkDir)
 	if semgrepContext != "" {
 		logger.Info(SharkPrefix+" Semgrep gates injected into planning prompt")
 	}
 
+	// Inject previous failures — the scent of death.
+	// A new shark is born with the memory of the one that came before.
+	var failureContext string
+	if len(req.PreviousErrors) > 0 {
+		var validErrors []string
+		for _, errStr := range req.PreviousErrors {
+			if strings.TrimSpace(errStr) != "" {
+				validErrors = append(validErrors, errStr)
+			}
+		}
+		if len(validErrors) > 0 {
+			failureContext = "\nPREVIOUS FAILURES (avoid these mistakes):\n---\n" + strings.Join(validErrors, "\n---\n") + "\n"
+			logger.Info(SharkPrefix+" Previous failures injected into planning prompt", "Count", len(validErrors))
+		}
+	}
+
 	prompt := fmt.Sprintf(`You are a senior engineering planner. Analyze this task and produce a structured execution plan.
 
 TASK: %s
-%s%s
+%s%s%s
 OUTPUT FORMAT: You MUST respond with ONLY a JSON object (no markdown, no commentary) with this exact structure:
 {
   "summary": "one-line summary of the task",
@@ -70,7 +83,7 @@ OUTPUT FORMAT: You MUST respond with ONLY a JSON object (no markdown, no comment
   "risk_assessment": "what could go wrong"
 }
 
-Be thorough. Planning space is cheap — implementation is expensive.`, req.Prompt, genomeContext, semgrepContext)
+Be thorough. Planning space is cheap — implementation is expensive.`, req.Prompt, genomeContext, semgrepContext, failureContext)
 
 	cliResult, err := runAgent(ctx, req.Agent, prompt, req.WorkDir)
 	if err != nil {
@@ -814,6 +827,28 @@ func (a *Activities) RecordEscalationActivity(ctx context.Context, evt Escalatio
 		EscalatedTo:     evt.EscalatedTo,
 		EscalatedTier:   evt.EscalatedTier,
 		EscalatedResult: "pending",
+	})
+}
+
+// RecordFailureActivity persists failure scent (errors) to the task's error_log.
+// Future sharks inheriting this task will use this context to avoid previous mistakes.
+func (a *Activities) RecordFailureActivity(ctx context.Context, taskID string, failures []string) error {
+	logger := activity.GetLogger(ctx)
+	if len(failures) == 0 {
+		return nil
+	}
+
+	scent := strings.Join(failures, "\n---\n")
+	logger.Info(OrcaPrefix+" Recording failure scent", "TaskID", taskID, "Errors", len(failures))
+
+	if a.DAG == nil {
+		logger.Warn(OrcaPrefix + " No DAG configured, cannot record failure scent")
+		return nil
+	}
+
+	// Update the task's error_log field.
+	return a.DAG.UpdateTask(ctx, taskID, map[string]any{
+		"error_log": scent,
 	})
 }
 

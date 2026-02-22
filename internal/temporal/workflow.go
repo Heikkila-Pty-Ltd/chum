@@ -69,7 +69,7 @@ func normalizeTaskTitle(taskID, title, prompt string) string {
 //  6. DOD         — Compile/test/lint verification via git.RunPostMergeChecks
 //  7. RECORD      — Persist outcome to store (feeds learner loop)
 //  8. ESCALATE    — If DoD fails after retries, escalate to chief + human
-func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
+func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 	startTime := workflow.Now(ctx)
 	logger := workflow.GetLogger(ctx)
 
@@ -110,6 +110,20 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 	}
 
 	updateSearchAttributes(chumWorkflowStatusPlan)
+	var allFailures []string
+	defer func() {
+		// If the workflow is failing, record the "scent" in the task store.
+		// Future sharks will use this to skip previous mistakes.
+		if err != nil {
+			recordOpts := workflow.ActivityOptions{
+				StartToCloseTimeout: 10 * time.Second,
+				RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 1},
+			}
+			fCtx := workflow.WithActivityOptions(ctx, recordOpts)
+			var a *Activities
+			_ = workflow.ExecuteActivity(fCtx, a.RecordFailureActivity, req.TaskID, allFailures).Get(ctx, nil)
+		}
+	}()
 	drainSignal := workflow.GetSignalChannel(ctx, ChumAgentDrainSignalName)
 	resumeSignal := workflow.GetSignalChannel(ctx, ChumAgentResumeSignalName)
 
@@ -245,7 +259,6 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 
 	currentAgent := req.Agent
 	currentReviewer := req.Reviewer
-	var allFailures []string
 	var totalTokens TokenUsage
 	var activityTokens []ActivityTokenUsage
 
@@ -495,7 +508,7 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 					handoffCount, true, "", startTime, totalTokens, activityTokens, stepMetrics)
 
 				// ===== CHUM LOOP — spawn async learner + groomer =====
-				spawnCHUMWorkflows(ctx, logger, req, plan)
+				spawnCHUMWorkflows(ctx, logger, req, plan, baseWorkDir)
 
 				// ===== GENOME EVOLUTION — DoD pass feeds DNA =====
 				// The organism succeeded. Its approach becomes a pattern (DNA)
@@ -609,7 +622,7 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 	failureLearnerReq := LearnerRequest{
 		TaskID:         req.TaskID,
 		Project:        req.Project,
-		WorkDir:        req.WorkDir,
+		WorkDir:        baseWorkDir,
 		Agent:          req.Agent,
 		DoDPassed:      false,
 		FilesChanged:   plan.FilesToModify,
@@ -681,7 +694,7 @@ func recordOutcome(ctx workflow.Context, opts workflow.ActivityOptions, a *Activ
 // spawnCHUMWorkflows fires off the ContinuousLearner and TacticalGroom as
 // detached child workflows. They run completely async — the parent returns
 // immediately and the children survive even after it completes.
-func spawnCHUMWorkflows(ctx workflow.Context, logger log.Logger, req TaskRequest, plan StructuredPlan) {
+func spawnCHUMWorkflows(ctx workflow.Context, logger log.Logger, req TaskRequest, plan StructuredPlan, baseWorkDir string) {
 	chumOpts := workflow.ChildWorkflowOptions{
 		ParentClosePolicy: enumspb.PARENT_CLOSE_POLICY_ABANDON,
 	}
@@ -690,7 +703,7 @@ func spawnCHUMWorkflows(ctx workflow.Context, logger log.Logger, req TaskRequest
 	learnerReq := LearnerRequest{
 		TaskID:         req.TaskID,
 		Project:        req.Project,
-		WorkDir:        req.WorkDir,
+		WorkDir:        baseWorkDir,
 		Agent:          req.Agent,
 		DoDPassed:      true,
 		FilesChanged:   plan.FilesToModify,
@@ -706,7 +719,7 @@ func spawnCHUMWorkflows(ctx workflow.Context, logger log.Logger, req TaskRequest
 	groomReq := TacticalGroomRequest{
 		TaskID:  req.TaskID,
 		Project: req.Project,
-		WorkDir: req.WorkDir,
+		WorkDir: baseWorkDir,
 		Tier:    "fast",
 	}
 	groomOpts := chumOpts

@@ -18,6 +18,7 @@ type Task struct {
 	Notes           string    `json:"notes"`
 	DependsOn       []string  `json:"depends_on"`
 	Project         string    `json:"project"`
+	ErrorLog        string    `json:"error_log,omitempty"` // scent of failed sharks
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
 }

@@ -97,6 +97,17 @@ func ContinuousLearnerWorkflow(ctx workflow.Context, req LearnerRequest) error {
 		logger.Info(OctopusPrefix+" Pattern calcified into shadow script", "TaskID", req.TaskID)
 	}
 
+	// Step 6: Commit and Push all learner outputs
+	// Without this, the learning is ephemeral and gets wiped out on the next checkout.
+	commitOpts := workflow.ActivityOptions{
+		StartToCloseTimeout: 1 * time.Minute,
+		RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 3},
+	}
+	commitCtx := workflow.WithActivityOptions(ctx, commitOpts)
+	if err := workflow.ExecuteActivity(commitCtx, a.CommitAndPushLearnerOutputsActivity, req.WorkDir, req.TaskID).Get(ctx, nil); err != nil {
+		logger.Warn(OctopusPrefix+" Failed to commit and push learner outputs", "error", err)
+	}
+
 	logger.Info(OctopusPrefix+" ContinuousLearner complete",
 		"TaskID", req.TaskID,
 		"Lessons", len(lessons),

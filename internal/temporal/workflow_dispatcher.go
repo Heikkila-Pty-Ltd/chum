@@ -99,6 +99,7 @@ func DispatcherWorkflow(ctx workflow.Context, _ struct{}) error {
 			SlowStepThreshold: slowStep,
 			Priority:          clampTaskPriority(c.Priority),
 			EscalationChain:   result.EscalationTiers,
+			PreviousErrors:    c.PreviousErrors,
 		}
 
 		// Fire-and-forget — we don't wait for the child to complete.
@@ -381,6 +382,7 @@ func (da *DispatchActivities) ScanCandidatesActivity(ctx context.Context) (*Scan
 			SlowStepThreshold: slowStepThreshold,
 			Priority:          clampTaskPriority(c.task.Priority),
 			EstimateMinutes:   c.task.EstimateMinutes,
+			PreviousErrors:    strings.Split(c.task.ErrorLog, "\n---\n"),
 		})
 		projectRunning[c.project]++
 	}

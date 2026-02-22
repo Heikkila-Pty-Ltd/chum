@@ -29,13 +29,14 @@ require_estimate = true
 require_acceptance = true
 
 [rate_limits]
-# Claude output tokens — the scarce resource on Max20 auth plans.
-# 5h rolling window: ~200K output tokens before pausing dispatch.
-window_5h_cap = 200000
-# Weekly cap (resets Friday 14:00 local): ~1M output tokens total.
-weekly_cap = 1000000
-# Reserve 30% of weekly for human use (CHUM uses 70%).
-weekly_headroom_pct = 30
+# Claude output tokens — the scarce resource on auth plans.
+# 5h rolling window: pause dispatch when approaching ceiling.
+# Set to 0 to disable. Tune based on your Anthropic dashboard limits.
+window_5h_cap = 2000000
+# Weekly cap (resets Friday 14:00 local).
+weekly_cap = 10000000
+# Reserve 50% of weekly for human use (CHUM uses 50%).
+weekly_headroom_pct = 50
 
 [providers.codex-spark]
 tier = "fast"

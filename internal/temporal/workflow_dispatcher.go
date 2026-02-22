@@ -54,8 +54,8 @@ func DispatcherWorkflow(ctx workflow.Context, _ struct{}) error {
 	}
 
 	// Agent rotation — distribute load across available CLI agents.
-	// This prevents burning through any single provider's weekly quota.
-	availableAgents := []string{"claude", "codex", "gemini"}
+	// Claude removed to preserve Max20 auth budget for human use.
+	availableAgents := []string{"codex", "gemini"}
 
 	// Start child workflows for each candidate.
 	dispatched := 0

@@ -220,6 +220,27 @@ CREATE TABLE IF NOT EXISTS step_metrics (
 CREATE INDEX IF NOT EXISTS idx_step_metrics_dispatch ON step_metrics(dispatch_id);
 CREATE INDEX IF NOT EXISTS idx_step_metrics_project ON step_metrics(project, recorded_at);
 
+CREATE TABLE IF NOT EXISTS ubs_findings (
+	id            INTEGER PRIMARY KEY AUTOINCREMENT,
+	dispatch_id   INTEGER NOT NULL DEFAULT 0,
+	morsel_id     TEXT    NOT NULL DEFAULT '',
+	project       TEXT    NOT NULL DEFAULT '',
+	provider      TEXT    NOT NULL DEFAULT '',
+	species       TEXT    NOT NULL DEFAULT '',
+	rule_id       TEXT    NOT NULL DEFAULT '',
+	severity      TEXT    NOT NULL DEFAULT '',
+	file_path     TEXT    NOT NULL DEFAULT '',
+	line_number   INTEGER NOT NULL DEFAULT 0,
+	message       TEXT    NOT NULL DEFAULT '',
+	language      TEXT    NOT NULL DEFAULT '',
+	attempt       INTEGER NOT NULL DEFAULT 0,
+	fixed         BOOLEAN NOT NULL DEFAULT 0,
+	created_at    DATETIME NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_ubs_provider ON ubs_findings(provider);
+CREATE INDEX IF NOT EXISTS idx_ubs_species  ON ubs_findings(species, rule_id);
+CREATE INDEX IF NOT EXISTS idx_ubs_project  ON ubs_findings(project, created_at);
+
 `
 
 // Open creates or opens a SQLite database at the given path and ensures the schema exists.

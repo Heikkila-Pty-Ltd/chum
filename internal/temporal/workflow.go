@@ -223,6 +223,19 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 		}).Get(ctx, nil)
 	}
 
+	// ===== BUG PRIMING — inject population-level bug data =====
+	// Classify species early for priming (will be re-classified with plan data later).
+	earlySpecies := classifySpecies(req.TaskID, req.Prompt, nil)
+	var bugPriming string
+	if req.Agent != "" {
+		bugPrimingCtx := workflow.WithActivityOptions(ctx, recordOpts)
+		_ = workflow.ExecuteActivity(bugPrimingCtx, a.GetBugPrimingActivity, req.Agent, earlySpecies).Get(ctx, &bugPriming)
+		if bugPriming != "" {
+			logger.Info(SharkPrefix+" Bug priming injected", "Provider", req.Agent, "Species", earlySpecies, "Len", len(bugPriming))
+			req.Prompt = req.Prompt + "\n\n" + bugPriming
+		}
+	}
+
 	// ===== PHASE 1: PLAN =====
 	awaitResumeGate()
 	planStart := workflow.Now(ctx)
@@ -444,29 +457,38 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 
 			awaitResumeGate()
 
-			// --- SEMGREP PRE-FILTER ---
-			// Run custom .semgrep/ rules first. Free and fast — catches known
-			// antipatterns before we pay for compile/test/lint.
-			semgrepStart := workflow.Now(ctx)
-			semgrepOpts := workflow.ActivityOptions{
-				StartToCloseTimeout: 1 * time.Minute,
+			// --- UBS PRE-FILTER ---
+			// Run Ultimate Bug Scanner before DoD. Fast static analysis catches
+			// known antipatterns. All findings logged to ubs_findings table.
+			ubsStart := workflow.Now(ctx)
+			ubsOpts := workflow.ActivityOptions{
+				StartToCloseTimeout: 2 * time.Minute,
 				RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 1},
 			}
-			semgrepCtx := workflow.WithActivityOptions(ctx, semgrepOpts)
-			var semgrepResult SemgrepScanResult
-			if err := workflow.ExecuteActivity(semgrepCtx, a.RunSemgrepScanActivity, req.WorkDir).Get(ctx, &semgrepResult); err != nil {
-				logger.Warn(SharkPrefix+" Semgrep scan failed (non-fatal, proceeding to DoD)", "error", err)
-				recordStep(fmt.Sprintf("semgrep[%d]", attempt+1), semgrepStart, "skipped")
-			} else if !semgrepResult.Passed {
-				recordStep(fmt.Sprintf("semgrep[%d]", attempt+1), semgrepStart, "failed")
+			ubsCtx := workflow.WithActivityOptions(ctx, ubsOpts)
+			ubsReq := UBSScanRequest{
+				WorktreePath: worktreePath,
+				MorselID:     req.TaskID,
+				Project:      req.Project,
+				Provider:     req.Agent,
+				Species:      earlySpecies,
+				Attempt:      attempt + 1,
+			}
+			var ubsResult UBSScanResult
+			if err := workflow.ExecuteActivity(ubsCtx, a.RunUBSScanActivity, ubsReq).Get(ctx, &ubsResult); err != nil {
+				logger.Warn(SharkPrefix+" UBS scan failed (non-fatal, proceeding to DoD)", "error", err)
+				recordStep(fmt.Sprintf("ubs[%d]", attempt+1), ubsStart, "skipped")
+			} else if !ubsResult.Passed {
+				recordStep(fmt.Sprintf("ubs[%d]", attempt+1), ubsStart, "failed")
 				plan.PreviousErrors = append(plan.PreviousErrors,
-					fmt.Sprintf("Semgrep found %d issues: %s", semgrepResult.Findings, truncate(semgrepResult.Output, 500)))
+					fmt.Sprintf("UBS found %d critical issues (total %d findings)", ubsResult.Critical, ubsResult.TotalFindings))
 				allFailures = append(allFailures,
-					fmt.Sprintf("Attempt %d: Semgrep found %d issues", attempt+1, semgrepResult.Findings))
-				logger.Warn(SharkPrefix+" Semgrep pre-filter failed, skipping expensive DoD", "Findings", semgrepResult.Findings)
+					fmt.Sprintf("Attempt %d: UBS found %d critical issues", attempt+1, ubsResult.Critical))
+				logger.Warn(SharkPrefix+" UBS pre-filter failed, skipping expensive DoD",
+					"Critical", ubsResult.Critical, "Warnings", ubsResult.Warnings)
 				continue
 			} else {
-				recordStep(fmt.Sprintf("semgrep[%d]", attempt+1), semgrepStart, "ok")
+				recordStep(fmt.Sprintf("ubs[%d]", attempt+1), ubsStart, "ok")
 			}
 
 			awaitResumeGate()

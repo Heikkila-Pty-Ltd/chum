@@ -105,6 +105,10 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 	w.RegisterActivity(acts.RecordEscalationActivity)
 	w.RegisterActivity(acts.AutoFixLintActivity)
 
+	// --- UBS (Ultimate Bug Scanner) ---
+	w.RegisterActivity(acts.RunUBSScanActivity)
+	w.RegisterActivity(acts.GetBugPrimingActivity)
+
 	// --- Genome Evolution ---
 	w.RegisterActivity(acts.EvolveGenomeActivity)
 	w.RegisterActivity(acts.HibernateGenomeActivity)

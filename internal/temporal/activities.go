@@ -7,7 +7,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"go.temporal.io/sdk/activity"
@@ -46,10 +48,18 @@ func (a *Activities) StructuredPlanActivity(ctx context.Context, req TaskRequest
 		}
 	}
 
+	// Inject semgrep gates — the ecological niche.
+	// A system optimizing for survival tells organisms what they'll be tested on.
+	// DoD rules ARE the environment. Don't set organisms up for failure.
+	semgrepContext := loadSemgrepContext(req.WorkDir)
+	if semgrepContext != "" {
+		logger.Info(SharkPrefix+" Semgrep gates injected into planning prompt")
+	}
+
 	prompt := fmt.Sprintf(`You are a senior engineering planner. Analyze this task and produce a structured execution plan.
 
 TASK: %s
-%s
+%s%s
 OUTPUT FORMAT: You MUST respond with ONLY a JSON object (no markdown, no commentary) with this exact structure:
 {
   "summary": "one-line summary of the task",
@@ -60,7 +70,7 @@ OUTPUT FORMAT: You MUST respond with ONLY a JSON object (no markdown, no comment
   "risk_assessment": "what could go wrong"
 }
 
-Be thorough. Planning space is cheap — implementation is expensive.`, req.Prompt, genomeContext)
+Be thorough. Planning space is cheap — implementation is expensive.`, req.Prompt, genomeContext, semgrepContext)
 
 	cliResult, err := runAgent(ctx, req.Agent, prompt, req.WorkDir)
 	if err != nil {
@@ -868,4 +878,43 @@ func (a *Activities) AutoFixLintActivity(ctx context.Context, workDir string) (*
 
 	result.Output = allOutput.String()
 	return result, nil
+}
+
+// loadSemgrepContext reads .semgrep/*.yml rules from the workspace and formats
+// them for prompt injection. The organism sees the environment it must survive in.
+// A system optimizing for survival doesn't set organisms up for failure.
+func loadSemgrepContext(workDir string) string {
+	semgrepDir := filepath.Join(workDir, ".semgrep")
+	entries, err := os.ReadDir(semgrepDir)
+	if err != nil || len(entries) == 0 {
+		return ""
+	}
+
+	var rules []string
+	totalLen := 0
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".yml" {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(semgrepDir, entry.Name()))
+		if err != nil {
+			continue
+		}
+		rule := string(data)
+		if totalLen+len(rule) > 2000 {
+			break // cap context to avoid prompt bloat
+		}
+		rules = append(rules, rule)
+		totalLen += len(rule)
+	}
+
+	if len(rules) == 0 {
+		return ""
+	}
+
+	result := "\nENFORCED CODE RULES (your output will be scanned by these — plan accordingly):\n"
+	for _, r := range rules {
+		result += "---\n" + r + "\n"
+	}
+	return result
 }

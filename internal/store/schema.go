@@ -5,6 +5,40 @@ import (
 	"fmt"
 )
 
+const (
+	stingrayRunsTableName     = "stingray_runs"
+	stingrayFindingsTableName = "stingray_findings"
+)
+
+const (
+	stingrayRunsRunIndexProject                     = "idx_stingray_runs_project"
+	stingrayRunsRunIndexRunAt                       = "idx_stingray_runs_run_at"
+	stingrayRunsRunIndexProjectID                   = "idx_stingray_runs_project_id"
+	stingrayFindingsIndexRun                        = "idx_stingray_findings_run"
+	stingrayFindingsIndexProject                    = "idx_stingray_findings_project"
+	stingrayFindingsIndexProjectStatus              = "idx_stingray_findings_project_status_run"
+	stingrayFindingsIndexStatus                     = "idx_stingray_findings_status"
+	stingrayFindingsIndexCategory                   = "idx_stingray_findings_category"
+	stingrayFindingsIndexProjectStatusTitleFilePath = "idx_stingray_findings_project_status_title_file_path"
+	stingrayFindingsIndexProjectLastSeen            = "idx_stingray_findings_project_last_seen"
+)
+
+var stingrayRunsExpectedIndexes = []string{
+	stingrayRunsRunIndexProject,
+	stingrayRunsRunIndexRunAt,
+	stingrayRunsRunIndexProjectID,
+}
+
+var stingrayFindingsExpectedIndexes = []string{
+	stingrayFindingsIndexRun,
+	stingrayFindingsIndexProject,
+	stingrayFindingsIndexProjectStatus,
+	stingrayFindingsIndexStatus,
+	stingrayFindingsIndexCategory,
+	stingrayFindingsIndexProjectStatusTitleFilePath,
+	stingrayFindingsIndexProjectLastSeen,
+}
+
 const stingrayRunsTableSchema = `
 CREATE TABLE IF NOT EXISTS stingray_runs (
 	id INTEGER PRIMARY KEY,
@@ -16,10 +50,10 @@ CREATE TABLE IF NOT EXISTS stingray_runs (
 	metrics_json TEXT NOT NULL DEFAULT '{}'
 )`
 
-const stingrayRunsIndexes = `
-CREATE INDEX IF NOT EXISTS idx_stingray_runs_project ON stingray_runs(project);
-CREATE INDEX IF NOT EXISTS idx_stingray_runs_run_at ON stingray_runs(run_at);
-CREATE INDEX IF NOT EXISTS idx_stingray_runs_project_id ON stingray_runs(project, id);
+var stingrayRunsIndexes = `
+CREATE INDEX IF NOT EXISTS ` + stingrayRunsRunIndexProject + ` ON stingray_runs(project);
+CREATE INDEX IF NOT EXISTS ` + stingrayRunsRunIndexRunAt + ` ON stingray_runs(run_at);
+CREATE INDEX IF NOT EXISTS ` + stingrayRunsRunIndexProjectID + ` ON stingray_runs(project, id);
 `
 
 const stingrayFindingsTableSchema = `
@@ -39,15 +73,15 @@ CREATE TABLE IF NOT EXISTS stingray_findings (
 	last_seen DATETIME NOT NULL DEFAULT (datetime('now'))
 )`
 
-const stingrayFindingsIndexes = `
-CREATE INDEX IF NOT EXISTS idx_stingray_findings_run ON stingray_findings(run_id);
-CREATE INDEX IF NOT EXISTS idx_stingray_findings_project ON stingray_findings(project);
-CREATE INDEX IF NOT EXISTS idx_stingray_findings_project_status_run ON stingray_findings(project, status, run_id);
-CREATE INDEX IF NOT EXISTS idx_stingray_findings_status ON stingray_findings(status);
-CREATE INDEX IF NOT EXISTS idx_stingray_findings_category ON stingray_findings(category);
-CREATE INDEX IF NOT EXISTS idx_stingray_findings_project_status_title_file_path
+var stingrayFindingsIndexes = `
+CREATE INDEX IF NOT EXISTS ` + stingrayFindingsIndexRun + ` ON stingray_findings(run_id);
+CREATE INDEX IF NOT EXISTS ` + stingrayFindingsIndexProject + ` ON stingray_findings(project);
+CREATE INDEX IF NOT EXISTS ` + stingrayFindingsIndexProjectStatus + ` ON stingray_findings(project, status, run_id);
+CREATE INDEX IF NOT EXISTS ` + stingrayFindingsIndexStatus + ` ON stingray_findings(status);
+CREATE INDEX IF NOT EXISTS ` + stingrayFindingsIndexCategory + ` ON stingray_findings(category);
+CREATE INDEX IF NOT EXISTS ` + stingrayFindingsIndexProjectStatusTitleFilePath + `
 	ON stingray_findings(project, status, title, file_path);
-CREATE INDEX IF NOT EXISTS idx_stingray_findings_project_last_seen
+CREATE INDEX IF NOT EXISTS ` + stingrayFindingsIndexProjectLastSeen + `
 	ON stingray_findings(project, last_seen, id);`
 
 // migrateStingrayTables ensures stingray tables and indexes exist.

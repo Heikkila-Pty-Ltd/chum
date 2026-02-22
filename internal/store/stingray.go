@@ -349,7 +349,7 @@ func (s *Store) GetLatestRun(project string) (*StingrayRun, error) {
 
 // scanStingrayFindings scans rows into StingrayFinding slices.
 func scanStingrayFindings(rows *sql.Rows) ([]StingrayFinding, error) {
-	var findings []StingrayFinding
+	findings := make([]StingrayFinding, 0)
 	for rows.Next() {
 		var f StingrayFinding
 		var firstSeen, lastSeen string

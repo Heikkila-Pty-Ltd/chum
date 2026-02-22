@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -38,6 +39,191 @@ func assertIndexesExist(t *testing.T, db *sql.DB, table string, expected []strin
 	for _, name := range expected {
 		if _, ok := indexes[name]; !ok {
 			t.Fatalf("missing index %q on table %s", name, table)
+		}
+	}
+}
+
+type pragmaTableColumnInfo struct {
+	dataType   string
+	notNull    bool
+	defaultVal sql.NullString
+}
+
+func testPragmaTableInfo(t *testing.T, db *sql.DB, table string) map[string]pragmaTableColumnInfo {
+	t.Helper()
+
+	query := fmt.Sprintf("PRAGMA table_info('%s')", table)
+	rows, err := db.Query(query)
+	if err != nil {
+		t.Fatalf("query pragma_table_info(%s) failed: %v", table, err)
+	}
+	t.Cleanup(func() { _ = rows.Close() })
+
+	columns := make(map[string]pragmaTableColumnInfo)
+	for rows.Next() {
+		var cid int
+		var name string
+		var dataType string
+		var notNull int
+		var defaultVal sql.NullString
+		var pk int
+		if err := rows.Scan(&cid, &name, &dataType, &notNull, &defaultVal, &pk); err != nil {
+			t.Fatalf("scan table_info row failed: %v", err)
+		}
+		columns[name] = pragmaTableColumnInfo{
+			dataType:   dataType,
+			notNull:    notNull == 1,
+			defaultVal: defaultVal,
+		}
+		_ = cid
+		_ = pk
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate pragma_table_info failed: %v", err)
+	}
+	return columns
+}
+
+func normalizePragmaDefault(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if len(raw) == 0 {
+		return raw
+	}
+	for len(raw) > 1 && strings.HasPrefix(raw, "(") && strings.HasSuffix(raw, ")") {
+		raw = strings.TrimSpace(raw[1 : len(raw)-1])
+	}
+	if (strings.HasPrefix(raw, "'") && strings.HasSuffix(raw, "'")) ||
+		(strings.HasPrefix(raw, `"`) && strings.HasSuffix(raw, `"`)) {
+		return raw[1 : len(raw)-1]
+	}
+	return raw
+}
+
+func assertPragmaColumn(
+	t *testing.T,
+	columns map[string]pragmaTableColumnInfo,
+	table string,
+	name string,
+	wantType string,
+	wantNotNull bool,
+	wantDefault *string,
+) {
+	t.Helper()
+
+	col, ok := columns[name]
+	if !ok {
+		t.Fatalf("column %q missing on table %q", name, table)
+	}
+	if col.dataType != wantType {
+		t.Errorf("column %q on table %q type = %q, want %q", name, table, col.dataType, wantType)
+	}
+	if col.notNull != wantNotNull {
+		t.Errorf("column %q on table %q notnull = %v, want %v", name, table, col.notNull, wantNotNull)
+	}
+	if wantDefault == nil {
+		if col.defaultVal.Valid {
+			t.Errorf("column %q on table %q should have no default, got %q", name, table, col.defaultVal.String)
+		}
+		return
+	}
+	if !col.defaultVal.Valid {
+		t.Fatalf("column %q on table %q missing default; want %q", name, table, *wantDefault)
+	}
+	if got := normalizePragmaDefault(col.defaultVal.String); got != *wantDefault {
+		t.Fatalf("column %q on table %q default = %q, want %q", name, table, got, *wantDefault)
+	}
+}
+
+type pragmaForeignKey struct {
+	id       int
+	seq      int
+	table    string
+	from     string
+	to       string
+	onUpdate string
+	onDelete string
+	match    string
+}
+
+func testPragmaForeignKeys(t *testing.T, db *sql.DB, table string) []pragmaForeignKey {
+	t.Helper()
+
+	rows, err := db.Query(fmt.Sprintf("PRAGMA foreign_key_list('%s')", table))
+	if err != nil {
+		t.Fatalf("query pragma_foreign_key_list(%s) failed: %v", table, err)
+	}
+	t.Cleanup(func() { _ = rows.Close() })
+
+	keys := make([]pragmaForeignKey, 0)
+	for rows.Next() {
+		var key pragmaForeignKey
+		if err := rows.Scan(
+			&key.id,
+			&key.seq,
+			&key.table,
+			&key.from,
+			&key.to,
+			&key.onUpdate,
+			&key.onDelete,
+			&key.match,
+		); err != nil {
+			t.Fatalf("scan pragma_foreign_key_list row failed: %v", err)
+		}
+		keys = append(keys, key)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate pragma_foreign_key_list failed: %v", err)
+	}
+
+	return keys
+}
+
+func TestStingrayEnumsMatchDesign(t *testing.T) {
+	wantStatuses := []string{
+		stingrayFindingStatusOpen,
+		stingrayFindingStatusFiled,
+		stingrayFindingStatusResolved,
+		stingrayFindingStatusWontFix,
+	}
+	if got := len(validStingrayFindingStatuses); got != len(wantStatuses) {
+		t.Fatalf("valid statuses count = %d, want %d", got, len(wantStatuses))
+	}
+	for _, status := range wantStatuses {
+		if _, ok := validStingrayFindingStatuses[status]; !ok {
+			t.Fatalf("missing status %q", status)
+		}
+	}
+
+	wantSeverities := []string{
+		stingrayFindingSeverityHigh,
+		stingrayFindingSeverityMedium,
+		stingrayFindingSeverityLow,
+	}
+	if got := len(validStingrayFindingSeverities); got != len(wantSeverities) {
+		t.Fatalf("valid severities count = %d, want %d", got, len(wantSeverities))
+	}
+	for _, severity := range wantSeverities {
+		if _, ok := validStingrayFindingSeverities[severity]; !ok {
+			t.Fatalf("missing severity %q", severity)
+		}
+	}
+
+	wantCategories := []string{
+		stingrayFindingCategoryGodObject,
+		stingrayFindingCategoryTechDebt,
+		stingrayFindingCategoryDepHealth,
+		stingrayFindingCategoryCoverage,
+		stingrayFindingCategoryStructure,
+		stingrayFindingCategoryOSSRisk,
+		stingrayFindingCategoryCoupling,
+		stingrayFindingCategoryDocDrift,
+	}
+	if got := len(validStingrayFindingCategories); got != len(wantCategories) {
+		t.Fatalf("valid categories count = %d, want %d", got, len(wantCategories))
+	}
+	for _, category := range wantCategories {
+		if _, ok := validStingrayFindingCategories[category]; !ok {
+			t.Fatalf("missing category %q", category)
 		}
 	}
 }
@@ -539,6 +725,63 @@ func TestStingrayTablesCreatedOnStartup(t *testing.T) {
 	}
 }
 
+func TestStingraySchemaDefaultsAndIndexesFromPragma(t *testing.T) {
+	s := tempStore(t)
+
+	runAtDefault := "datetime('now')"
+	runFindingsTotalDefault := "0"
+	runFindingsNewDefault := "0"
+	runFindingsResolvedDefault := "0"
+	runMetricsDefault := "{}"
+
+	filePathDefault := ""
+	evidenceDefault := ""
+	morselIDDefault := ""
+	statusDefault := "open"
+	firstSeenDefault := "datetime('now')"
+	lastSeenDefault := "datetime('now')"
+
+	runColumns := testPragmaTableInfo(t, s.DB(), stingrayRunsTableName)
+	assertPragmaColumn(t, runColumns, stingrayRunsTableName, "project", "TEXT", true, nil)
+	assertPragmaColumn(t, runColumns, stingrayRunsTableName, "findings_total", "INTEGER", true, &runFindingsTotalDefault)
+	assertPragmaColumn(t, runColumns, stingrayRunsTableName, "findings_new", "INTEGER", true, &runFindingsNewDefault)
+	assertPragmaColumn(t, runColumns, stingrayRunsTableName, "findings_resolved", "INTEGER", true, &runFindingsResolvedDefault)
+	assertPragmaColumn(t, runColumns, stingrayRunsTableName, "run_at", "DATETIME", true, &runAtDefault)
+	assertPragmaColumn(t, runColumns, stingrayRunsTableName, "metrics_json", "TEXT", true, &runMetricsDefault)
+
+	assertIndexesExist(t, s.DB(), stingrayRunsTableName, stingrayRunsExpectedIndexes)
+
+	findingsColumns := testPragmaTableInfo(t, s.DB(), stingrayFindingsTableName)
+	assertPragmaColumn(t, findingsColumns, stingrayFindingsTableName, "run_id", "INTEGER", true, nil)
+	assertPragmaColumn(t, findingsColumns, stingrayFindingsTableName, "project", "TEXT", true, nil)
+	assertPragmaColumn(t, findingsColumns, stingrayFindingsTableName, "category", "TEXT", true, nil)
+	assertPragmaColumn(t, findingsColumns, stingrayFindingsTableName, "severity", "TEXT", true, nil)
+	assertPragmaColumn(t, findingsColumns, stingrayFindingsTableName, "title", "TEXT", true, nil)
+	assertPragmaColumn(t, findingsColumns, stingrayFindingsTableName, "detail", "TEXT", true, nil)
+	assertPragmaColumn(t, findingsColumns, stingrayFindingsTableName, "file_path", "TEXT", true, &filePathDefault)
+	assertPragmaColumn(t, findingsColumns, stingrayFindingsTableName, "evidence", "TEXT", true, &evidenceDefault)
+	assertPragmaColumn(t, findingsColumns, stingrayFindingsTableName, "morsel_id", "TEXT", true, &morselIDDefault)
+	assertPragmaColumn(t, findingsColumns, stingrayFindingsTableName, "status", "TEXT", true, &statusDefault)
+	assertPragmaColumn(t, findingsColumns, stingrayFindingsTableName, "first_seen", "DATETIME", true, &firstSeenDefault)
+	assertPragmaColumn(t, findingsColumns, stingrayFindingsTableName, "last_seen", "DATETIME", true, &lastSeenDefault)
+
+	assertIndexesExist(t, s.DB(), stingrayFindingsTableName, stingrayFindingsExpectedIndexes)
+
+	foreignKeys := testPragmaForeignKeys(t, s.DB(), stingrayFindingsTableName)
+	foundRunForeignKey := false
+	for _, fk := range foreignKeys {
+		if fk.table == stingrayRunsTableName &&
+			fk.from == "run_id" &&
+			fk.to == "id" {
+			foundRunForeignKey = true
+			break
+		}
+	}
+	if !foundRunForeignKey {
+		t.Fatalf("missing run_id foreign key from %s to %s.id", stingrayFindingsTableName, stingrayRunsTableName)
+	}
+}
+
 func TestOpenMigratesLegacyDBWithoutStingrayTables(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "legacy.db")
 	db, err := sql.Open("sqlite", dbPath)
@@ -869,6 +1112,27 @@ func TestGetRecentFindingsOrdersByLastSeen(t *testing.T) {
 	}
 	if findings[1].ID != oldFindingID {
 		t.Errorf("second finding ID = %d, want %d", findings[1].ID, oldFindingID)
+	}
+}
+
+func TestGetTrendingFindingsBlankProjectReturnsEmpty(t *testing.T) {
+	s := tempStore(t)
+
+	runID, err := s.RecordRun("proj", 1, 1, 0, "{}")
+	if err != nil {
+		t.Fatalf("RecordRun failed: %v", err)
+	}
+	_, err = s.RecordFinding(runID, "proj", "tech_debt", "low", "blank project trend", "detail", "a.go", "")
+	if err != nil {
+		t.Fatalf("RecordFinding failed: %v", err)
+	}
+
+	trending, err := s.GetTrendingFindings("   ", 1)
+	if err != nil {
+		t.Fatalf("GetTrendingFindings failed: %v", err)
+	}
+	if len(trending) != 0 {
+		t.Fatalf("expected 0 trending findings for blank project, got %d", len(trending))
 	}
 }
 

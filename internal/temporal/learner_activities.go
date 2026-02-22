@@ -2,6 +2,7 @@ package temporal
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -499,13 +500,18 @@ func (a *Activities) CalcifyPatternActivity(ctx context.Context, req LearnerRequ
 	}
 
 	// Skip if a script already exists for this type (active or shadow)
-	active, _ := a.Store.GetActiveScriptForType(morselType)
-	if active != nil {
+	active, err := a.Store.GetActiveScriptForType(morselType)
+	if err != nil {
+		logger.Warn(OctopusPrefix+" Failed to read active calcified script", "type", morselType, "error", err)
+	} else if active != nil {
 		logger.Info(OctopusPrefix+" Active script already exists, skipping calcification", "type", morselType)
 		return false, nil
 	}
-	shadow, _ := a.Store.GetShadowScriptForType(morselType)
-	if shadow != nil {
+
+	shadow, err := a.Store.GetShadowScriptForType(morselType)
+	if err != nil {
+		logger.Warn(OctopusPrefix+" Failed to read shadow calcified script", "type", morselType, "error", err)
+	} else if shadow != nil {
 		logger.Info(OctopusPrefix+" Shadow script already exists, skipping calcification", "type", morselType)
 		return false, nil
 	}
@@ -520,10 +526,13 @@ func (a *Activities) CalcifyPatternActivity(ctx context.Context, req LearnerRequ
 	// Apply risk-weighted threshold
 	// Fetch labels for this morsel from the most recent dispatch
 	var labels string
-	_ = a.Store.DB().QueryRowContext(ctx,
+	scanErr := a.Store.DB().QueryRowContext(ctx,
 		`SELECT labels FROM dispatches WHERE morsel_id LIKE ? AND project = ? ORDER BY id DESC LIMIT 1`,
 		morselType+"%", req.Project,
 	).Scan(&labels)
+	if scanErr != nil && scanErr != sql.ErrNoRows {
+		logger.Warn(OctopusPrefix+" Failed to fetch labels for calcification", "type", morselType, "error", scanErr)
+	}
 
 	var labelList []string
 	if labels != "" {
@@ -555,9 +564,17 @@ func (a *Activities) CalcifyPatternActivity(ctx context.Context, req LearnerRequ
 	var prompts []string
 	for rows.Next() {
 		var p string
-		if rows.Scan(&p) == nil && p != "" {
+		scanErr := rows.Scan(&p)
+		if scanErr != nil {
+			logger.Warn(OctopusPrefix+" Failed to scan dispatch prompt", "type", morselType, "error", scanErr)
+			continue
+		}
+		if p != "" {
 			prompts = append(prompts, p)
 		}
+	}
+	if err = rows.Err(); err != nil {
+		return false, fmt.Errorf("scan dispatch history: %w", err)
 	}
 	if len(prompts) == 0 {
 		return false, nil
@@ -582,14 +599,16 @@ func (a *Activities) CalcifyPatternActivity(ctx context.Context, req LearnerRequ
 	// Write the shadow script
 	_, ext := detectScriptLanguage(scriptContent)
 	calcifiedDir := filepath.Join(req.WorkDir, ".cortex", "calcified")
-	if err := os.MkdirAll(calcifiedDir, 0o755); err != nil {
+	err = os.MkdirAll(calcifiedDir, 0o755)
+	if err != nil {
 		return false, fmt.Errorf("create calcified dir: %w", err)
 	}
 
 	scriptName := fmt.Sprintf("%s.%s.shadow", sanitizeForFilename(morselType), ext)
 	scriptPath := filepath.Join(calcifiedDir, scriptName)
 
-	if err := os.WriteFile(scriptPath, []byte(scriptContent), 0o755); err != nil {
+	err = os.WriteFile(scriptPath, []byte(scriptContent), 0o755)
+	if err != nil {
 		return false, fmt.Errorf("write shadow script: %w", err)
 	}
 

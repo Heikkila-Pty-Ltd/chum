@@ -43,8 +43,9 @@ OPS_SCRIPTS := $(SCRIPT_DIR)/ops
 
 # Source files
 SRC_FILES := $(shell find . -type f -name '*.go' -not -path './vendor/*')
+PRE_DEPLOY_WORKFLOW_QUERY := WorkflowType = 'ChumAgentWorkflow' AND ExecutionStatus = 'Running'
 
-.PHONY: all help build build-all install clean test test-race test-race-ci lint fmt vet
+.PHONY: all help build build-all install clean test test-race test-race-ci lint fmt vet pre-deploy
 .PHONY: service-install service-start service-stop service-logs
 .PHONY: release snapshot docker
 
@@ -136,7 +137,10 @@ service-logs: ## View systemd service logs
 
 ##@ Release
 
-release: ## Create a new release (requires VERSION)
+pre-deploy: build ## Terminate running agent workflows before deployment
+	@./$(BINARY_NAME) admin terminate --query "$(PRE_DEPLOY_WORKFLOW_QUERY)"
+
+release: pre-deploy ## Create a new release (requires VERSION)
 ifndef VERSION
 	$(error VERSION is required. Usage: make release VERSION=x.y.z)
 endif

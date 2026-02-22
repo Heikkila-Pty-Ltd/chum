@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -236,6 +238,82 @@ func TestListOpenAgentWorkflowsUsesProjectFilter(t *testing.T) {
 	require.Len(t, fakeTC.queries, 1)
 	require.Equal(t, 1, len(fakeTC.queries))
 	require.Contains(t, fakeTC.queries[0], fmt.Sprintf("%s = 'alpha-proj'", SearchAttributeProject))
+}
+
+func TestChumAgentWorkflowPausesForDrainUntilResume(t *testing.T) {
+	s := testsuite.WorkflowTestSuite{}
+	env := s.NewTestWorkflowEnvironment()
+	var a *Activities
+
+	var executeCalls int32
+	var resumeSignalSent int32
+	var executeBeforeResume int32
+
+	planCanContinue := make(chan struct{})
+	executeCanContinue := make(chan struct{})
+
+	env.OnActivity(a.StructuredPlanActivity, mock.Anything, mock.Anything).Run(func(_ mock.Arguments) {
+		<-planCanContinue
+	}).Return(&StructuredPlan{
+		Summary:            "Add guarded drain boundary",
+		Steps:              []PlanStep{{Description: "Write change", File: "guarded.go", Rationale: "test"}},
+		FilesToModify:      []string{"guarded.go"},
+		AcceptanceCriteria: []string{"compiles"},
+		TokenUsage:         TokenUsage{InputTokens: 10, OutputTokens: 10, CostUSD: 0.01},
+	}, nil)
+
+	env.OnActivity(a.ExecuteActivity, mock.Anything, mock.Anything, mock.Anything).Run(func(_ mock.Arguments) {
+		if atomic.LoadInt32(&resumeSignalSent) == 0 {
+			atomic.StoreInt32(&executeBeforeResume, 1)
+		}
+		atomic.AddInt32(&executeCalls, 1)
+		<-executeCanContinue
+	}).Return(&ExecutionResult{
+		ExitCode: 0,
+		Output:   "implemented",
+		Agent:    "claude",
+		Tokens:   TokenUsage{InputTokens: 20, OutputTokens: 10, CostUSD: 0.01},
+	}, nil)
+
+	env.OnActivity(a.CodeReviewActivity, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&ReviewResult{
+		Approved:      true,
+		ReviewerAgent: "codex",
+		Tokens:        TokenUsage{InputTokens: 8, OutputTokens: 4, CostUSD: 0.002},
+	}, nil)
+	env.OnActivity(a.RunSemgrepScanActivity, mock.Anything, mock.Anything).Return(&SemgrepScanResult{
+		Passed: true,
+	}, nil)
+	env.OnActivity(a.DoDVerifyActivity, mock.Anything, mock.Anything).Return(&DoDResult{
+		Passed: true,
+	}, nil)
+	env.OnActivity(a.RecordOutcomeActivity, mock.Anything, mock.Anything).Return(nil)
+
+	env.OnWorkflow(ContinuousLearnerWorkflow, mock.Anything, mock.Anything).Return(nil)
+	env.OnWorkflow(TacticalGroomWorkflow, mock.Anything, mock.Anything).Return(nil)
+
+	env.RegisterDelayedCallback(func() {
+		close(planCanContinue)
+		env.SignalWorkflow(ChumAgentDrainSignalName, nil)
+	}, 1*time.Millisecond)
+
+	env.RegisterDelayedCallback(func() {
+		atomic.StoreInt32(&resumeSignalSent, 1)
+		env.SignalWorkflow(ChumAgentResumeSignalName, nil)
+		close(executeCanContinue)
+	}, 10*time.Millisecond)
+
+	env.ExecuteWorkflow(ChumAgentWorkflow, TaskRequest{
+		TaskID:  "test-morsel-drain",
+		Project: "test-project",
+		Prompt:  "validate drain boundary",
+		Agent:   "claude",
+		WorkDir: "/tmp/test",
+	})
+
+	require.True(t, env.IsWorkflowCompleted())
+	require.NoError(t, env.GetWorkflowError())
+	require.Equal(t, int32(1), atomic.LoadInt32(&executeCalls))
+	require.Equal(t, int32(0), atomic.LoadInt32(&executeBeforeResume))
 }
 
 // TestContinuousLearnerWorkflowPipeline verifies the learner extracts lessons,

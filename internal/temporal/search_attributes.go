@@ -69,17 +69,17 @@ func ChumAgentRunningVisibilityQueryForProject(project string) string {
 		queryClauses = append(queryClauses, fmt.Sprintf("%s = '%s'", SearchAttributeCurrentStage, status))
 	}
 
-	query := fmt.Sprintf(
+	visibilityQuery := fmt.Sprintf(
 		"WorkflowType = 'ChumAgentWorkflow' AND ExecutionStatus = 'Running' AND (%s)",
 		strings.Join(queryClauses, " OR "),
 	)
 
 	project = strings.TrimSpace(project)
 	if project == "" {
-		return query
+		return visibilityQuery
 	}
 
-	return fmt.Sprintf("%s AND %s = '%s'", query, SearchAttributeProject, strings.ReplaceAll(project, "'", "''"))
+	return fmt.Sprintf("%s AND %s = '%s'", visibilityQuery, SearchAttributeProject, strings.ReplaceAll(project, "'", "''"))
 }
 
 func upsertChumWorkflowSearchAttributes(ctx workflow.Context, req TaskRequest, status string) error {

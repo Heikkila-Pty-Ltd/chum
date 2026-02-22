@@ -200,6 +200,11 @@ func TestParseAdminSubcommand(t *testing.T) {
 		_, _, err := parseAdminSubcommand([]string{"admin", "resume", "--query", "x = 1", "surplus"}, "default-query")
 		require.ErrorContains(t, err, "unexpected arguments")
 	})
+
+	t.Run("subcommand requires query for reset", func(t *testing.T) {
+		_, _, err := parseAdminSubcommand([]string{"admin", "reset", "--query", ""}, "default-query")
+		require.ErrorContains(t, err, "--query is required")
+	})
 }
 
 func TestRunAdminActionRoutesToCorrectRunner(t *testing.T) {
@@ -232,6 +237,12 @@ func TestRunAdminActionRoutesToCorrectRunner(t *testing.T) {
 			require.Equal(t, tc.query, stringFromCalledQuery(ops, tc.command))
 		})
 	}
+
+	t.Run("unknown command returns error", func(t *testing.T) {
+		ops := &fakeAdminBatchOps{}
+		_, err := runAdminAction(context.Background(), "invalid", "q", ops)
+		require.ErrorContains(t, err, "unknown admin command")
+	})
 }
 
 func stringFromCalledQuery(ops *fakeAdminBatchOps, command string) string {

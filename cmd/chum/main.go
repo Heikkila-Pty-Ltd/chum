@@ -90,6 +90,29 @@ type adminBatchOps interface {
 	Terminate(context.Context, string) (string, error)
 }
 
+type adminBatchOpsRunner struct {
+	drain     func(context.Context, string) (string, error)
+	resume    func(context.Context, string) (string, error)
+	reset     func(context.Context, string) (string, error)
+	terminate func(context.Context, string) (string, error)
+}
+
+func (a *adminBatchOpsRunner) Drain(ctx context.Context, query string) (string, error) {
+	return a.drain(ctx, query)
+}
+
+func (a *adminBatchOpsRunner) Resume(ctx context.Context, query string) (string, error) {
+	return a.resume(ctx, query)
+}
+
+func (a *adminBatchOpsRunner) Reset(ctx context.Context, query string) (string, error) {
+	return a.reset(ctx, query)
+}
+
+func (a *adminBatchOpsRunner) Terminate(ctx context.Context, query string) (string, error) {
+	return a.terminate(ctx, query)
+}
+
 func parseAdminSubcommand(args []string, defaultQuery string) (string, string, error) {
 	if len(args) < 2 {
 		return "", "", fmt.Errorf("admin requires a subcommand: drain | resume | reset | terminate")
@@ -147,7 +170,7 @@ func runAdminMode(args []string, logger *slog.Logger) error {
 	}
 
 	args = append([]string{"admin"}, adminFS.Args()...)
-	command, query, err := parseAdminSubcommand(args, temporal.ChumAgentRunningVisibilityQuery(""))
+	command, query, err := parseAdminSubcommand(args, temporal.ChumAgentRunningVisibilityQuery())
 	if err != nil {
 		return err
 	}
@@ -174,17 +197,17 @@ func runAdminMode(args []string, logger *slog.Logger) error {
 
 	namespace := strings.TrimSpace(os.Getenv("TEMPORAL_NAMESPACE"))
 
-	ops := adminBatchOps{
-		Drain: func(ctx context.Context, q string) (string, error) {
+	ops := &adminBatchOpsRunner{
+		drain: func(ctx context.Context, q string) (string, error) {
 			return temporal.StartDrainAgentWorkflows(ctx, tc.WorkflowService(), namespace, q)
 		},
-		Resume: func(ctx context.Context, q string) (string, error) {
+		resume: func(ctx context.Context, q string) (string, error) {
 			return temporal.StartResumeAgentWorkflows(ctx, tc.WorkflowService(), namespace, q)
 		},
-		Reset: func(ctx context.Context, q string) (string, error) {
+		reset: func(ctx context.Context, q string) (string, error) {
 			return temporal.StartResetAgentWorkflows(ctx, tc.WorkflowService(), namespace, q)
 		},
-		Terminate: func(ctx context.Context, q string) (string, error) {
+		terminate: func(ctx context.Context, q string) (string, error) {
 			return temporal.StartTerminateAgentWorkflows(ctx, tc.WorkflowService(), namespace, q)
 		},
 	}

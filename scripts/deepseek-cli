@@ -1,0 +1,107 @@
+#!/usr/bin/env bash
+# deepseek-cli — OpenRouter-backed DeepSeek wrapper for CHUM
+#
+# Interface contract (matches claude/codex/gemini CLIs):
+#   - Reads prompt from stdin
+#   - Outputs JSON to stdout with: result, usage { prompt_tokens, completion_tokens }
+#   - Supports --json flag for structured output
+#   - Supports --model flag for model override
+#
+# Environment:
+#   OPENROUTER_API_KEY — required (or sourced from ~/.openclaw/.env)
+#   DEEPSEEK_MODEL     — optional, defaults to deepseek/deepseek-r1
+
+set -euo pipefail
+
+# Source API key from known locations if not set
+if [[ -z "${OPENROUTER_API_KEY:-}" ]]; then
+  for envfile in "$HOME/.openclaw/.env" "$HOME/.env" "$HOME/.config/openrouter/.env"; do
+    if [[ -f "$envfile" ]]; then
+      # shellcheck disable=SC1090
+      source "$envfile" 2>/dev/null || true
+      [[ -n "${OPENROUTER_API_KEY:-}" ]] && break
+    fi
+  done
+fi
+
+if [[ -z "${OPENROUTER_API_KEY:-}" ]]; then
+  echo '{"error":"OPENROUTER_API_KEY not set","result":"","usage":{"prompt_tokens":0,"completion_tokens":0}}' >&2
+  exit 1
+fi
+
+MODEL="${DEEPSEEK_MODEL:-deepseek/deepseek-r1}"
+JSON_MODE=false
+SYSTEM_PROMPT="You are a senior software engineer. Be concise and precise."
+
+# Parse args
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --json) JSON_MODE=true; shift ;;
+    --model) MODEL="$2"; shift 2 ;;
+    --system) SYSTEM_PROMPT="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+
+# Read prompt from stdin
+PROMPT=$(cat)
+
+if [[ -z "$PROMPT" ]]; then
+  echo '{"error":"empty prompt","result":"","usage":{"prompt_tokens":0,"completion_tokens":0}}' >&2
+  exit 1
+fi
+
+# Build request payload
+PAYLOAD=$(jq -n \
+  --arg model "$MODEL" \
+  --arg system "$SYSTEM_PROMPT" \
+  --arg prompt "$PROMPT" \
+  '{
+    model: $model,
+    messages: [
+      { role: "system", content: $system },
+      { role: "user", content: $prompt }
+    ],
+    max_tokens: 16384,
+    temperature: 0.3
+  }')
+
+# Call OpenRouter API
+RESPONSE=$(curl -s -w "\n%{http_code}" \
+  -X POST "https://openrouter.ai/api/v1/chat/completions" \
+  -H "Authorization: Bearer ${OPENROUTER_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -H "HTTP-Referer: https://github.com/Heikkila-Pty-Ltd/chum" \
+  -H "X-Title: CHUM-DeepSeek" \
+  -d "$PAYLOAD")
+
+# Split response body and HTTP status
+HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+BODY=$(echo "$RESPONSE" | sed '$d')
+
+if [[ "$HTTP_CODE" != "200" ]]; then
+  ERROR=$(echo "$BODY" | jq -r '.error.message // .error // "unknown error"' 2>/dev/null || echo "HTTP $HTTP_CODE")
+  echo "{\"error\":\"openrouter: $ERROR\",\"result\":\"\",\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":0}}" >&2
+  exit 1
+fi
+
+# Extract result and usage (OpenRouter uses standard OpenAI response format)
+RESULT=$(echo "$BODY" | jq -r '.choices[0].message.content // ""')
+PROMPT_TOKENS=$(echo "$BODY" | jq -r '.usage.prompt_tokens // 0')
+COMPLETION_TOKENS=$(echo "$BODY" | jq -r '.usage.completion_tokens // 0')
+TOTAL_COST=$(echo "$BODY" | jq -r '.usage.total_cost // 0')
+
+# Output in CHUM-compatible JSON format
+jq -n \
+  --arg result "$RESULT" \
+  --argjson prompt_tokens "$PROMPT_TOKENS" \
+  --argjson completion_tokens "$COMPLETION_TOKENS" \
+  --argjson cost "$TOTAL_COST" \
+  '{
+    result: $result,
+    usage: {
+      prompt_tokens: $prompt_tokens,
+      completion_tokens: $completion_tokens,
+      cost: $cost
+    }
+  }'

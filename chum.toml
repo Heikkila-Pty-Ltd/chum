@@ -28,6 +28,20 @@ coverage_min = 70
 require_estimate = true
 require_acceptance = true
 
+[projects.golf-directory]
+enabled = true
+morsels_dir = "~/projects/golf-directory/.morsels"
+workspace = "~/projects/golf-directory"
+priority = 1
+
+[projects.golf-directory.dod]
+checks = [
+    "npm run build",
+]
+require_estimate = true
+require_acceptance = true
+
+
 [rate_limits]
 # Claude output tokens — the scarce resource on auth plans.
 # 5h rolling window: pause dispatch when approaching ceiling.
@@ -79,6 +93,12 @@ tier = "balanced"
 authed = true
 model = "gemini-2.5-pro"
 cli = "gemini"
+
+[providers.deepseek-r1]
+tier = "balanced"
+authed = true
+model = "deepseek/deepseek-r1"
+cli = "deepseek"
 
 [tiers]
 # Active agents: codex + gemini (claude gated off)

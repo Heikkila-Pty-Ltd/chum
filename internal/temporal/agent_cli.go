@@ -110,6 +110,12 @@ func cliCommandWithModel(agent, workDir, model string) *exec.Cmd {
 			args = append(args, "--model", model)
 		}
 		cmd = exec.Command("gemini", args...)
+	case "deepseek":
+		args := []string{"--json"}
+		if model != "" {
+			args = append(args, "--model", model)
+		}
+		cmd = exec.Command("deepseek", args...)
 	default: // claude — JSON output gives us token usage
 		args := []string{"--print", "--output-format", "json", "--dangerously-skip-permissions"}
 		if model != "" {
@@ -132,6 +138,8 @@ func cliReviewCommand(agent, workDir string) *exec.Cmd {
 	case "codex":
 		// codex exec for review — same as coding, but the prompt asks for review output
 		cmd = exec.Command("codex", "exec", "--full-auto")
+	case "deepseek":
+		cmd = exec.Command("deepseek", "--json")
 	default: // claude reviews via --print with JSON output for token tracking
 		cmd = exec.Command("claude", "--print", "--output-format", "json", "--dangerously-skip-permissions")
 	}

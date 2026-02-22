@@ -63,6 +63,8 @@ func parseAgentOutput(agent, raw string) CLIResult {
 		return parseCodexOutput(raw)
 	case "gemini":
 		return parseGeminiOutput(raw)
+	case "deepseek":
+		return parseDeepSeekOutput(raw)
 	default:
 		return CLIResult{Output: raw}
 	}
@@ -144,5 +146,36 @@ func parseGeminiOutput(raw string) CLIResult {
 	result.Tokens.InputTokens = int(totalInput)
 	result.Tokens.OutputTokens = int(totalOutput)
 	result.Tokens.CacheReadTokens = int(totalCached)
+	return result
+}
+
+// parseDeepSeekOutput extracts result text and token usage from the
+// deepseek-cli wrapper's JSON output (OpenRouter chat completions format).
+func parseDeepSeekOutput(raw string) CLIResult {
+	result := CLIResult{Output: raw}
+
+	var dsOut struct {
+		Result string `json:"result"`
+		Usage  struct {
+			PromptTokens     int     `json:"prompt_tokens"`
+			CompletionTokens int     `json:"completion_tokens"`
+			Cost             float64 `json:"cost"`
+		} `json:"usage"`
+		Error string `json:"error"`
+	}
+
+	if err := json.Unmarshal([]byte(raw), &dsOut); err != nil {
+		return result
+	}
+	if dsOut.Error != "" {
+		result.Output = "deepseek error: " + dsOut.Error
+		return result
+	}
+	if dsOut.Result != "" {
+		result.Output = dsOut.Result
+	}
+	result.Tokens.InputTokens = dsOut.Usage.PromptTokens
+	result.Tokens.OutputTokens = dsOut.Usage.CompletionTokens
+	result.Tokens.CostUSD = dsOut.Usage.Cost
 	return result
 }

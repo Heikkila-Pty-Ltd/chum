@@ -1480,7 +1480,7 @@ func TestQualityScorePersistenceAndAverages(t *testing.T) {
 		Role:         "coder",
 		Overall:      0.8,
 		TestsPassed:  &pass,
-		MorselClosed:   true,
+		MorselClosed: true,
 		CommitMade:   true,
 		FilesChanged: 3,
 		LinesChanged: 10,
@@ -1499,7 +1499,7 @@ func TestQualityScorePersistenceAndAverages(t *testing.T) {
 		Role:         "coder",
 		Overall:      0.2,
 		TestsPassed:  &fail,
-		MorselClosed:   false,
+		MorselClosed: false,
 		CommitMade:   false,
 		FilesChanged: 1,
 		LinesChanged: -5,
@@ -1513,14 +1513,14 @@ func TestQualityScorePersistenceAndAverages(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := s.UpsertQualityScore(QualityScore{
-		DispatchID:  d3,
-		Provider:    "anthropic",
-		Role:        "reviewer",
-		Overall:     0.9,
-		MorselClosed:  true,
-		CommitMade:  true,
-		Duration:    22,
-		TestsPassed: nil,
+		DispatchID:   d3,
+		Provider:     "anthropic",
+		Role:         "reviewer",
+		Overall:      0.9,
+		MorselClosed: true,
+		CommitMade:   true,
+		Duration:     22,
+		TestsPassed:  nil,
 	}); err != nil {
 		t.Fatalf("failed to upsert quality score 3: %v", err)
 	}
@@ -1639,7 +1639,7 @@ func TestMorselStagesCrossProjectCollisions(t *testing.T) {
 	// Test that identical morsel IDs across projects maintain separate state
 	stage1 := &MorselStage{
 		Project:      "project-a",
-		MorselID:       "same-morsel-id",
+		MorselID:     "same-morsel-id",
 		Workflow:     "dev",
 		CurrentStage: "coding",
 		StageIndex:   1,
@@ -1648,7 +1648,7 @@ func TestMorselStagesCrossProjectCollisions(t *testing.T) {
 
 	stage2 := &MorselStage{
 		Project:      "project-b",
-		MorselID:       "same-morsel-id", // Same morsel ID, different project
+		MorselID:     "same-morsel-id", // Same morsel ID, different project
 		Workflow:     "content",
 		CurrentStage: "review",
 		StageIndex:   2,
@@ -1693,7 +1693,7 @@ func TestMorselStagesUpsertCompositeKey(t *testing.T) {
 
 	stage := &MorselStage{
 		Project:      "test-project",
-		MorselID:       "test-morsel",
+		MorselID:     "test-morsel",
 		Workflow:     "dev",
 		CurrentStage: "planning",
 		StageIndex:   0,

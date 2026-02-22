@@ -181,17 +181,17 @@ func (b *HeadlessBackend) Status(handle Handle) (DispatchStatus, error) {
 	b.mu.RUnlock()
 
 	switch state {
-		case "running":
-			if syscall.Kill(pid, 0) == nil {
-				return DispatchStatus{State: "running", ExitCode: -1}, nil
-			}
-			return DispatchStatus{State: "unknown", ExitCode: -1}, nil
-		case "completed":
-			return DispatchStatus{State: "completed", ExitCode: exitCode}, nil
-		case "failed":
-			return DispatchStatus{State: "failed", ExitCode: exitCode}, nil
-		default:
-			return DispatchStatus{State: "unknown", ExitCode: -1}, nil
+	case "running":
+		if syscall.Kill(pid, 0) == nil {
+			return DispatchStatus{State: "running", ExitCode: -1}, nil
+		}
+		return DispatchStatus{State: "unknown", ExitCode: -1}, nil
+	case "completed":
+		return DispatchStatus{State: "completed", ExitCode: exitCode}, nil
+	case "failed":
+		return DispatchStatus{State: "failed", ExitCode: exitCode}, nil
+	default:
+		return DispatchStatus{State: "unknown", ExitCode: -1}, nil
 	}
 }
 

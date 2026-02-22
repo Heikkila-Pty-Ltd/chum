@@ -10,7 +10,7 @@ import (
 // Dispatch represents a dispatched agent task.
 type Dispatch struct {
 	ID                int64
-	MorselID            string
+	MorselID          string
 	Project           string
 	AgentID           string
 	Provider          string
@@ -43,7 +43,7 @@ type Dispatch struct {
 // OverflowQueueItem represents a persisted concurrency overflow queue item.
 type OverflowQueueItem struct {
 	ID         int64
-	MorselID     string
+	MorselID   string
 	Project    string
 	Role       string
 	AgentID    string
@@ -52,6 +52,7 @@ type OverflowQueueItem struct {
 	Attempts   int
 	Reason     string
 }
+
 // RecordDispatch inserts a new dispatch record and returns its ID.
 func (s *Store) RecordDispatch(morselID, project, agent, provider, tier string, handle int, sessionName, prompt, logPath, branch, backend string) (int64, error) {
 	res, err := s.db.Exec(
@@ -511,6 +512,7 @@ func (s *Store) RemoveOverflowItem(morselID string) (int64, error) {
 	}
 	return affected, nil
 }
+
 // ListOverflowQueue returns all pending items in the overflow queue ordered by priority.
 func (s *Store) ListOverflowQueue() ([]OverflowQueueItem, error) {
 	rows, err := s.db.Query(
@@ -588,6 +590,7 @@ func (s *Store) queryDispatches(query string, args ...any) ([]Dispatch, error) {
 	}
 	return dispatches, rows.Err()
 }
+
 // UpdateDispatchLabels stores morsel labels on a dispatch for downstream profiling.
 func (s *Store) UpdateDispatchLabels(id int64, labels []string) error {
 	return s.UpdateDispatchLabelsCSV(id, encodeDispatchLabels(labels))
@@ -662,6 +665,7 @@ func (s *Store) CountAuthedUsageWeekly() (int, error) {
 	}
 	return count, nil
 }
+
 // IsMorselDispatched checks if a morsel currently has a running dispatch.
 func (s *Store) IsMorselDispatched(morselID string) (bool, error) {
 	var count int
@@ -684,6 +688,7 @@ func (s *Store) IsAgentBusy(project, agent string) (bool, error) {
 	}
 	return count > 0, nil
 }
+
 // RecordDispatchCost updates token counts and cost for a completed dispatch.
 func (s *Store) RecordDispatchCost(dispatchID int64, inputTokens, outputTokens int, costUSD float64) error {
 	_, err := s.db.Exec(

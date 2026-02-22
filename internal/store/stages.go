@@ -6,7 +6,6 @@ import (
 	"time"
 )
 
-
 // StageHistoryEntry tracks per-stage lifecycle for a morsel workflow.
 type StageHistoryEntry struct {
 	Stage       string     `json:"stage"`
@@ -20,7 +19,7 @@ type StageHistoryEntry struct {
 type MorselStage struct {
 	ID           int64
 	Project      string
-	MorselID       string
+	MorselID     string
 	Workflow     string
 	CurrentStage string
 	StageIndex   int
@@ -29,6 +28,7 @@ type MorselStage struct {
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 }
+
 // GetMorselStage retrieves the stage state for a specific morsel in a project.
 func (s *Store) GetMorselStage(project, morselID string) (*MorselStage, error) {
 	var stage MorselStage

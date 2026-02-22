@@ -27,6 +27,7 @@ type Activities struct {
 	Sender      matrix.Sender // Matrix notification sender (nil = disabled)
 	DefaultRoom string        // Matrix room ID for notifications
 }
+
 // StructuredPlanActivity generates a structured plan from a task prompt.
 // The plan is gated — it must pass Validate() to enter the coding engine.
 func (a *Activities) StructuredPlanActivity(ctx context.Context, req TaskRequest) (*StructuredPlan, error) {
@@ -330,7 +331,7 @@ func (a *Activities) RecordOutcomeActivity(ctx context.Context, outcome OutcomeR
 	logger.Info(OrcaPrefix+" Recording outcome", "TaskID", outcome.TaskID, "Status", outcome.Status)
 
 	if a.Store == nil {
-		logger.Warn(OrcaPrefix+" No store configured, skipping outcome recording")
+		logger.Warn(OrcaPrefix + " No store configured, skipping outcome recording")
 		return nil
 	}
 
@@ -535,7 +536,7 @@ func formatCriteria(criteria []string) string {
 
 // EscalationEvent is the payload for recording a tier escalation.
 type EscalationEvent struct {
-	MorselID         string
+	MorselID       string
 	Project        string
 	FailedProvider string
 	FailedTier     string
@@ -549,7 +550,7 @@ func (a *Activities) RecordEscalationActivity(ctx context.Context, evt Escalatio
 		return nil
 	}
 	return a.Store.RecordEscalation(store.ProviderEscalation{
-		MorselID:          evt.MorselID,
+		MorselID:        evt.MorselID,
 		Project:         evt.Project,
 		FailedProvider:  evt.FailedProvider,
 		FailedTier:      evt.FailedTier,
@@ -633,4 +634,3 @@ func (a *Activities) AutoFixLintActivity(ctx context.Context, workDir string) (*
 	result.Output = allOutput.String()
 	return result, nil
 }
-

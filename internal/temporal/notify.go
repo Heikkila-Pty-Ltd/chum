@@ -11,7 +11,7 @@ import (
 
 // NotifyRequest carries the data for a Matrix notification.
 type NotifyRequest struct {
-	Event  string            // event key: "plan", "execute", "review", "dod_pass", etc.
+	Event  string // event key: "plan", "execute", "review", "dod_pass", etc.
 	TaskID string
 	Extra  map[string]string // variable substitution data
 }

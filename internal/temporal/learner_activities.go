@@ -129,7 +129,7 @@ If there are no meaningful lessons, return an empty array [].`,
 func (a *Activities) StoreLessonActivity(ctx context.Context, lessons []Lesson) error {
 	logger := activity.GetLogger(ctx)
 	if a.Store == nil {
-		logger.Warn(OctopusPrefix+" No store configured, skipping lesson storage")
+		logger.Warn(OctopusPrefix + " No store configured, skipping lesson storage")
 		return nil
 	}
 
@@ -271,7 +271,7 @@ func (a *Activities) RunSemgrepScanActivity(ctx context.Context, workDir string)
 
 	// Check if semgrep is installed
 	if _, lookErr := exec.LookPath("semgrep"); lookErr != nil {
-		logger.Info(OctopusPrefix+" Semgrep not installed, skipping pre-filter")
+		logger.Info(OctopusPrefix + " Semgrep not installed, skipping pre-filter")
 		return &SemgrepScanResult{Passed: true}, nil //nolint:nilerr // graceful degradation when semgrep not installed
 	}
 
@@ -279,7 +279,7 @@ func (a *Activities) RunSemgrepScanActivity(ctx context.Context, workDir string)
 	semgrepDir := filepath.Join(workDir, ".semgrep")
 	entries, readDirErr := os.ReadDir(semgrepDir)
 	if readDirErr != nil || len(entries) == 0 {
-		logger.Info(OctopusPrefix+" No custom semgrep rules found, skipping")
+		logger.Info(OctopusPrefix + " No custom semgrep rules found, skipping")
 		return &SemgrepScanResult{Passed: true}, nil //nolint:nilerr // graceful degradation when no rules exist
 	}
 
@@ -473,4 +473,3 @@ func (a *Activities) SynthesizeCLAUDEmdActivity(ctx context.Context, req Learner
 	)
 	return nil
 }
-

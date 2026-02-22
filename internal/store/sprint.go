@@ -13,28 +13,28 @@ import (
 type BacklogMorsel struct {
 	*graph.Task
 	StageInfo       *MorselStage `json:"stage_info,omitempty"`
-	LastDispatchAt  *time.Time `json:"last_dispatch_at,omitempty"`
-	DispatchCount   int        `json:"dispatch_count"`
-	FailureCount    int        `json:"failure_count"`
-	IsBlocked       bool       `json:"is_blocked"`
-	BlockingReasons []string   `json:"blocking_reasons,omitempty"`
+	LastDispatchAt  *time.Time   `json:"last_dispatch_at,omitempty"`
+	DispatchCount   int          `json:"dispatch_count"`
+	FailureCount    int          `json:"failure_count"`
+	IsBlocked       bool         `json:"is_blocked"`
+	BlockingReasons []string     `json:"blocking_reasons,omitempty"`
 }
 
 // SprintContext provides comprehensive context for sprint planning decisions.
 type SprintContext struct {
-	BacklogMorsels      []*BacklogMorsel  `json:"backlog_morsels"`
-	InProgressMorsels   []*BacklogMorsel  `json:"in_progress_morsels"`
-	RecentCompletions []*BacklogMorsel  `json:"recent_completions"`
-	DependencyGraph   *graph.DepGraph `json:"dependency_graph"`
-	SprintBoundary    *SprintBoundary `json:"current_sprint,omitempty"`
-	TotalMorselCount    int             `json:"total_morsel_count"`
-	ReadyMorselCount    int             `json:"ready_morsel_count"`
-	BlockedMorselCount  int             `json:"blocked_morsel_count"`
+	BacklogMorsels     []*BacklogMorsel `json:"backlog_morsels"`
+	InProgressMorsels  []*BacklogMorsel `json:"in_progress_morsels"`
+	RecentCompletions  []*BacklogMorsel `json:"recent_completions"`
+	DependencyGraph    *graph.DepGraph  `json:"dependency_graph"`
+	SprintBoundary     *SprintBoundary  `json:"current_sprint,omitempty"`
+	TotalMorselCount   int              `json:"total_morsel_count"`
+	ReadyMorselCount   int              `json:"ready_morsel_count"`
+	BlockedMorselCount int              `json:"blocked_morsel_count"`
 }
 
 // DependencyNode represents a node in the dependency graph with additional metadata.
 type DependencyNode struct {
-	MorselID          string   `json:"morsel_id"`
+	MorselID        string   `json:"morsel_id"`
 	Title           string   `json:"title"`
 	Priority        int      `json:"priority"`
 	Stage           string   `json:"stage,omitempty"`
@@ -141,14 +141,14 @@ func (s *Store) GetSprintContext(ctx context.Context, dag *graph.DAG, project st
 	readyCount, blockedCount := s.calculateReadinessStats(backlogMorsels, depGraph)
 
 	return &SprintContext{
-		BacklogMorsels:      backlogMorsels,
-		InProgressMorsels:   inProgressMorsels,
-		RecentCompletions: recentCompletions,
-		DependencyGraph:   depGraph,
-		SprintBoundary:    currentSprint,
-		TotalMorselCount:    len(backlogMorsels),
-		ReadyMorselCount:    readyCount,
-		BlockedMorselCount:  blockedCount,
+		BacklogMorsels:     backlogMorsels,
+		InProgressMorsels:  inProgressMorsels,
+		RecentCompletions:  recentCompletions,
+		DependencyGraph:    depGraph,
+		SprintBoundary:     currentSprint,
+		TotalMorselCount:   len(backlogMorsels),
+		ReadyMorselCount:   readyCount,
+		BlockedMorselCount: blockedCount,
 	}, nil
 }
 

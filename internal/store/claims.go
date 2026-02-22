@@ -9,14 +9,15 @@ import (
 
 // ClaimLease tracks ownership locks so stale claims can be reconciled safely.
 type ClaimLease struct {
-	MorselID      string
+	MorselID    string
 	Project     string
-	MorselsDir    string
+	MorselsDir  string
 	AgentID     string
 	DispatchID  int64
 	ClaimedAt   time.Time
 	HeartbeatAt time.Time
 }
+
 // UpsertClaimLease records or refreshes a claim lease for a morsel ownership lock.
 func (s *Store) UpsertClaimLease(morselID, project, morselsDir, agentID string) error {
 	morselID = strings.TrimSpace(morselID)

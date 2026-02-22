@@ -29,30 +29,30 @@ type StingrayFinding struct {
 	Detail    string
 	FilePath  string
 	Evidence  string
-	MorselID    string
+	MorselID  string
 	Status    string // open, filed, resolved, wont_fix
 	FirstSeen time.Time
 	LastSeen  time.Time
 }
 
 const (
-	defaultStingrayRecentLimit      = 20
-	defaultStingrayTrendingMinRuns  = 2
-	stingrayFindingStatusOpen       = "open"
-	stingrayFindingStatusFiled      = "filed"
-	stingrayFindingStatusResolved   = "resolved"
-	stingrayFindingStatusWontFix    = "wont_fix"
-	stingrayFindingSeverityHigh     = "high"
-	stingrayFindingSeverityMedium   = "medium"
-	stingrayFindingSeverityLow      = "low"
+	defaultStingrayRecentLimit       = 20
+	defaultStingrayTrendingMinRuns   = 2
+	stingrayFindingStatusOpen        = "open"
+	stingrayFindingStatusFiled       = "filed"
+	stingrayFindingStatusResolved    = "resolved"
+	stingrayFindingStatusWontFix     = "wont_fix"
+	stingrayFindingSeverityHigh      = "high"
+	stingrayFindingSeverityMedium    = "medium"
+	stingrayFindingSeverityLow       = "low"
 	stingrayFindingCategoryGodObject = "god_object"
 	stingrayFindingCategoryTechDebt  = "tech_debt"
 	stingrayFindingCategoryDepHealth = "dep_health"
-	stingrayFindingCategoryCoverage = "coverage"
+	stingrayFindingCategoryCoverage  = "coverage"
 	stingrayFindingCategoryStructure = "structure"
 	stingrayFindingCategoryOSSRisk   = "oss_opportunity"
 	stingrayFindingCategoryCoupling  = "coupling"
-	stingrayFindingCategoryDocDrift = "doc_drift"
+	stingrayFindingCategoryDocDrift  = "doc_drift"
 )
 
 var validStingrayFindingStatuses = map[string]struct{}{
@@ -69,14 +69,14 @@ var validStingrayFindingSeverities = map[string]struct{}{
 }
 
 var validStingrayFindingCategories = map[string]struct{}{
-	stingrayFindingCategoryGodObject:  {},
-	stingrayFindingCategoryTechDebt:   {},
-	stingrayFindingCategoryDepHealth:  {},
-	stingrayFindingCategoryCoverage:   {},
-	stingrayFindingCategoryStructure:  {},
-	stingrayFindingCategoryOSSRisk:    {},
-	stingrayFindingCategoryCoupling:   {},
-	stingrayFindingCategoryDocDrift:   {},
+	stingrayFindingCategoryGodObject: {},
+	stingrayFindingCategoryTechDebt:  {},
+	stingrayFindingCategoryDepHealth: {},
+	stingrayFindingCategoryCoverage:  {},
+	stingrayFindingCategoryStructure: {},
+	stingrayFindingCategoryOSSRisk:   {},
+	stingrayFindingCategoryCoupling:  {},
+	stingrayFindingCategoryDocDrift:  {},
 }
 
 // RecordRun inserts a new Stingray run and returns its ID.

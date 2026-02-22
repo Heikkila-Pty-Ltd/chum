@@ -6,12 +6,12 @@ import (
 
 func TestExtractTokenUsage(t *testing.T) {
 	tests := []struct {
-		name         string
-		output       string
-		prompt       string
-		wantInput    int
-		wantOutput   int
-		description  string
+		name        string
+		output      string
+		prompt      string
+		wantInput   int
+		wantOutput  int
+		description string
 	}{
 		{
 			name:        "OpenClaw format",
@@ -58,7 +58,7 @@ func TestExtractTokenUsage(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			usage := ExtractTokenUsage(tt.output, tt.prompt)
-			
+
 			if usage.Input != tt.wantInput {
 				t.Errorf("Input tokens = %d, want %d", usage.Input, tt.wantInput)
 			}
@@ -78,7 +78,7 @@ func TestEstimateTokens(t *testing.T) {
 		{"Empty string", "", 0},
 		{"Single character", "x", 1},
 		{"Short text", "hi", 1},
-		{"Moderate text", "This is a test", 3}, // 14 chars / 4 = 3.5 -> 3
+		{"Moderate text", "This is a test", 3},                            // 14 chars / 4 = 3.5 -> 3
 		{"Longer text", "This is a longer text with more characters", 10}, // 42 chars / 4 = 10.5 -> 10
 	}
 
@@ -94,30 +94,30 @@ func TestEstimateTokens(t *testing.T) {
 
 func TestCalculateCost(t *testing.T) {
 	usage := TokenUsage{
-		Input:  1500,   // 1.5K tokens
-		Output: 2500,   // 2.5K tokens
+		Input:  1500, // 1.5K tokens
+		Output: 2500, // 2.5K tokens
 	}
-	
-	inputPrice := 15.0   // $15 per 1M tokens
-	outputPrice := 75.0  // $75 per 1M tokens
-	
+
+	inputPrice := 15.0  // $15 per 1M tokens
+	outputPrice := 75.0 // $75 per 1M tokens
+
 	expectedCost := (1500.0/1000000.0)*15.0 + (2500.0/1000000.0)*75.0
 	// = 0.0015 * 15 + 0.0025 * 75
 	// = 0.0225 + 0.1875
 	// = 0.21
-	
+
 	result := CalculateCost(usage, inputPrice, outputPrice)
-	
+
 	if result != expectedCost {
 		t.Errorf("CalculateCost() = %.4f, want %.4f", result, expectedCost)
 	}
-	
+
 	// Test zero pricing
 	zeroCost := CalculateCost(usage, 0, 0)
 	if zeroCost != 0 {
 		t.Errorf("CalculateCost with zero prices = %.4f, want 0", zeroCost)
 	}
-	
+
 	// Test zero usage
 	zeroUsage := TokenUsage{Input: 0, Output: 0}
 	zeroResult := CalculateCost(zeroUsage, inputPrice, outputPrice)
@@ -142,7 +142,7 @@ func TestTokenRegexPatterns(t *testing.T) {
 		},
 		{
 			text:    "Input tokens: 1200",
-			pattern: "inputRe", 
+			pattern: "inputRe",
 			matches: true,
 			groups:  []string{"1200"},
 		},

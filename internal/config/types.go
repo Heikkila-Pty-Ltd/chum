@@ -77,7 +77,7 @@ type Cadence struct {
 // Project configures a single managed project (workspace, branching, DoD).
 type Project struct {
 	Enabled      bool   `toml:"enabled"`
-	MorselsDir     string `toml:"morsels_dir"`
+	MorselsDir   string `toml:"morsels_dir"`
 	Workspace    string `toml:"workspace"`
 	Priority     int    `toml:"priority"`
 	MatrixRoom   string `toml:"matrix_room"`   // project-specific Matrix room (optional)
@@ -267,8 +267,8 @@ type DispatchCostControl struct {
 	RiskyReviewLabels           []string `toml:"risky_review_labels"`
 	ForceSparkAtWeeklyUsagePct  float64  `toml:"force_spark_at_weekly_usage_pct"`
 	DailyCostCapUSD             float64  `toml:"daily_cost_cap_usd"`
-	PerMorselCostCapUSD           float64  `toml:"per_morsel_cost_cap_usd"`
-	PerMorselStageAttemptLimit    int      `toml:"per_morsel_stage_attempt_limit"`
+	PerMorselCostCapUSD         float64  `toml:"per_morsel_cost_cap_usd"`
+	PerMorselStageAttemptLimit  int      `toml:"per_morsel_stage_attempt_limit"`
 	StageAttemptWindow          Duration `toml:"stage_attempt_window"`
 	StageCooldown               Duration `toml:"stage_cooldown"`
 
@@ -307,13 +307,13 @@ type Crab struct {
 // When a morsel type is repeatedly solved by the LLM, the calcifier generates
 // a deterministic script to replace the LLM call entirely.
 type Calcifier struct {
-	Enabled            bool   `toml:"enabled"`
-	CalcifiedDir       string `toml:"calcified_dir"`       // directory for calcified scripts (default ".cortex/calcified")
-	CompileThreshold   int    `toml:"compile_threshold"`   // consecutive successes before compilation (default 10)
-	PromoteThreshold   int    `toml:"promote_threshold"`   // shadow matches before promotion (default 3)
-	RiskMultiplier     int    `toml:"risk_multiplier"`     // multiplier for risky morsel types (default 3)
-	QuarantineOnNonzero bool  `toml:"quarantine_on_nonzero"` // quarantine scripts on non-zero exit
-	CompileModel       string `toml:"compile_model"`       // LLM model used to generate scripts (default "gemini-pro")
+	Enabled             bool   `toml:"enabled"`
+	CalcifiedDir        string `toml:"calcified_dir"`         // directory for calcified scripts (default ".cortex/calcified")
+	CompileThreshold    int    `toml:"compile_threshold"`     // consecutive successes before compilation (default 10)
+	PromoteThreshold    int    `toml:"promote_threshold"`     // shadow matches before promotion (default 3)
+	RiskMultiplier      int    `toml:"risk_multiplier"`       // multiplier for risky morsel types (default 3)
+	QuarantineOnNonzero bool   `toml:"quarantine_on_nonzero"` // quarantine scripts on non-zero exit
+	CompileModel        string `toml:"compile_model"`         // LLM model used to generate scripts (default "gemini-pro")
 }
 
 // EffectiveThreshold returns the compile threshold adjusted for risk.

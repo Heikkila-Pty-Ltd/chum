@@ -18,6 +18,7 @@ type SafetyBlock struct {
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 }
+
 // GetBlock returns a persisted safety block by scope and block type.
 func (s *Store) GetBlock(scope, blockType string) (*SafetyBlock, error) {
 	scope = strings.TrimSpace(scope)

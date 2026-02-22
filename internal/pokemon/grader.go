@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"os"
 	"sort"
-	"time"
 	"strings"
+	"time"
 )
 
 type Grader struct {

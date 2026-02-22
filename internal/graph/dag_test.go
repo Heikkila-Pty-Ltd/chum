@@ -628,8 +628,8 @@ func TestGetReadyNodes_AllDependenciesClosed(t *testing.T) {
 	idDep, _ := dag.CreateTask(ctx, Task{Title: "dep", Project: "p", Status: "ready"})
 	idTask, _ := dag.CreateTask(ctx, Task{Title: "task", Project: "p", Status: "ready"})
 
-	dag.AddEdge(ctx, idTask, idDep)  // task depends on dep
-	dag.CloseTask(ctx, idDep)        // close the dependency
+	dag.AddEdge(ctx, idTask, idDep) // task depends on dep
+	dag.CloseTask(ctx, idDep)       // close the dependency
 
 	ready, err := dag.GetReadyNodes(ctx, "p")
 	if err != nil {

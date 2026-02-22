@@ -5,7 +5,6 @@ import (
 	"strings"
 )
 
-
 // CLIResult wraps the text output of a CLI command together with token usage
 // extracted from claude's --output-format json. For non-JSON agents (codex),
 // Tokens is zero-valued.
@@ -53,6 +52,7 @@ func parseJSONOutput(raw string) CLIResult {
 		},
 	}
 }
+
 // parseAgentOutput routes output parsing based on agent type.
 // Claude: single JSON object with tokens. Codex: JSONL events. Gemini: JSON with stats.
 func parseAgentOutput(agent, raw string) CLIResult {

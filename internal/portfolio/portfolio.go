@@ -13,32 +13,32 @@ import (
 
 // ProjectBacklog represents the backlog for a single project
 type ProjectBacklog struct {
-	ProjectName     string       `json:"project_name"`
-	Workspace       string       `json:"workspace"`
-	Priority        int          `json:"priority"`
-	UnrefinedMorsels  []graph.Task `json:"unrefined_morsels"`
-	RefinedMorsels    []graph.Task `json:"refined_morsels"`
-	AllMorsels        []graph.Task `json:"all_morsels"`
-	ReadyToWork     []graph.Task `json:"ready_to_work"`
-	TotalEstimate   int          `json:"total_estimate_minutes"`
-	CapacityPercent int          `json:"capacity_percent"`
+	ProjectName      string       `json:"project_name"`
+	Workspace        string       `json:"workspace"`
+	Priority         int          `json:"priority"`
+	UnrefinedMorsels []graph.Task `json:"unrefined_morsels"`
+	RefinedMorsels   []graph.Task `json:"refined_morsels"`
+	AllMorsels       []graph.Task `json:"all_morsels"`
+	ReadyToWork      []graph.Task `json:"ready_to_work"`
+	TotalEstimate    int          `json:"total_estimate_minutes"`
+	CapacityPercent  int          `json:"capacity_percent"`
 }
 
 // CrossProjectDependency represents a dependency between projects
 type CrossProjectDependency struct {
-	SourceProject string `json:"source_project"`
-	SourceMorselID  string `json:"source_morsel_id"`
-	TargetProject string `json:"target_project"`
-	TargetMorselID  string `json:"target_morsel_id"`
-	MorselTitle     string `json:"morsel_title"`
-	IsResolved    bool   `json:"is_resolved"`
+	SourceProject  string `json:"source_project"`
+	SourceMorselID string `json:"source_morsel_id"`
+	TargetProject  string `json:"target_project"`
+	TargetMorselID string `json:"target_morsel_id"`
+	MorselTitle    string `json:"morsel_title"`
+	IsResolved     bool   `json:"is_resolved"`
 }
 
 // PortfolioBacklog aggregates backlogs from all projects for multi-team sprint planning
 type PortfolioBacklog struct {
 	ProjectBacklogs      map[string]ProjectBacklog `json:"project_backlogs"`
 	CrossProjectDeps     []CrossProjectDependency  `json:"cross_project_deps"`
-	TotalMorselCount       int                       `json:"total_morsel_count"`
+	TotalMorselCount     int                       `json:"total_morsel_count"`
 	TotalEstimateMinutes int                       `json:"total_estimate_minutes"`
 	CapacityBudgets      map[string]int            `json:"capacity_budgets"`
 	Summary              PortfolioSummary          `json:"summary"`
@@ -46,13 +46,13 @@ type PortfolioBacklog struct {
 
 // PortfolioSummary provides high-level statistics about the portfolio
 type PortfolioSummary struct {
-	ActiveProjects       int      `json:"active_projects"`
-	TotalOpenMorsels       int      `json:"total_open_morsels"`
-	TotalRefinedMorsels    int      `json:"total_refined_morsels"`
-	TotalUnrefinedMorsels  int      `json:"total_unrefined_morsels"`
-	TotalReadyToWork     int      `json:"total_ready_to_work"`
-	CrossProjectBlockers int      `json:"cross_project_blockers"`
-	ProjectsByPriority   []string `json:"projects_by_priority"`
+	ActiveProjects        int      `json:"active_projects"`
+	TotalOpenMorsels      int      `json:"total_open_morsels"`
+	TotalRefinedMorsels   int      `json:"total_refined_morsels"`
+	TotalUnrefinedMorsels int      `json:"total_unrefined_morsels"`
+	TotalReadyToWork      int      `json:"total_ready_to_work"`
+	CrossProjectBlockers  int      `json:"cross_project_blockers"`
+	ProjectsByPriority    []string `json:"projects_by_priority"`
 }
 
 // GatherPortfolioBacklogs collects backlog data from all enabled projects for multi-team sprint planning
@@ -137,7 +137,7 @@ func gatherProjectBacklog(ctx context.Context, projectName string, project confi
 		ProjectName:     projectName,
 		Workspace:       config.ExpandHome(project.Workspace),
 		Priority:        project.Priority,
-		AllMorsels:        filterOpenTasks(allTasks),
+		AllMorsels:      filterOpenTasks(allTasks),
 		CapacityPercent: 0, // Will be set from rate limits budget if available
 	}
 
@@ -222,12 +222,12 @@ func extractCrossProjectDependencies(crossGraph *graph.CrossProjectGraph) []Cros
 				}
 
 				dep := CrossProjectDependency{
-					SourceProject: projectName,
-					SourceMorselID:  task.ID,
-					TargetProject: targetProject,
-					TargetMorselID:  targetMorselID,
-					MorselTitle:     morselTitle,
-					IsResolved:    crossGraph.IsCrossDepResolved(targetProject, targetMorselID),
+					SourceProject:  projectName,
+					SourceMorselID: task.ID,
+					TargetProject:  targetProject,
+					TargetMorselID: targetMorselID,
+					MorselTitle:    morselTitle,
+					IsResolved:     crossGraph.IsCrossDepResolved(targetProject, targetMorselID),
 				}
 
 				deps = append(deps, dep)

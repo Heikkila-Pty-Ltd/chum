@@ -27,7 +27,7 @@ func CalcificationWorkflow(ctx workflow.Context, project string) error {
 	detectOpts := workflow.ActivityOptions{
 		StartToCloseTimeout: 1 * time.Minute,
 		RetryPolicy: &temporal.RetryPolicy{
-			MaximumAttempts:  2,
+			MaximumAttempts: 2,
 			InitialInterval: 5 * time.Second,
 		},
 	}

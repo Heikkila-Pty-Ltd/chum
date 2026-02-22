@@ -13,21 +13,21 @@ type HealthEvent struct {
 	EventType  string
 	Details    string
 	DispatchID int64
-	MorselID     string
+	MorselID   string
 	CreatedAt  time.Time
 }
 
 // TickMetric represents metrics recorded for a scheduler tick.
 type TickMetric struct {
-	ID         int64
-	TickAt     time.Time
-	Project    string
+	ID           int64
+	TickAt       time.Time
+	Project      string
 	MorselsOpen  int
 	MorselsReady int
-	Dispatched int
-	Completed  int
-	Failed     int
-	Stuck      int
+	Dispatched   int
+	Completed    int
+	Failed       int
+	Stuck        int
 }
 
 // SprintBoundary tracks normalized sprint windows for shared cadence.
@@ -56,12 +56,13 @@ type QualityScore struct {
 	Role         string
 	Overall      float64
 	TestsPassed  *bool
-	MorselClosed   bool
+	MorselClosed bool
 	CommitMade   bool
 	FilesChanged int
 	LinesChanged int
 	Duration     float64
 }
+
 // RecordHealthEvent records a health event.
 func (s *Store) RecordHealthEvent(eventType, details string) error {
 	return s.RecordHealthEventWithDispatch(eventType, details, 0, "")
@@ -156,6 +157,7 @@ func (s *Store) GetRecentHealthEvents(hours int) ([]HealthEvent, error) {
 	}
 	return events, rows.Err()
 }
+
 // CaptureOutput captures and stores agent output from a completed dispatch.
 // Output is truncated to 500KB max. The tail contains the last 100 lines.
 func (s *Store) CaptureOutput(dispatchID int64, output string) error {
@@ -219,6 +221,7 @@ func (s *Store) GetOutputTail(dispatchID int64) (string, error) {
 	}
 	return outputTail, nil
 }
+
 // UpsertQualityScore stores or replaces quality scoring for a dispatch.
 func (s *Store) UpsertQualityScore(score QualityScore) error {
 	if score.DispatchID <= 0 {
@@ -449,6 +452,7 @@ func (s *Store) GetProviderLabelStats(window time.Duration) (map[string]map[stri
 
 	return stats, nil
 }
+
 // --- Token Usage ---
 
 // TokenUsage is a compact token usage payload for per-activity persistence.
@@ -464,7 +468,7 @@ type TokenUsage struct {
 type TokenUsageRecord struct {
 	ID                  int64
 	DispatchID          int64
-	MorselID              string
+	MorselID            string
 	Project             string
 	ActivityName        string
 	Agent               string
@@ -561,13 +565,13 @@ func (s *Store) GetTokenUsageByDispatch(dispatchID int64) ([]TokenUsageRecord, e
 
 // TokenUsageSummary holds aggregate token stats for a grouping key.
 type TokenUsageSummary struct {
-	Key                   string  // grouping key (project, agent, or activity_name)
-	TotalInputTokens      int
-	TotalOutputTokens     int
-	TotalCacheReadTokens   int
+	Key                      string // grouping key (project, agent, or activity_name)
+	TotalInputTokens         int
+	TotalOutputTokens        int
+	TotalCacheReadTokens     int
 	TotalCacheCreationTokens int
-	TotalCostUSD          float64
-	RecordCount           int
+	TotalCostUSD             float64
+	RecordCount              int
 }
 
 // GetTokenUsageSummary returns aggregate token usage grouped by the specified column.
@@ -615,7 +619,7 @@ func (s *Store) GetTokenUsageSummary(groupBy string, since time.Time) ([]TokenUs
 type StepMetricRecord struct {
 	ID         int64   `json:"id"`
 	DispatchID int64   `json:"dispatch_id"`
-	MorselID     string  `json:"morsel_id"`
+	MorselID   string  `json:"morsel_id"`
 	Project    string  `json:"project"`
 	StepName   string  `json:"step_name"`
 	DurationS  float64 `json:"duration_s"`
@@ -708,7 +712,7 @@ func (s *Store) TokenBurnSince(agent string, since time.Time) (TokenBurn, error)
 // automatically route tasks based on historical model performance.
 type ProviderEscalation struct {
 	ID              int64
-	MorselID          string
+	MorselID        string
 	Project         string
 	TaskLabels      string // comma-separated task labels for pattern matching
 	FailedProvider  string // provider key that failed (e.g. "codex-spark")
@@ -811,4 +815,3 @@ func (s *Store) GetProviderFailureRates(since time.Time) ([]ProviderFailureRate,
 	}
 	return rates, rows.Err()
 }
-

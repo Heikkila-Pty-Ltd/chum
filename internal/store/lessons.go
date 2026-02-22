@@ -11,7 +11,7 @@ import (
 // StoredLesson is a lesson persisted in the lessons table with FTS5 indexing.
 type StoredLesson struct {
 	ID            int64
-	MorselID        string
+	MorselID      string
 	Project       string
 	Category      string // pattern, antipattern, rule, insight
 	Summary       string

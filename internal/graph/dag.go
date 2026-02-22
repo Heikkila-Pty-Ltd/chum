@@ -100,10 +100,10 @@ const (
 		)
 		ORDER BY t.priority ASC, t.estimate_minutes ASC;`
 
-	insertEdgeSQL = `INSERT OR IGNORE INTO task_edges (from_task, to_task) VALUES (?, ?);`
-	deleteEdgeSQL = `DELETE FROM task_edges WHERE from_task = ? AND to_task = ?;`
+	insertEdgeSQL        = `INSERT OR IGNORE INTO task_edges (from_task, to_task) VALUES (?, ?);`
+	deleteEdgeSQL        = `DELETE FROM task_edges WHERE from_task = ? AND to_task = ?;`
 	selectTaskProjectSQL = `SELECT project FROM tasks WHERE id = ?;`
-	cycleCheckSQL = `
+	cycleCheckSQL        = `
 		WITH RECURSIVE reachable(task_id) AS (
 			SELECT to_task FROM task_edges WHERE from_task = ?
 			UNION ALL

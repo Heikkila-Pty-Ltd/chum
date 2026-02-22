@@ -326,8 +326,8 @@ func (c *Chief) dispatchChiefSM(ctx context.Context, morsel graph.Task, promptTe
 		-1, // handle (will be set by dispatcher)
 		"", // session name (will be set by dispatcher)
 		prompt,
-		"", // log path (will be set by dispatcher)
-		"", // branch (not used for ceremonies)
+		"",             // log path (will be set by dispatcher)
+		"",             // branch (not used for ceremonies)
 		"headless_cli", // backend
 	)
 	if err != nil {

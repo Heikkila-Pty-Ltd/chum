@@ -108,7 +108,7 @@ func (s *Server) handleDispatchDetail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := map[string]any{
-		"morsel_id":    morselID,
+		"morsel_id":  morselID,
 		"dispatches": dispatchList,
 	}
 

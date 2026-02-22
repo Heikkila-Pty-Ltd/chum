@@ -40,12 +40,12 @@ type GradingConfig struct {
 }
 
 type CardIdentification struct {
-	CardName   string `json:"card_name"`
-	SetName    string `json:"set_name"`
-	SetNumber  string `json:"set_number"`
-	Year       string `json:"year"`
-	Rarity     string `json:"rarity"`
-	Variant    string `json:"variant"`
+	CardName  string `json:"card_name"`
+	SetName   string `json:"set_name"`
+	SetNumber string `json:"set_number"`
+	Year      string `json:"year"`
+	Rarity    string `json:"rarity"`
+	Variant   string `json:"variant"`
 }
 
 type SubGrade struct {
@@ -228,12 +228,12 @@ type anthropicRequest struct {
 
 type anthropicMessage struct {
 	Role    string             `json:"role"`
-	Content []anthropicContent  `json:"content"`
+	Content []anthropicContent `json:"content"`
 }
 
 type anthropicContent struct {
-	Type   string          `json:"type"`
-	Text   string          `json:"text,omitempty"`
+	Type   string           `json:"type"`
+	Text   string           `json:"text,omitempty"`
 	Source *anthropicSource `json:"source,omitempty"`
 }
 

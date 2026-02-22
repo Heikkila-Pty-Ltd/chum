@@ -11,9 +11,9 @@ import (
 
 	enumspb "go.temporal.io/api/enums/v1"
 	"go.temporal.io/api/workflowservice/v1"
+	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/temporal"
-	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/workflow"
 
 	"github.com/antigravity-dev/chum/internal/config"
@@ -429,7 +429,6 @@ type openWorkflowExecution struct {
 	runID      string
 	startTime  time.Time
 }
-
 
 // buildEscalationTiers creates the ordered escalation chain from config.
 func buildEscalationTiers(cfg *config.Config) []EscalationTier {

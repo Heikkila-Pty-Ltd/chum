@@ -11,14 +11,14 @@ import (
 func TestValidateRuntimeConfigReloadAllowsLogLevelChange(t *testing.T) {
 	oldCfg := &config.Config{
 		General: config.General{
-			StateDB: "db1",
+			StateDB:  "db1",
 			LogLevel: "info",
 		},
 		API: config.API{Bind: "127.0.0.1:8900"},
 	}
 	newCfg := &config.Config{
 		General: config.General{
-			StateDB: "db1",
+			StateDB:  "db1",
 			LogLevel: "debug",
 		},
 		API: config.API{Bind: "127.0.0.1:8900"},
@@ -31,8 +31,8 @@ func TestValidateRuntimeConfigReloadAllowsLogLevelChange(t *testing.T) {
 func TestValidateRuntimeConfigReloadAllowsReloadableFields(t *testing.T) {
 	oldCfg := &config.Config{
 		General: config.General{
-			StateDB:     "db1",
-			LogLevel:    "info",
+			StateDB:      "db1",
+			LogLevel:     "info",
 			TickInterval: config.Duration{Duration: 60 * time.Second},
 		},
 		API: config.API{Bind: "127.0.0.1:8900"},
@@ -55,8 +55,8 @@ func TestValidateRuntimeConfigReloadAllowsReloadableFields(t *testing.T) {
 	}
 	newCfg := &config.Config{
 		General: config.General{
-			StateDB:     "db1",
-			LogLevel:    "debug",
+			StateDB:      "db1",
+			LogLevel:     "debug",
 			TickInterval: config.Duration{Duration: 120 * time.Second},
 		},
 		API: config.API{Bind: "127.0.0.1:8900"},

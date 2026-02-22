@@ -23,7 +23,7 @@ func TacticalGroomWorkflow(ctx workflow.Context, req TacticalGroomRequest) error
 	ao := workflow.ActivityOptions{
 		StartToCloseTimeout: 3 * time.Minute,
 		RetryPolicy: &temporal.RetryPolicy{
-			MaximumAttempts:     2,
+			MaximumAttempts:    2,
 			InitialInterval:    5 * time.Second,
 			BackoffCoefficient: 2.0,
 			MaximumInterval:    30 * time.Second,

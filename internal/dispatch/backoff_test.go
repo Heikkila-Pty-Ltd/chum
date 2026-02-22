@@ -14,11 +14,11 @@ func TestBackoffDelay_ExponentialGrowth(t *testing.T) {
 		wantMinDelay time.Duration // minimum delay (no jitter)
 		wantMaxDelay time.Duration // maximum delay (with 10% jitter)
 	}{
-		{0, 0, 0},                                          // No retries = no delay
-		{1, base, base + base/10},                          // 2m to 2m12s
-		{2, base * 2, base*2 + (base*2)/10},                // 4m to 4m24s
-		{3, base * 4, base*4 + (base*4)/10},                // 8m to 8m48s
-		{5, maxDelay, maxDelay + maxDelay/10},              // 32m would be capped at 30m, then jitter to 33m
+		{0, 0, 0},                             // No retries = no delay
+		{1, base, base + base/10},             // 2m to 2m12s
+		{2, base * 2, base*2 + (base*2)/10},   // 4m to 4m24s
+		{3, base * 4, base*4 + (base*4)/10},   // 8m to 8m48s
+		{5, maxDelay, maxDelay + maxDelay/10}, // 32m would be capped at 30m, then jitter to 33m
 	}
 
 	for _, tt := range tests {
@@ -77,14 +77,14 @@ func TestBackoffDelay_VerifyExponentialFormula(t *testing.T) {
 	// Test that the exponential formula base * 2^(retries-1) is followed
 	// for retries that don't hit the cap
 	tests := []struct {
-		retries      int
-		wantBase     time.Duration
+		retries  int
+		wantBase time.Duration
 	}{
-		{1, 2 * time.Minute},   // 2^0 = 1, so 2m
-		{2, 4 * time.Minute},   // 2^1 = 2, so 4m
-		{3, 8 * time.Minute},   // 2^2 = 4, so 8m
-		{4, 16 * time.Minute},  // 2^3 = 8, so 16m
-		{5, 32 * time.Minute},  // 2^4 = 16, so 32m
+		{1, 2 * time.Minute},  // 2^0 = 1, so 2m
+		{2, 4 * time.Minute},  // 2^1 = 2, so 4m
+		{3, 8 * time.Minute},  // 2^2 = 4, so 8m
+		{4, 16 * time.Minute}, // 2^3 = 8, so 16m
+		{5, 32 * time.Minute}, // 2^4 = 16, so 32m
 	}
 
 	for _, tt := range tests {

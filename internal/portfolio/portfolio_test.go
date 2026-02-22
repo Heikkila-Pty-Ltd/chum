@@ -32,15 +32,15 @@ func TestPortfolioBacklogStructure(t *testing.T) {
 func TestProjectBacklogStructure(t *testing.T) {
 	// Test ProjectBacklog struct can be created with expected fields
 	backlog := ProjectBacklog{
-		ProjectName:     "test",
-		Workspace:       "/tmp",
-		Priority:        1,
-		UnrefinedMorsels:  []graph.Task{},
-		RefinedMorsels:    []graph.Task{},
-		AllMorsels:        []graph.Task{},
-		ReadyToWork:     []graph.Task{},
-		TotalEstimate:   0,
-		CapacityPercent: 50,
+		ProjectName:      "test",
+		Workspace:        "/tmp",
+		Priority:         1,
+		UnrefinedMorsels: []graph.Task{},
+		RefinedMorsels:   []graph.Task{},
+		AllMorsels:       []graph.Task{},
+		ReadyToWork:      []graph.Task{},
+		TotalEstimate:    0,
+		CapacityPercent:  50,
 	}
 
 	if backlog.ProjectName != "test" {
@@ -98,25 +98,25 @@ func TestGetCrossProjectBlockersForProject(t *testing.T) {
 	portfolio := &PortfolioBacklog{
 		CrossProjectDeps: []CrossProjectDependency{
 			{
-				SourceProject: "project-a",
-				SourceMorselID:  "a-1",
-				TargetProject: "project-b",
-				TargetMorselID:  "b-1",
-				IsResolved:    false,
+				SourceProject:  "project-a",
+				SourceMorselID: "a-1",
+				TargetProject:  "project-b",
+				TargetMorselID: "b-1",
+				IsResolved:     false,
 			},
 			{
-				SourceProject: "project-a",
-				SourceMorselID:  "a-2",
-				TargetProject: "project-b",
-				TargetMorselID:  "b-2",
-				IsResolved:    true, // Resolved, should not be blocker
+				SourceProject:  "project-a",
+				SourceMorselID: "a-2",
+				TargetProject:  "project-b",
+				TargetMorselID: "b-2",
+				IsResolved:     true, // Resolved, should not be blocker
 			},
 			{
-				SourceProject: "project-c", // Different source project
-				SourceMorselID:  "c-1",
-				TargetProject: "project-b",
-				TargetMorselID:  "b-3",
-				IsResolved:    false,
+				SourceProject:  "project-c", // Different source project
+				SourceMorselID: "c-1",
+				TargetProject:  "project-b",
+				TargetMorselID: "b-3",
+				IsResolved:     false,
 			},
 		},
 	}

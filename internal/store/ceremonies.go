@@ -9,59 +9,59 @@ import (
 
 // SprintReviewData holds metrics comparing planned vs delivered morsels for a sprint period.
 type SprintReviewData struct {
-	StartDate      time.Time              `json:"start_date"`
-	EndDate        time.Time              `json:"end_date"`
+	StartDate        time.Time              `json:"start_date"`
+	EndDate          time.Time              `json:"end_date"`
 	TotalMorsels     int                    `json:"total_morsels"`
 	CompletedMorsels int                    `json:"completed_morsels"`
 	PlannedMorsels   int                    `json:"planned_morsels"`
-	CompletionRate float64                `json:"completion_rate"`
-	ProjectStats   map[string]ProjectStat `json:"project_stats"`
+	CompletionRate   float64                `json:"completion_rate"`
+	ProjectStats     map[string]ProjectStat `json:"project_stats"`
 }
 
 // ProjectStat holds completion metrics for a specific project.
 type ProjectStat struct {
-	Project        string  `json:"project"`
+	Project          string  `json:"project"`
 	TotalMorsels     int     `json:"total_morsels"`
 	CompletedMorsels int     `json:"completed_morsels"`
-	CompletionRate float64 `json:"completion_rate"`
-	AvgDuration    float64 `json:"avg_duration"`
+	CompletionRate   float64 `json:"completion_rate"`
+	AvgDuration      float64 `json:"avg_duration"`
 }
 
 // FailedDispatchDetail contains comprehensive information about a failed dispatch.
 type FailedDispatchDetail struct {
-	ID              int64      `json:"id"`
-	MorselID          string     `json:"morsel_id"`
-	Project         string     `json:"project"`
-	AgentID         string     `json:"agent_id"`
-	Provider        string     `json:"provider"`
-	Tier            string     `json:"tier"`
-	DispatchedAt    time.Time  `json:"dispatched_at"`
-	FailedAt        time.Time  `json:"failed_at"`
-	Duration        float64    `json:"duration"`
-	ExitCode        int        `json:"exit_code"`
-	Retries         int        `json:"retries"`
-	EscalatedFrom   string     `json:"escalated_from"`
-	FailureCategory string     `json:"failure_category"`
-	FailureSummary  string     `json:"failure_summary"`
-	LogPath         string     `json:"log_path"`
-	Branch          string     `json:"branch"`
-	MorselContext     *MorselStage `json:"morsel_context,omitempty"`
+	ID              int64        `json:"id"`
+	MorselID        string       `json:"morsel_id"`
+	Project         string       `json:"project"`
+	AgentID         string       `json:"agent_id"`
+	Provider        string       `json:"provider"`
+	Tier            string       `json:"tier"`
+	DispatchedAt    time.Time    `json:"dispatched_at"`
+	FailedAt        time.Time    `json:"failed_at"`
+	Duration        float64      `json:"duration"`
+	ExitCode        int          `json:"exit_code"`
+	Retries         int          `json:"retries"`
+	EscalatedFrom   string       `json:"escalated_from"`
+	FailureCategory string       `json:"failure_category"`
+	FailureSummary  string       `json:"failure_summary"`
+	LogPath         string       `json:"log_path"`
+	Branch          string       `json:"branch"`
+	MorselContext   *MorselStage `json:"morsel_context,omitempty"`
 }
 
 // StuckDispatchDetail contains information about dispatches that are stuck.
 type StuckDispatchDetail struct {
-	ID            int64      `json:"id"`
-	MorselID        string     `json:"morsel_id"`
-	Project       string     `json:"project"`
-	AgentID       string     `json:"agent_id"`
-	Provider      string     `json:"provider"`
-	Tier          string     `json:"tier"`
-	DispatchedAt  time.Time  `json:"dispatched_at"`
-	StuckDuration float64    `json:"stuck_duration_hours"`
-	PID           int        `json:"pid"`
-	SessionName   string     `json:"session_name"`
-	Stage         string     `json:"stage"`
-	MorselContext   *MorselStage `json:"morsel_context,omitempty"`
+	ID            int64        `json:"id"`
+	MorselID      string       `json:"morsel_id"`
+	Project       string       `json:"project"`
+	AgentID       string       `json:"agent_id"`
+	Provider      string       `json:"provider"`
+	Tier          string       `json:"tier"`
+	DispatchedAt  time.Time    `json:"dispatched_at"`
+	StuckDuration float64      `json:"stuck_duration_hours"`
+	PID           int          `json:"pid"`
+	SessionName   string       `json:"session_name"`
+	Stage         string       `json:"stage"`
+	MorselContext *MorselStage `json:"morsel_context,omitempty"`
 }
 
 // AgentPerformanceStats contains performance metrics for agents.
@@ -231,7 +231,7 @@ func (s *Store) GetFailedDispatchDetails(startDate, endDate time.Time) ([]Failed
 		if workflow.Valid {
 			morselStage := &MorselStage{
 				Project:      detail.Project,
-				MorselID:       detail.MorselID,
+				MorselID:     detail.MorselID,
 				Workflow:     workflow.String,
 				CurrentStage: currentStage.String,
 			}
@@ -295,7 +295,7 @@ func (s *Store) GetStuckDispatchDetails(timeout time.Duration) ([]StuckDispatchD
 		if workflow.Valid {
 			morselStage := &MorselStage{
 				Project:      detail.Project,
-				MorselID:       detail.MorselID,
+				MorselID:     detail.MorselID,
 				Workflow:     workflow.String,
 				CurrentStage: currentStage.String,
 			}

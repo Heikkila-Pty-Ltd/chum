@@ -47,7 +47,7 @@ const (
 
 type scrumCommand struct {
 	kind        scrumCommandKind
-	morselID      string
+	morselID    string
 	priority    int
 	dispatchID  int64
 	title       string

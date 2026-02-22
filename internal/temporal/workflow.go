@@ -226,215 +226,215 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 				lastFailedProvider, lastFailedTier, tier.ProviderKey, tier.Tier)
 		}
 
-	for attempt := 0; attempt < maxRetries; attempt++ {
-		escalationAttempt++
-		logger.Info(SharkPrefix+" Execution attempt", "Attempt", attempt+1, "Agent", currentAgent)
-		notify("execute", map[string]string{"agent": currentAgent, "attempt": fmt.Sprintf("%d", attempt+1)})
+		for attempt := 0; attempt < maxRetries; attempt++ {
+			escalationAttempt++
+			logger.Info(SharkPrefix+" Execution attempt", "Attempt", attempt+1, "Agent", currentAgent)
+			notify("execute", map[string]string{"agent": currentAgent, "attempt": fmt.Sprintf("%d", attempt+1)})
 
-		// Reset token tracking to plan baseline for each attempt.
-		// Only the last attempt's costs are reported in the outcome.
-		resetAttemptTokens()
+			// Reset token tracking to plan baseline for each attempt.
+			// Only the last attempt's costs are reported in the outcome.
+			resetAttemptTokens()
 
-		// --- EXECUTE ---
-		execStart := workflow.Now(ctx)
-		execCtx := workflow.WithActivityOptions(ctx, execOpts)
-		var execResult ExecutionResult
-		if err := workflow.ExecuteActivity(execCtx, a.ExecuteActivity, plan, req).Get(ctx, &execResult); err != nil {
-			recordStep(fmt.Sprintf("execute[%d]", attempt+1), execStart, "failed")
-			allFailures = append(allFailures, fmt.Sprintf("Attempt %d execute error: %s", attempt+1, err.Error()))
-			continue
-		}
-		totalTokens.Add(execResult.Tokens)
-		activityTokens = append(activityTokens, ActivityTokenUsage{
-			ActivityName: "execute", Agent: execResult.Agent, Tokens: execResult.Tokens,
-		})
-		recordStep(fmt.Sprintf("execute[%d]", attempt+1), execStart, "ok")
-
-		// --- CROSS-MODEL REVIEW LOOP ---
-		reviewStart := workflow.Now(ctx)
-		reviewPassed := false
-		reviewStatus := "failed"
-		for handoff := 0; handoff < maxHandoffs; handoff++ {
-			reviewCtx := workflow.WithActivityOptions(ctx, reviewOpts)
-			var review ReviewResult
-
-			// Override the agent for this execution so the reviewer field is correct
-			reviewReq := req
-			reviewReq.Reviewer = currentReviewer
-
-			if err := workflow.ExecuteActivity(reviewCtx, a.CodeReviewActivity, plan, execResult, reviewReq).Get(ctx, &review); err != nil {
-				logger.Warn(SharkPrefix+" Review activity failed", "error", err)
-				reviewPassed = true // don't block on review infrastructure failures
-				reviewStatus = "failed"
-				break
+			// --- EXECUTE ---
+			execStart := workflow.Now(ctx)
+			execCtx := workflow.WithActivityOptions(ctx, execOpts)
+			var execResult ExecutionResult
+			if err := workflow.ExecuteActivity(execCtx, a.ExecuteActivity, plan, req).Get(ctx, &execResult); err != nil {
+				recordStep(fmt.Sprintf("execute[%d]", attempt+1), execStart, "failed")
+				allFailures = append(allFailures, fmt.Sprintf("Attempt %d execute error: %s", attempt+1, err.Error()))
+				continue
 			}
-
-			totalTokens.Add(review.Tokens)
+			totalTokens.Add(execResult.Tokens)
 			activityTokens = append(activityTokens, ActivityTokenUsage{
-				ActivityName: "review", Agent: review.ReviewerAgent, Tokens: review.Tokens,
+				ActivityName: "execute", Agent: execResult.Agent, Tokens: execResult.Tokens,
 			})
+			recordStep(fmt.Sprintf("execute[%d]", attempt+1), execStart, "ok")
 
-			if review.Approved {
-				logger.Info(SharkPrefix+" Code review approved", "Reviewer", review.ReviewerAgent, "Handoff", handoff)
-				notify("review_approved", map[string]string{"reviewer": review.ReviewerAgent})
-				reviewPassed = true
-				reviewStatus = "ok"
-				break
+			// --- CROSS-MODEL REVIEW LOOP ---
+			reviewStart := workflow.Now(ctx)
+			reviewPassed := false
+			reviewStatus := "failed"
+			for handoff := 0; handoff < maxHandoffs; handoff++ {
+				reviewCtx := workflow.WithActivityOptions(ctx, reviewOpts)
+				var review ReviewResult
+
+				// Override the agent for this execution so the reviewer field is correct
+				reviewReq := req
+				reviewReq.Reviewer = currentReviewer
+
+				if err := workflow.ExecuteActivity(reviewCtx, a.CodeReviewActivity, plan, execResult, reviewReq).Get(ctx, &review); err != nil {
+					logger.Warn(SharkPrefix+" Review activity failed", "error", err)
+					reviewPassed = true // don't block on review infrastructure failures
+					reviewStatus = "failed"
+					break
+				}
+
+				totalTokens.Add(review.Tokens)
+				activityTokens = append(activityTokens, ActivityTokenUsage{
+					ActivityName: "review", Agent: review.ReviewerAgent, Tokens: review.Tokens,
+				})
+
+				if review.Approved {
+					logger.Info(SharkPrefix+" Code review approved", "Reviewer", review.ReviewerAgent, "Handoff", handoff)
+					notify("review_approved", map[string]string{"reviewer": review.ReviewerAgent})
+					reviewPassed = true
+					reviewStatus = "ok"
+					break
+				}
+
+				// Review failed — swap agents and re-execute with feedback
+				handoffCount++
+				notify("handoff", map[string]string{"from": currentAgent, "to": currentReviewer, "handoff": fmt.Sprintf("%d", handoffCount)})
+				logger.Info(SharkPrefix+" Code review rejected, swapping agents",
+					"Reviewer", currentReviewer,
+					"Issues", strings.Join(review.Issues, "; "),
+					"Handoff", handoffCount,
+				)
+
+				// Feed review issues back into the plan with context
+				plan.PreviousErrors = append(plan.PreviousErrors,
+					fmt.Sprintf("The previous agent (%s) attempted to implement the plan but failed code review. Their changes were reverted to give you a clean slate. Review by %s found issues: %s", currentAgent, review.ReviewerAgent, strings.Join(review.Issues, "; ")))
+
+				// Swap: the reviewer becomes the implementer, and vice versa
+				currentAgent, currentReviewer = currentReviewer, currentAgent
+				req.Agent = currentAgent
+
+				// Reset workspace for the new agent so they have a fresh slate
+				resetStart := workflow.Now(ctx)
+				resetCtx := workflow.WithActivityOptions(ctx, execOpts) // Use the longer execOpts timeout for git commands
+				if err := workflow.ExecuteActivity(resetCtx, a.ResetWorkspaceActivity, req.WorkDir).Get(ctx, nil); err != nil {
+					logger.Warn(SharkPrefix+" Failed to reset workspace for fresh agent", "error", err)
+				}
+				recordStep(fmt.Sprintf("handoff-reset[%d]", handoffCount), resetStart, "ok")
+
+				// Re-execute with the swapped agent
+				handoffExecStart := workflow.Now(ctx)
+				var reExecResult ExecutionResult
+				if err := workflow.ExecuteActivity(execCtx, a.ExecuteActivity, plan, req).Get(ctx, &reExecResult); err != nil {
+					recordStep(fmt.Sprintf("handoff-execute[%d]", handoffCount), handoffExecStart, "failed")
+					allFailures = append(allFailures, fmt.Sprintf("Handoff %d execute error: %s", handoffCount, err.Error()))
+					break
+				}
+				totalTokens.Add(reExecResult.Tokens)
+				activityTokens = append(activityTokens, ActivityTokenUsage{
+					ActivityName: "execute", Agent: reExecResult.Agent, Tokens: reExecResult.Tokens,
+				})
+				recordStep(fmt.Sprintf("handoff-execute[%d]", handoffCount), handoffExecStart, "ok")
+				execResult = reExecResult
 			}
 
-			// Review failed — swap agents and re-execute with feedback
-			handoffCount++
-			notify("handoff", map[string]string{"from": currentAgent, "to": currentReviewer, "handoff": fmt.Sprintf("%d", handoffCount)})
-			logger.Info(SharkPrefix+" Code review rejected, swapping agents",
-				"Reviewer", currentReviewer,
-				"Issues", strings.Join(review.Issues, "; "),
-				"Handoff", handoffCount,
-			)
-
-			// Feed review issues back into the plan with context
-			plan.PreviousErrors = append(plan.PreviousErrors,
-				fmt.Sprintf("The previous agent (%s) attempted to implement the plan but failed code review. Their changes were reverted to give you a clean slate. Review by %s found issues: %s", currentAgent, review.ReviewerAgent, strings.Join(review.Issues, "; ")))
-
-			// Swap: the reviewer becomes the implementer, and vice versa
-			currentAgent, currentReviewer = currentReviewer, currentAgent
-			req.Agent = currentAgent
-
-			// Reset workspace for the new agent so they have a fresh slate
-			resetStart := workflow.Now(ctx)
-			resetCtx := workflow.WithActivityOptions(ctx, execOpts) // Use the longer execOpts timeout for git commands
-			if err := workflow.ExecuteActivity(resetCtx, a.ResetWorkspaceActivity, req.WorkDir).Get(ctx, nil); err != nil {
-				logger.Warn(SharkPrefix+" Failed to reset workspace for fresh agent", "error", err)
+			if !reviewPassed {
+				recordStep(fmt.Sprintf("review[%d]", attempt+1), reviewStart, "failed")
+				allFailures = append(allFailures, fmt.Sprintf("Attempt %d: review not passed after %d handoffs", attempt+1, handoffCount))
+				continue
 			}
-			recordStep(fmt.Sprintf("handoff-reset[%d]", handoffCount), resetStart, "ok")
+			recordStep(fmt.Sprintf("review[%d]", attempt+1), reviewStart, reviewStatus)
 
-			// Re-execute with the swapped agent
-			handoffExecStart := workflow.Now(ctx)
-			var reExecResult ExecutionResult
-			if err := workflow.ExecuteActivity(execCtx, a.ExecuteActivity, plan, req).Get(ctx, &reExecResult); err != nil {
-				recordStep(fmt.Sprintf("handoff-execute[%d]", handoffCount), handoffExecStart, "failed")
-				allFailures = append(allFailures, fmt.Sprintf("Handoff %d execute error: %s", handoffCount, err.Error()))
-				break
+			// --- SEMGREP PRE-FILTER ---
+			// Run custom .semgrep/ rules first. Free and fast — catches known
+			// antipatterns before we pay for compile/test/lint.
+			semgrepStart := workflow.Now(ctx)
+			semgrepOpts := workflow.ActivityOptions{
+				StartToCloseTimeout: 1 * time.Minute,
+				RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 1},
 			}
-			totalTokens.Add(reExecResult.Tokens)
-			activityTokens = append(activityTokens, ActivityTokenUsage{
-				ActivityName: "execute", Agent: reExecResult.Agent, Tokens: reExecResult.Tokens,
-			})
-			recordStep(fmt.Sprintf("handoff-execute[%d]", handoffCount), handoffExecStart, "ok")
-			execResult = reExecResult
-		}
+			semgrepCtx := workflow.WithActivityOptions(ctx, semgrepOpts)
+			var semgrepResult SemgrepScanResult
+			if err := workflow.ExecuteActivity(semgrepCtx, a.RunSemgrepScanActivity, req.WorkDir).Get(ctx, &semgrepResult); err != nil {
+				logger.Warn(SharkPrefix+" Semgrep scan failed (non-fatal, proceeding to DoD)", "error", err)
+				recordStep(fmt.Sprintf("semgrep[%d]", attempt+1), semgrepStart, "skipped")
+			} else if !semgrepResult.Passed {
+				recordStep(fmt.Sprintf("semgrep[%d]", attempt+1), semgrepStart, "failed")
+				plan.PreviousErrors = append(plan.PreviousErrors,
+					fmt.Sprintf("Semgrep found %d issues: %s", semgrepResult.Findings, truncate(semgrepResult.Output, 500)))
+				allFailures = append(allFailures,
+					fmt.Sprintf("Attempt %d: Semgrep found %d issues", attempt+1, semgrepResult.Findings))
+				logger.Warn(SharkPrefix+" Semgrep pre-filter failed, skipping expensive DoD", "Findings", semgrepResult.Findings)
+				continue
+			} else {
+				recordStep(fmt.Sprintf("semgrep[%d]", attempt+1), semgrepStart, "ok")
+			}
 
-		if !reviewPassed {
-			recordStep(fmt.Sprintf("review[%d]", attempt+1), reviewStart, "failed")
-			allFailures = append(allFailures, fmt.Sprintf("Attempt %d: review not passed after %d handoffs", attempt+1, handoffCount))
-			continue
-		}
-		recordStep(fmt.Sprintf("review[%d]", attempt+1), reviewStart, reviewStatus)
+			// --- DOD VERIFICATION ---
+			dodStart := workflow.Now(ctx)
+			logger.Info(SharkPrefix + " Running DoD checks")
+			dodCtx := workflow.WithActivityOptions(ctx, dodOpts)
+			var dodResult DoDResult
+			if err := workflow.ExecuteActivity(dodCtx, a.DoDVerifyActivity, req).Get(ctx, &dodResult); err != nil {
+				recordStep(fmt.Sprintf("dod[%d]", attempt+1), dodStart, "failed")
+				allFailures = append(allFailures, fmt.Sprintf("Attempt %d DoD error: %s", attempt+1, err.Error()))
+				continue
+			}
 
-		// --- SEMGREP PRE-FILTER ---
-		// Run custom .semgrep/ rules first. Free and fast — catches known
-		// antipatterns before we pay for compile/test/lint.
-		semgrepStart := workflow.Now(ctx)
-		semgrepOpts := workflow.ActivityOptions{
-			StartToCloseTimeout: 1 * time.Minute,
-			RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 1},
-		}
-		semgrepCtx := workflow.WithActivityOptions(ctx, semgrepOpts)
-		var semgrepResult SemgrepScanResult
-		if err := workflow.ExecuteActivity(semgrepCtx, a.RunSemgrepScanActivity, req.WorkDir).Get(ctx, &semgrepResult); err != nil {
-			logger.Warn(SharkPrefix+" Semgrep scan failed (non-fatal, proceeding to DoD)", "error", err)
-			recordStep(fmt.Sprintf("semgrep[%d]", attempt+1), semgrepStart, "skipped")
-		} else if !semgrepResult.Passed {
-			recordStep(fmt.Sprintf("semgrep[%d]", attempt+1), semgrepStart, "failed")
-			plan.PreviousErrors = append(plan.PreviousErrors,
-				fmt.Sprintf("Semgrep found %d issues: %s", semgrepResult.Findings, truncate(semgrepResult.Output, 500)))
-			allFailures = append(allFailures,
-				fmt.Sprintf("Attempt %d: Semgrep found %d issues", attempt+1, semgrepResult.Findings))
-			logger.Warn(SharkPrefix+" Semgrep pre-filter failed, skipping expensive DoD", "Findings", semgrepResult.Findings)
-			continue
-		} else {
-			recordStep(fmt.Sprintf("semgrep[%d]", attempt+1), semgrepStart, "ok")
-		}
+			if dodResult.Passed {
+				recordStep(fmt.Sprintf("dod[%d]", attempt+1), dodStart, "ok")
 
-		// --- DOD VERIFICATION ---
-		dodStart := workflow.Now(ctx)
-		logger.Info(SharkPrefix + " Running DoD checks")
-		dodCtx := workflow.WithActivityOptions(ctx, dodOpts)
-		var dodResult DoDResult
-		if err := workflow.ExecuteActivity(dodCtx, a.DoDVerifyActivity, req).Get(ctx, &dodResult); err != nil {
+				duration := workflow.Now(ctx).Sub(startTime)
+				notify("dod_pass", map[string]string{"duration": fmtDuration(duration), "cost": fmtCost(totalTokens.CostUSD)})
+				notify("complete", map[string]string{"duration": fmtDuration(duration), "cost": fmtCost(totalTokens.CostUSD)})
+
+				// ===== SUCCESS — RECORD OUTCOME =====
+				logger.Info(SharkPrefix+" DoD PASSED — recording outcome",
+					"TotalInputTokens", totalTokens.InputTokens,
+					"TotalOutputTokens", totalTokens.OutputTokens,
+					"TotalCacheReadTokens", totalTokens.CacheReadTokens,
+					"TotalCacheCreationTokens", totalTokens.CacheCreationTokens,
+					"TotalCostUSD", totalTokens.CostUSD,
+				)
+				recordOutcome(ctx, recordOpts, a, req, "completed", 0,
+					handoffCount, true, "", startTime, totalTokens, activityTokens, stepMetrics)
+
+				// ===== CHUM LOOP — spawn async learner + groomer =====
+				spawnCHUMWorkflows(ctx, logger, req, plan)
+
+				return nil
+			}
+
+			// DoD failed — feed detailed check output back to agent
 			recordStep(fmt.Sprintf("dod[%d]", attempt+1), dodStart, "failed")
-			allFailures = append(allFailures, fmt.Sprintf("Attempt %d DoD error: %s", attempt+1, err.Error()))
-			continue
-		}
+			failureMsg := strings.Join(dodResult.Failures, "; ")
+			allFailures = append(allFailures, fmt.Sprintf("Attempt %d DoD failed: %s", attempt+1, failureMsg))
 
-		if dodResult.Passed {
-			recordStep(fmt.Sprintf("dod[%d]", attempt+1), dodStart, "ok")
-
-			duration := workflow.Now(ctx).Sub(startTime)
-			notify("dod_pass", map[string]string{"duration": fmtDuration(duration), "cost": fmtCost(totalTokens.CostUSD)})
-			notify("complete", map[string]string{"duration": fmtDuration(duration), "cost": fmtCost(totalTokens.CostUSD)})
-
-			// ===== SUCCESS — RECORD OUTCOME =====
-			logger.Info(SharkPrefix+" DoD PASSED — recording outcome",
-				"TotalInputTokens", totalTokens.InputTokens,
-				"TotalOutputTokens", totalTokens.OutputTokens,
-				"TotalCacheReadTokens", totalTokens.CacheReadTokens,
-				"TotalCacheCreationTokens", totalTokens.CacheCreationTokens,
-				"TotalCostUSD", totalTokens.CostUSD,
-			)
-			recordOutcome(ctx, recordOpts, a, req, "completed", 0,
-				handoffCount, true, "", startTime, totalTokens, activityTokens, stepMetrics)
-
-			// ===== CHUM LOOP — spawn async learner + groomer =====
-			spawnCHUMWorkflows(ctx, logger, req, plan)
-
-			return nil
-		}
-
-		// DoD failed — feed detailed check output back to agent
-		recordStep(fmt.Sprintf("dod[%d]", attempt+1), dodStart, "failed")
-		failureMsg := strings.Join(dodResult.Failures, "; ")
-		allFailures = append(allFailures, fmt.Sprintf("Attempt %d DoD failed: %s", attempt+1, failureMsg))
-
-		// Build detailed feedback with per-check output so the agent
-		// knows exactly which commands failed and what the errors were.
-		var detailedFeedback strings.Builder
-		detailedFeedback.WriteString("DoD check failures:\n")
-		for _, check := range dodResult.Checks {
-			if !check.Passed {
-				detailedFeedback.WriteString(fmt.Sprintf("\n--- FAILED: %s (exit %d) ---\n", check.Command, check.ExitCode))
-				detailedFeedback.WriteString(truncate(check.Output, 2000))
-				detailedFeedback.WriteString("\n")
+			// Build detailed feedback with per-check output so the agent
+			// knows exactly which commands failed and what the errors were.
+			var detailedFeedback strings.Builder
+			detailedFeedback.WriteString("DoD check failures:\n")
+			for _, check := range dodResult.Checks {
+				if !check.Passed {
+					detailedFeedback.WriteString(fmt.Sprintf("\n--- FAILED: %s (exit %d) ---\n", check.Command, check.ExitCode))
+					detailedFeedback.WriteString(truncate(check.Output, 2000))
+					detailedFeedback.WriteString("\n")
+				}
 			}
-		}
-		plan.PreviousErrors = append(plan.PreviousErrors, detailedFeedback.String())
+			plan.PreviousErrors = append(plan.PreviousErrors, detailedFeedback.String())
 
-		notify("dod_fail", map[string]string{"failures": failureMsg, "attempt": fmt.Sprintf("%d", attempt+1)})
-		logger.Warn(SharkPrefix+" DoD failed, retrying", "Attempt", attempt+1, "Failures", failureMsg)
+			notify("dod_fail", map[string]string{"failures": failureMsg, "attempt": fmt.Sprintf("%d", attempt+1)})
+			logger.Warn(SharkPrefix+" DoD failed, retrying", "Attempt", attempt+1, "Failures", failureMsg)
 
-		// --- AUTO-FIX: run gofmt + goimports before next retry ---
-		// Cheap and deterministic — fixes formatting issues that agents
-		// commonly introduce, saving a full retry attempt.
-		autoFixStart := workflow.Now(ctx)
-		autoFixOpts := workflow.ActivityOptions{
-			StartToCloseTimeout: 1 * time.Minute,
-			RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 1},
+			// --- AUTO-FIX: run gofmt + goimports before next retry ---
+			// Cheap and deterministic — fixes formatting issues that agents
+			// commonly introduce, saving a full retry attempt.
+			autoFixStart := workflow.Now(ctx)
+			autoFixOpts := workflow.ActivityOptions{
+				StartToCloseTimeout: 1 * time.Minute,
+				RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 1},
+			}
+			autoFixCtx := workflow.WithActivityOptions(ctx, autoFixOpts)
+			var autoFixResult AutoFixResult
+			if err := workflow.ExecuteActivity(autoFixCtx, a.AutoFixLintActivity, req.WorkDir).Get(ctx, &autoFixResult); err != nil {
+				logger.Warn(SharkPrefix+" Auto-fix lint failed (non-fatal)", "error", err)
+			} else if autoFixResult.FilesFixed > 0 {
+				logger.Info(SharkPrefix+" Auto-fix applied",
+					"FilesFixed", autoFixResult.FilesFixed, "Tools", autoFixResult.ToolsRun)
+			}
+			recordStep(fmt.Sprintf("autofix[%d]", attempt+1), autoFixStart, "ok")
 		}
-		autoFixCtx := workflow.WithActivityOptions(ctx, autoFixOpts)
-		var autoFixResult AutoFixResult
-		if err := workflow.ExecuteActivity(autoFixCtx, a.AutoFixLintActivity, req.WorkDir).Get(ctx, &autoFixResult); err != nil {
-			logger.Warn(SharkPrefix+" Auto-fix lint failed (non-fatal)", "error", err)
-		} else if autoFixResult.FilesFixed > 0 {
-			logger.Info(SharkPrefix+" Auto-fix applied",
-				"FilesFixed", autoFixResult.FilesFixed, "Tools", autoFixResult.ToolsRun)
-		}
-		recordStep(fmt.Sprintf("autofix[%d]", attempt+1), autoFixStart, "ok")
-	}
 
-	// All retries exhausted for this tier — record failure and try next tier
-	lastFailedProvider = tier.ProviderKey
-	lastFailedTier = tier.Tier
-	logger.Warn(SharkPrefix+" Tier exhausted, escalating",
-		"Tier", tier.Tier, "Provider", tier.ProviderKey, "Attempts", maxRetries)
+		// All retries exhausted for this tier — record failure and try next tier
+		lastFailedProvider = tier.ProviderKey
+		lastFailedTier = tier.Tier
+		logger.Warn(SharkPrefix+" Tier exhausted, escalating",
+			"Tier", tier.Tier, "Provider", tier.ProviderKey, "Attempts", maxRetries)
 	} // end tier loop
 
 	// ===== ESCALATE — all tiers exhausted =====
@@ -560,7 +560,7 @@ func recordEscalation(ctx workflow.Context, logger log.Logger, a *Activities,
 	}
 	actCtx := workflow.WithActivityOptions(ctx, ao)
 	_ = workflow.ExecuteActivity(actCtx, a.RecordEscalationActivity, EscalationEvent{
-		MorselID:         taskID,
+		MorselID:       taskID,
 		Project:        project,
 		FailedProvider: failedProvider,
 		FailedTier:     failedTier,

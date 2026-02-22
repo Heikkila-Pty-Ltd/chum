@@ -262,7 +262,12 @@ func TestChumAgentWorkflowUpsertsSearchAttributesAtLifecycleStages(t *testing.T)
 
 func TestBuildOpenAgentWorkflowQueryFiltersByProject(t *testing.T) {
 	q := buildOpenAgentWorkflowQuery("alpha-proj")
+	require.Contains(t, q, "WorkflowType = 'ChumAgentWorkflow'")
+	require.Contains(t, q, "ExecutionStatus = 'Running'")
 	require.Contains(t, q, fmt.Sprintf("%s = 'alpha-proj'", SearchAttributeProject))
+	for _, stage := range []string{chumWorkflowStatusPlan, chumWorkflowStatusGate, chumWorkflowStatusExecute, chumWorkflowStatusReview, chumWorkflowStatusDoD} {
+		require.Contains(t, q, fmt.Sprintf("%s = '%s'", SearchAttributeCurrentStage, stage))
+	}
 	q = buildOpenAgentWorkflowQuery("acme's")
 	require.Contains(t, q, fmt.Sprintf("%s = 'acme''s'", SearchAttributeProject))
 }

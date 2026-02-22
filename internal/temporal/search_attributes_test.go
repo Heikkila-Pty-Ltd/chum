@@ -2,6 +2,7 @@ package temporal
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -44,20 +45,21 @@ func TestRegisterSearchAttributesSkipsAlreadyExistsError(t *testing.T) {
 		err: serviceerror.NewAlreadyExists("search attribute already exists"),
 	}
 
-	err := registerSearchAttributes(context.Background(), registrar, "chum")
+	err := registerSearchAttributes(t.Context(), registrar, "chum")
 	require.NoError(t, err)
 	require.Len(t, registrar.requests, 1)
 	require.Equal(t, "chum", registrar.requests[0].Namespace)
 }
 
 func TestRegisterSearchAttributesReturnsUnexpectedErrors(t *testing.T) {
+	otherErr := errors.New("search attribute registration failed")
 	registrar := &fakeSearchAttributeRegistrar{
-		err: require.AnError,
+		err: otherErr,
 	}
 
-	err := registerSearchAttributes(context.Background(), registrar, "chum")
+	err := registerSearchAttributes(t.Context(), registrar, "chum")
 	require.Error(t, err)
-	require.EqualError(t, err, require.AnError.Error())
+	require.EqualError(t, err, otherErr.Error())
 }
 
 func TestChumAgentRunningVisibilityQueryForProjectAndAgent(t *testing.T) {

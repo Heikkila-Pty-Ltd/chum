@@ -542,6 +542,29 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 	recordOutcome(ctx, recordOpts, a, req, "escalated", 1,
 		handoffCount, false, strings.Join(allFailures, "\n"), startTime, totalTokens, activityTokens, stepMetrics)
 
+	// ===== SPAWN LEARNER ON FAILURE =====
+	// The octopus learns MORE from failures than successes.
+	// Failures carry antibodies: what went wrong, which files are risky,
+	// which errors repeated. This is the richest evolutionary data.
+	failureLearnerReq := LearnerRequest{
+		TaskID:         req.TaskID,
+		Project:        req.Project,
+		WorkDir:        req.WorkDir,
+		Agent:          req.Agent,
+		DoDPassed:      false,
+		FilesChanged:   plan.FilesToModify,
+		PreviousErrors: allFailures,
+		Tier:           "fast",
+	}
+	failureLearnerOpts := workflow.ChildWorkflowOptions{
+		ParentClosePolicy: enumspb.PARENT_CLOSE_POLICY_ABANDON,
+		WorkflowID:        fmt.Sprintf("learner-%s-%d", req.TaskID, workflow.Now(ctx).Unix()),
+	}
+	failureLearnerCtx := workflow.WithChildOptions(ctx, failureLearnerOpts)
+	failureLearnerFut := workflow.ExecuteChildWorkflow(failureLearnerCtx, ContinuousLearnerWorkflow, failureLearnerReq)
+	_ = failureLearnerFut.GetChildWorkflowExecution().Get(ctx, nil)
+	logger.Info(SharkPrefix+" Spawned failure learner — octopus will extract antibodies", "TaskID", req.TaskID)
+
 	return fmt.Errorf("task escalated after %d attempts: %s", escalationAttempt, strings.Join(allFailures, "; "))
 }
 

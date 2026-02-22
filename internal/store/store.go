@@ -229,6 +229,13 @@ func Open(dbPath string) (*Store, error) {
 		return nil, fmt.Errorf("store: open %s: %w", dbPath, err)
 	}
 
+	// Rename bead→morsel columns in existing databases BEFORE schema DDL runs.
+	// The schema uses morsel_id but pre-rename databases have bead_id.
+	if err := migrateBeadToMorsel(db); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("store: migrate bead→morsel: %w", err)
+	}
+
 	if _, err := db.Exec(schema); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("store: create schema: %w", err)
@@ -462,6 +469,78 @@ func migrate(db *sql.DB) error {
 
 	if err := migrateCalcifiedScripts(db); err != nil {
 		return fmt.Errorf("migrate calcified scripts: %w", err)
+	}
+
+	return nil
+}
+
+// migrateBeadToMorsel renames bead_id → morsel_id columns and the bead_stages
+// table. Must run BEFORE schema DDL since the new DDL references morsel_id.
+// Safe to call repeatedly — skips tables/columns that are already renamed.
+func migrateBeadToMorsel(db *sql.DB) error {
+	// Rename bead_stages table → morsel_stages (if it exists)
+	var beadStagesExists int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='bead_stages'`).Scan(&beadStagesExists); err != nil {
+		return fmt.Errorf("check bead_stages: %w", err)
+	}
+	if beadStagesExists > 0 {
+		// Drop the morsel_stages table if schema DDL created it empty alongside old bead_stages
+		if _, err := db.Exec(`DROP TABLE IF EXISTS morsel_stages`); err != nil {
+			return fmt.Errorf("drop empty morsel_stages: %w", err)
+		}
+		if _, err := db.Exec(`ALTER TABLE bead_stages RENAME TO morsel_stages`); err != nil {
+			return fmt.Errorf("rename bead_stages: %w", err)
+		}
+	}
+
+	// Rename bead_id → morsel_id in all affected tables
+	renames := []struct {
+		table  string
+		oldCol string
+		newCol string
+	}{
+		{"dispatches", "bead_id", "morsel_id"},
+		{"provider_usage", "bead_id", "morsel_id"},
+		{"health_events", "bead_id", "morsel_id"},
+		{"morsel_stages", "bead_id", "morsel_id"},
+		{"dod_results", "bead_id", "morsel_id"},
+		{"overflow_queue", "bead_id", "morsel_id"},
+		{"lessons", "bead_id", "morsel_id"},
+		{"token_usage", "bead_id", "morsel_id"},
+		{"step_metrics", "bead_id", "morsel_id"},
+		{"stingray_findings", "bead_id", "morsel_id"},
+		{"provider_escalations", "bead_id", "morsel_id"},
+		// claim_leases: bead_id → morsel_id (PK)
+		{"claim_leases", "bead_id", "morsel_id"},
+		// claim_leases: beads_dir → morsels_dir
+		{"claim_leases", "beads_dir", "morsels_dir"},
+	}
+
+	for _, r := range renames {
+		// Check if old column exists
+		var hasOld int
+		if err := db.QueryRow(
+			`SELECT COUNT(*) FROM pragma_table_info('`+r.table+`') WHERE name = ?`, r.oldCol,
+		).Scan(&hasOld); err != nil {
+			// Table might not exist yet — skip silently
+			continue
+		}
+		if hasOld == 0 {
+			continue // Already renamed or table doesn't have this column
+		}
+		if _, err := db.Exec(`ALTER TABLE ` + r.table + ` RENAME COLUMN ` + r.oldCol + ` TO ` + r.newCol); err != nil {
+			return fmt.Errorf("rename %s.%s → %s: %w", r.table, r.oldCol, r.newCol, err)
+		}
+	}
+
+	// Rename indexes that reference bead_id
+	for _, idx := range []string{
+		"idx_morsel_stages_morsel",
+		"idx_bead_stages_morsel",
+		"idx_bead_stages_project_morsel",
+		"idx_bead_stages_project_stage",
+	} {
+		db.Exec(`DROP INDEX IF EXISTS ` + idx)
 	}
 
 	return nil

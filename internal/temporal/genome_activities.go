@@ -51,3 +51,19 @@ func (a *Activities) GetGenomeForPromptActivity(ctx context.Context, species str
 	}
 	return a.Store.GetGenomeForPrompt(species)
 }
+
+// HibernateGenomeActivity flags a species as hibernating, stopping further automatic dispatches.
+// This is the system's way of cutting token burn when an approach is hopelessly stuck.
+func (a *Activities) HibernateGenomeActivity(ctx context.Context, species string) error {
+	logger := activity.GetLogger(ctx)
+	if a.Store == nil {
+		return nil
+	}
+
+	if err := a.Store.HibernateGenome(species); err != nil {
+		logger.Warn(OctopusPrefix+" Genome hibernation failed (non-fatal)", "species", species, "error", err)
+		return nil
+	}
+	logger.Info(OctopusPrefix+" Species is now hibernating — no further auto-dispatches", "Species", species)
+	return nil
+}

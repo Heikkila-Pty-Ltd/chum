@@ -109,6 +109,7 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 
 	// --- Genome Evolution ---
 	w.RegisterActivity(acts.EvolveGenomeActivity)
+	w.RegisterActivity(acts.HibernateGenomeActivity)
 	w.RegisterActivity(acts.GetGenomeForPromptActivity)
 
 	// --- CHUM Groom Activities ---

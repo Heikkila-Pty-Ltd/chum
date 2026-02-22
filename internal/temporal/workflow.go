@@ -657,6 +657,17 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 			"Species", species, "Antibody", truncate(plan.Summary, 80))
 	}
 
+	// Flag species as hibernating (unless override)
+	// User requested golf-directory to never hibernate so it keeps trying.
+	if req.Project == "golf-directory" {
+		logger.Info(SharkPrefix+" Skipping hibernation for golf-directory (user override)", "Species", species)
+	} else {
+		hibernateCtx := workflow.WithActivityOptions(ctx, recordOpts)
+		if err := workflow.ExecuteActivity(hibernateCtx, a.HibernateGenomeActivity, species).Get(ctx, nil); err != nil {
+			logger.Warn(SharkPrefix+" Genome hibernation failed (non-fatal)", "species", species, "error", err)
+		}
+	}
+
 	cleanupWorktree()
 	return fmt.Errorf("task escalated after %d attempts: %s", escalationAttempt, strings.Join(allFailures, "; "))
 }

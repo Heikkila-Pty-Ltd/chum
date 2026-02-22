@@ -58,6 +58,7 @@ type Genome struct {
 	Successes      int            `json:"successes"`
 	Failures       int            `json:"failures"`
 	TotalCostUSD   float64        `json:"total_cost_usd"` // Total energy consumed by this species
+	Hibernating    bool           `json:"hibernating"`
 	LastEvolved    *time.Time     `json:"last_evolved,omitempty"`
 	CreatedAt      time.Time      `json:"created_at"`
 }
@@ -106,6 +107,7 @@ func (s *Store) ensureGenomesTable() error {
 		successes      INTEGER NOT NULL DEFAULT 0,
 		failures       INTEGER NOT NULL DEFAULT 0,
 		total_cost_usd REAL    NOT NULL DEFAULT 0,
+		hibernating    BOOLEAN NOT NULL DEFAULT 0,
 		last_evolved   DATETIME,
 		created_at     DATETIME NOT NULL DEFAULT (datetime('now'))
 	)`)
@@ -120,10 +122,10 @@ func (s *Store) GetGenome(species string) (*Genome, error) {
 
 	err := s.db.QueryRow(
 		`SELECT species, parent_species, patterns, antibodies, fossils, provider_genes,
-		        generation, successes, failures, total_cost_usd, last_evolved, created_at
+		        generation, successes, failures, total_cost_usd, hibernating, last_evolved, created_at
 		 FROM genomes WHERE species = ?`, species,
 	).Scan(&g.Species, &g.ParentSpecies, &patternsJSON, &antibodiesJSON, &fossilsJSON, &providerGenesJSON,
-		&g.Generation, &g.Successes, &g.Failures, &g.TotalCostUSD, &lastEvolved, &g.CreatedAt)
+		&g.Generation, &g.Successes, &g.Failures, &g.TotalCostUSD, &g.Hibernating, &lastEvolved, &g.CreatedAt)
 
 	if err == sql.ErrNoRows {
 		return g, nil // empty genome — species not yet observed
@@ -259,8 +261,8 @@ func (s *Store) EvolveGenomeWithCost(species string, doDPassed bool, entry Genom
 		return fmt.Errorf("marshal provider_genes for %s: %w", species, err)
 	}
 
-	_, err = s.db.Exec(`INSERT INTO genomes (species, parent_species, patterns, antibodies, fossils, provider_genes, generation, successes, failures, total_cost_usd, last_evolved)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+	_, err = s.db.Exec(`INSERT INTO genomes (species, parent_species, patterns, antibodies, fossils, provider_genes, generation, successes, failures, total_cost_usd, hibernating, last_evolved)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
 		ON CONFLICT(species) DO UPDATE SET
 			patterns = excluded.patterns,
 			antibodies = excluded.antibodies,
@@ -270,10 +272,17 @@ func (s *Store) EvolveGenomeWithCost(species string, doDPassed bool, entry Genom
 			successes = excluded.successes,
 			failures = excluded.failures,
 			total_cost_usd = excluded.total_cost_usd,
+			hibernating = excluded.hibernating,
 			last_evolved = excluded.last_evolved`,
 		species, g.ParentSpecies, string(patternsJSON), string(antibodiesJSON), string(fossilsJSON),
-		string(providerGenesJSON), g.Generation, g.Successes, g.Failures, g.TotalCostUSD,
+		string(providerGenesJSON), g.Generation, g.Successes, g.Failures, g.TotalCostUSD, g.Hibernating,
 	)
+	return err
+}
+
+// HibernateGenome flags a species as hibernating, usually when the immune system cascade fails completely.
+func (s *Store) HibernateGenome(species string) error {
+	_, err := s.db.Exec(`UPDATE genomes SET hibernating = 1 WHERE species = ?`, species)
 	return err
 }
 

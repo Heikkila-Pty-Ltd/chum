@@ -370,13 +370,24 @@ func (da *DispatchActivities) ScanCandidatesActivity(ctx context.Context) (*Scan
 			slowStepThreshold = defaultSlowStepThreshold
 		}
 
+		prompt := buildPrompt(c.task)
+		species := classifySpecies(c.task.ID, prompt, nil) // no plan files yet
+
+		// Check hibernation (skip if hibernating unless it's the golf project per user override)
+		if c.project != "golf-directory" {
+			if genome, err := da.Store.GetGenome(species); err == nil && genome.Hibernating {
+				// Species is hibernating — skip dispatching this organism.
+				continue
+			}
+		}
+
 		result = append(result, DispatchCandidate{
 			TaskID:            c.task.ID,
 			Title:             c.task.Title,
 			TaskTitle:         c.task.Title,
 			Project:           c.project,
 			WorkDir:           c.workDir,
-			Prompt:            buildPrompt(c.task),
+			Prompt:            prompt,
 			Provider:          resolveProvider(cfg),
 			DoDChecks:         dodChecks,
 			SlowStepThreshold: slowStepThreshold,

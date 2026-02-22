@@ -317,6 +317,10 @@ func migrate(db *sql.DB) error {
 		}
 	}
 
+	if err := addColumnIfNotExists(db, "genomes", "hibernating", "BOOLEAN NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+
 	healthEventColumns := []struct {
 		column string
 		ddl    string

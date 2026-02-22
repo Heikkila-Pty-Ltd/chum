@@ -68,7 +68,24 @@ func (a *Activities) ExtractLessonsActivity(ctx context.Context, req LearnerRequ
 		}
 	}
 
-	prompt := fmt.Sprintf(`You are a code quality analyst. A morsel (work item) just completed. Analyze the results and extract reusable lessons.
+	// Build failure-aware extraction prompt
+	var modeInstructions string
+	if req.DoDPassed {
+		modeInstructions = `This morsel SUCCEEDED. Extract reusable patterns:
+- What approach worked well and should be replicated?
+- What coding patterns or architectural decisions were effective?
+- What conventions should be documented for future tasks?`
+	} else {
+		modeInstructions = `This morsel FAILED. Extract ANTIBODIES — defensive knowledge for successor tasks:
+- What was the ROOT CAUSE of the failure?
+- Which files or code areas are RISKY and need extra care?
+- What defensive patterns should successor tasks carry?
+- What errors should the next attempt anticipate and guard against?
+- Was the failure a timeout, test failure, lint error, or logic bug?
+Prioritize actionable antibodies over general observations.`
+	}
+
+	prompt := fmt.Sprintf(`You are a code quality analyst performing evolutionary analysis. A morsel (work item) just %s.
 
 MORSEL: %s (project: %s, agent: %s)
 DOD PASSED: %v
@@ -77,10 +94,12 @@ DOD PASSED: %v
 
 %s
 
-Extract 1-3 lessons. Each lesson must be:
+%s
+
+Extract 1-5 lessons. Each lesson must be:
 - Specific and actionable (not generic advice)
-- Tied to concrete file paths or patterns
-- Categorized: "pattern" (good practice), "antipattern" (mistake to avoid), "rule" (enforceable via static analysis), "insight" (observation)
+- Tied to concrete file paths or patterns when possible
+- Categorized: "pattern" (good practice), "antipattern" (mistake to avoid), "rule" (enforceable), "insight" (observation)
 
 Respond with ONLY a JSON array:
 [{
@@ -92,7 +111,9 @@ Respond with ONLY a JSON array:
 }]
 
 If there are no meaningful lessons, return an empty array [].`,
+		map[bool]string{true: "completed successfully", false: "FAILED — extract antibodies"}[req.DoDPassed],
 		req.TaskID, req.Project, req.Agent, req.DoDPassed,
+		modeInstructions,
 		strings.Join(contextParts, "\n\n"),
 		existingContext,
 	)

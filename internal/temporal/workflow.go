@@ -390,14 +390,44 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 			return nil
 		}
 
-		// DoD failed — feed failures back into plan
+		// DoD failed — feed detailed check output back to agent
 		recordStep(fmt.Sprintf("dod[%d]", attempt+1), dodStart, "failed")
 		failureMsg := strings.Join(dodResult.Failures, "; ")
 		allFailures = append(allFailures, fmt.Sprintf("Attempt %d DoD failed: %s", attempt+1, failureMsg))
-		plan.PreviousErrors = append(plan.PreviousErrors, "DoD check failures: "+failureMsg)
+
+		// Build detailed feedback with per-check output so the agent
+		// knows exactly which commands failed and what the errors were.
+		var detailedFeedback strings.Builder
+		detailedFeedback.WriteString("DoD check failures:\n")
+		for _, check := range dodResult.Checks {
+			if !check.Passed {
+				detailedFeedback.WriteString(fmt.Sprintf("\n--- FAILED: %s (exit %d) ---\n", check.Command, check.ExitCode))
+				detailedFeedback.WriteString(truncate(check.Output, 2000))
+				detailedFeedback.WriteString("\n")
+			}
+		}
+		plan.PreviousErrors = append(plan.PreviousErrors, detailedFeedback.String())
 
 		notify("dod_fail", map[string]string{"failures": failureMsg, "attempt": fmt.Sprintf("%d", attempt+1)})
 		logger.Warn(SharkPrefix+" DoD failed, retrying", "Attempt", attempt+1, "Failures", failureMsg)
+
+		// --- AUTO-FIX: run gofmt + goimports before next retry ---
+		// Cheap and deterministic — fixes formatting issues that agents
+		// commonly introduce, saving a full retry attempt.
+		autoFixStart := workflow.Now(ctx)
+		autoFixOpts := workflow.ActivityOptions{
+			StartToCloseTimeout: 1 * time.Minute,
+			RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 1},
+		}
+		autoFixCtx := workflow.WithActivityOptions(ctx, autoFixOpts)
+		var autoFixResult AutoFixResult
+		if err := workflow.ExecuteActivity(autoFixCtx, a.AutoFixLintActivity, req.WorkDir).Get(ctx, &autoFixResult); err != nil {
+			logger.Warn(SharkPrefix+" Auto-fix lint failed (non-fatal)", "error", err)
+		} else if autoFixResult.FilesFixed > 0 {
+			logger.Info(SharkPrefix+" Auto-fix applied",
+				"FilesFixed", autoFixResult.FilesFixed, "Tools", autoFixResult.ToolsRun)
+		}
+		recordStep(fmt.Sprintf("autofix[%d]", attempt+1), autoFixStart, "ok")
 	}
 
 	// All retries exhausted for this tier — record failure and try next tier

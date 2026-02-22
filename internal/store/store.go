@@ -317,7 +317,7 @@ func migrate(db *sql.DB) error {
 		}
 	}
 
-	if err := addColumnIfNotExists(db, "genomes", "hibernating", "BOOLEAN NOT NULL DEFAULT 0"); err != nil {
+	if err := addColumnIfNotExists(db, "genomes", "hibernating", "hibernating BOOLEAN NOT NULL DEFAULT 0"); err != nil {
 		return err
 	}
 

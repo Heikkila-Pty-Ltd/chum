@@ -110,18 +110,30 @@ func CrabDecompositionWorkflow(ctx workflow.Context, req CrabDecompositionReques
 		recordStep("clarify", clarifyStart, "ok")
 	}
 
-	// If human input is needed, wait on signal channel for answers.
+	// If human input is needed, wait on signal channel for answers (up to 10 minutes).
 	if clarifications.NeedsHumanInput {
 		logger.Info(CrabPrefix+" Waiting for human clarification", "Questions", len(clarifications.HumanQuestions))
 
 		clarificationChan := workflow.GetSignalChannel(ctx, "crab-clarification")
 		var humanAnswers string
-		clarificationChan.Receive(ctx, &humanAnswers)
+
+		timer := workflow.NewTimer(ctx, 10*time.Minute)
+		sel := workflow.NewSelector(ctx)
+		
+		sel.AddReceive(clarificationChan, func(c workflow.ReceiveChannel, more bool) {
+			c.Receive(ctx, &humanAnswers)
+			logger.Info(CrabPrefix + " Human clarification received")
+		})
+		
+		sel.AddFuture(timer, func(f workflow.Future) {
+			humanAnswers = "Human ignored clarification request. Proceeding with best judgement."
+			logger.Warn(CrabPrefix + " Clarification timed out (10m) — proceeding blindly")
+		})
+		
+		sel.Select(ctx)
 
 		clarifications.HumanAnswers = humanAnswers
 		clarifications.NeedsHumanInput = false
-
-		logger.Info(CrabPrefix + " Human clarification received")
 	}
 
 	// ===== PHASE 3: DECOMPOSE =====

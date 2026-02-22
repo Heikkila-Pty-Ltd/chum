@@ -179,3 +179,12 @@ tier = "fast"
 max_morsels_per_plan = 20
 max_scope_items = 10
 auto_approve = false
+
+[calcifier]
+enabled = true
+calcified_dir = ".cortex/calcified"
+compile_threshold = 10      # consecutive LLM successes before compilation (base)
+promote_threshold = 3       # shadow matches before promotion to active
+risk_multiplier = 3         # multiplier for risky labels (10 × 3 = 30 for risk:high)
+quarantine_on_nonzero = true
+compile_model = "gemini-pro"

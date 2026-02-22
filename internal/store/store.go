@@ -460,6 +460,10 @@ func migrate(db *sql.DB) error {
 		return err
 	}
 
+	if err := migrateCalcifiedScripts(db); err != nil {
+		return fmt.Errorf("migrate calcified scripts: %w", err)
+	}
+
 	return nil
 }
 

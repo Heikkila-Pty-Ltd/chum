@@ -15,7 +15,7 @@ if [[ "$BRANCH" == "master" || "$BRANCH" == "main" ]]; then
     echo "════════════════════════════════════════════════════════════════"
     echo ""
     echo "Use this only for approved production hotfixes."
-    echo "Record approval evidence in the related bead/PR before pushing."
+    echo "Record approval evidence in the related morsel/PR before pushing."
     echo ""
     exit 0
   fi

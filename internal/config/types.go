@@ -42,6 +42,7 @@ type Config struct {
 	Dispatch   Dispatch                  `toml:"dispatch"`
 	Chief      Chief                     `toml:"chief"`
 	Crab       Crab                      `toml:"crab"`
+	Calcifier  Calcifier                 `toml:"calcifier"`
 }
 
 // General holds top-level scheduler settings (tick interval, retries, concurrency caps).
@@ -300,4 +301,39 @@ type Crab struct {
 	MaxMorselsPerPlan int    `toml:"max_morsels_per_plan"` // Maximum morsels emitted per plan (default 20)
 	MaxScopeItems     int    `toml:"max_scope_items"`      // Maximum scope items accepted in a plan (default 10)
 	AutoApprove       bool   `toml:"auto_approve"`         // Phase 2: auto-approve high-confidence decompositions (default false)
+}
+
+// Calcifier configures the stochastic→deterministic calcification pipeline.
+// When a morsel type is repeatedly solved by the LLM, the calcifier generates
+// a deterministic script to replace the LLM call entirely.
+type Calcifier struct {
+	Enabled            bool   `toml:"enabled"`
+	CalcifiedDir       string `toml:"calcified_dir"`       // directory for calcified scripts (default ".cortex/calcified")
+	CompileThreshold   int    `toml:"compile_threshold"`   // consecutive successes before compilation (default 10)
+	PromoteThreshold   int    `toml:"promote_threshold"`   // shadow matches before promotion (default 3)
+	RiskMultiplier     int    `toml:"risk_multiplier"`     // multiplier for risky morsel types (default 3)
+	QuarantineOnNonzero bool  `toml:"quarantine_on_nonzero"` // quarantine scripts on non-zero exit
+	CompileModel       string `toml:"compile_model"`       // LLM model used to generate scripts (default "gemini-pro")
+}
+
+// EffectiveThreshold returns the compile threshold adjusted for risk.
+// Morsels carrying risky labels (security, migration, etc.) require
+// CompileThreshold × RiskMultiplier consecutive successes.
+func (c Calcifier) EffectiveThreshold(labels []string, riskyLabels []string) int {
+	threshold := c.CompileThreshold
+	if threshold == 0 {
+		threshold = 10
+	}
+	multiplier := c.RiskMultiplier
+	if multiplier == 0 {
+		multiplier = 3
+	}
+	for _, l := range labels {
+		for _, r := range riskyLabels {
+			if l == r {
+				return threshold * multiplier
+			}
+		}
+	}
+	return threshold
 }

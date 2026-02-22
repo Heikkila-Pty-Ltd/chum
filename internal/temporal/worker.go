@@ -109,6 +109,13 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 	w.RegisterActivity(acts.SizeMorselsActivity)
 	w.RegisterActivity(acts.EmitMorselsActivity)
 
+	// --- Calcifier (Stochastic→Deterministic) ---
+	w.RegisterWorkflow(CalcificationWorkflow)
+	w.RegisterActivity(acts.DetectCalcificationCandidatesActivity)
+	w.RegisterActivity(acts.CompileCalcifiedScriptActivity)
+	w.RegisterActivity(acts.PromoteCalcifiedScriptActivity)
+	w.RegisterActivity(acts.QuarantineAndRewireActivity)
+
 	logger.Info("temporal worker started", "task_queue", DefaultTaskQueue)
 	return w.Run(worker.InterruptCh())
 }

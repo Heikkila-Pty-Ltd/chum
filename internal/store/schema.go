@@ -43,7 +43,9 @@ CREATE INDEX IF NOT EXISTS idx_stingray_findings_project ON stingray_findings(pr
 CREATE INDEX IF NOT EXISTS idx_stingray_findings_status ON stingray_findings(status);
 CREATE INDEX IF NOT EXISTS idx_stingray_findings_category ON stingray_findings(category);
 CREATE INDEX IF NOT EXISTS idx_stingray_findings_project_status_title_file_path
-	ON stingray_findings(project, status, title, file_path);`
+	ON stingray_findings(project, status, title, file_path);
+CREATE INDEX IF NOT EXISTS idx_stingray_findings_project_last_seen
+	ON stingray_findings(project, last_seen, id);`
 
 // migrateStingrayTables ensures stingray tables and indexes exist.
 // It remains as part of the migration path for backward compatibility.

@@ -38,6 +38,8 @@ type StingrayFinding struct {
 const (
 	defaultStingrayRecentLimit      = 20
 	defaultStingrayTrendingMinRuns  = 2
+	stingrayFindingStatusOpen       = "open"
+	stingrayFindingStatusFiled      = "filed"
 )
 
 // RecordRun inserts a new Stingray run and returns its ID.
@@ -97,8 +99,8 @@ func (s *Store) RecordFinding(runID int64, project, category, severity, title, d
 	}
 	res, err := s.db.Exec(`
 		INSERT INTO stingray_findings (run_id, project, category, severity, title, detail, file_path, evidence, bead_id, status)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', 'open')
-	`, runID, project, category, severity, title, detail, filePath, evidence)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', ?)
+	`, runID, project, category, severity, title, detail, filePath, evidence, stingrayFindingStatusOpen)
 	if err != nil {
 		return 0, fmt.Errorf("store: record stingray finding: %w", err)
 	}
@@ -149,13 +151,13 @@ func (s *Store) GetTrendingFindings(project string, minOccurrences int) ([]Sting
 		INNER JOIN (
 			SELECT title, file_path, MAX(id) AS max_id, COUNT(DISTINCT run_id) AS run_count
 			FROM stingray_findings
-			WHERE project = ? AND status IN ('open', 'filed')
+			WHERE project = ? AND status IN (?, ?)
 			GROUP BY title, file_path
 			HAVING run_count >= ?
 		) grouped ON f.id = grouped.max_id
-		WHERE f.status IN ('open', 'filed')
+		WHERE f.status IN (?, ?)
 		ORDER BY f.last_seen DESC, f.id DESC
-	`, project, minOccurrences)
+	`, project, stingrayFindingStatusOpen, stingrayFindingStatusFiled, minOccurrences, stingrayFindingStatusOpen, stingrayFindingStatusFiled)
 	if err != nil {
 		return nil, fmt.Errorf("store: get trending stingray findings: %w", err)
 	}

@@ -2,9 +2,45 @@ package store
 
 import (
 	"database/sql"
+	"fmt"
 	"path/filepath"
 	"testing"
 )
+
+func testPragmaIndexNames(t *testing.T, db *sql.DB, table string) map[string]struct{} {
+	t.Helper()
+
+	query := fmt.Sprintf("SELECT seq, name, unique, origin, partial FROM pragma_index_list(%q)", table)
+	rows, err := db.Query(query)
+	if err != nil {
+		t.Fatalf("query pragma_index_list(%s) failed: %v", table, err)
+	}
+	t.Cleanup(func() { _ = rows.Close() })
+
+	indexes := map[string]struct{}{}
+	for rows.Next() {
+		var name, origin string
+		var seq, unique, partial int
+		if err := rows.Scan(&seq, &name, &unique, &origin, &partial); err != nil {
+			t.Fatalf("scan index row failed: %v", err)
+		}
+		indexes[name] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate indexes failed: %v", err)
+	}
+	return indexes
+}
+
+func assertIndexesExist(t *testing.T, db *sql.DB, table string, expected []string) {
+	t.Helper()
+	indexes := testPragmaIndexNames(t, db, table)
+	for _, name := range expected {
+		if _, ok := indexes[name]; !ok {
+			t.Fatalf("missing index %q on table %s", name, table)
+		}
+	}
+}
 
 func TestRecordRunAndGetLatest(t *testing.T) {
 	s := tempStore(t)
@@ -540,30 +576,100 @@ func TestOpenMigratesLegacyDBWithoutStingrayTables(t *testing.T) {
 		t.Fatal("stingray_findings table should have been created on startup")
 	}
 
-	var indexCount int
-	if err := s.DB().QueryRow(`
-		SELECT COUNT(*) FROM pragma_index_list('stingray_runs')
-		WHERE name IN ('idx_stingray_runs_project', 'idx_stingray_runs_run_at')
-	`).Scan(&indexCount); err != nil {
-		t.Fatalf("pragma_index_list(stingray_runs) failed: %v", err)
+	assertIndexesExist(t, s.DB(), "stingray_runs", []string{
+		"idx_stingray_runs_project",
+		"idx_stingray_runs_run_at",
+	})
+	assertIndexesExist(t, s.DB(), "stingray_findings", []string{
+		"idx_stingray_findings_run",
+		"idx_stingray_findings_project",
+		"idx_stingray_findings_status",
+		"idx_stingray_findings_category",
+		"idx_stingray_findings_project_status_title_file_path",
+		"idx_stingray_findings_project_last_seen",
+	})
+}
+
+func TestRecordRunValidatesProject(t *testing.T) {
+	s := tempStore(t)
+
+	_, err := s.RecordRun(" ", 1, 1, 0, "{}")
+	if err == nil {
+		t.Fatalf("expected error for blank project")
 	}
-	if indexCount != 2 {
-		t.Fatalf("expected 2 stingray_runs indexes, got %d", indexCount)
+}
+
+func TestRecordFindingValidatesInputs(t *testing.T) {
+	s := tempStore(t)
+
+	runID, err := s.RecordRun("proj", 1, 1, 0, "{}")
+	if err != nil {
+		t.Fatalf("RecordRun failed: %v", err)
 	}
 
-	if err := s.DB().QueryRow(`
-		SELECT COUNT(*) FROM pragma_index_list('stingray_findings')
-		WHERE name IN (
-			'idx_stingray_findings_run',
-			'idx_stingray_findings_project',
-			'idx_stingray_findings_status',
-			'idx_stingray_findings_category'
-		)
-	`).Scan(&indexCount); err != nil {
-		t.Fatalf("pragma_index_list(stingray_findings) failed: %v", err)
+	_, err = s.RecordFinding(runID, "", "coverage", "medium", "Bad title", "bad detail", "", "")
+	if err == nil {
+		t.Fatalf("expected error for blank project")
 	}
-	if indexCount != 4 {
-		t.Fatalf("expected 4 stingray_findings indexes, got %d", indexCount)
+
+	_, err = s.RecordFinding(0, "proj", "coverage", "medium", "Bad title", "bad detail", "", "")
+	if err == nil {
+		t.Fatalf("expected error for invalid run ID")
+	}
+}
+
+func TestGetRecentFindingsEmptyProjectDefaultsToEmpty(t *testing.T) {
+	s := tempStore(t)
+
+	runID, err := s.RecordRun("proj", 1, 0, 0, "{}")
+	if err != nil {
+		t.Fatalf("RecordRun failed: %v", err)
+	}
+	if _, err := s.RecordFinding(runID, "proj", "coverage", "low", "empty project", "detail", "", ""); err != nil {
+		t.Fatalf("RecordFinding failed: %v", err)
+	}
+
+	findings, err := s.GetRecentFindings("   ", 10)
+	if err != nil {
+		t.Fatalf("GetRecentFindings failed: %v", err)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("expected 0 findings for blank project, got %d", len(findings))
+	}
+}
+
+func TestGetTrendingFindingsIncludesFiledStatusTransitions(t *testing.T) {
+	s := tempStore(t)
+
+	run1, _ := s.RecordRun("proj", 1, 1, 0, "{}")
+	f1, _ := s.RecordFinding(run1, "proj", "tech_debt", "low", "API drift", "first pass", "api.go", "")
+
+	run2, _ := s.RecordRun("proj", 1, 1, 0, "{}")
+	f2, _ := s.RecordFinding(run2, "proj", "tech_debt", "low", "API drift", "still present", "api.go", "")
+	if err := s.UpdateFindingBeadID(f1, "bead-123"); err != nil {
+		t.Fatalf("UpdateFindingBeadID failed: %v", err)
+	}
+
+	trending, err := s.GetTrendingFindings("proj", 2)
+	if err != nil {
+		t.Fatalf("GetTrendingFindings failed: %v", err)
+	}
+	if len(trending) != 1 {
+		t.Fatalf("expected 1 trending finding, got %d", len(trending))
+	}
+	if trending[0].ID != f2 {
+		t.Errorf("expected trending finding id %d, got %d", f2, trending[0].ID)
+	}
+
+	if err := s.UpdateFindingStatus(f2, "resolved"); err != nil {
+		t.Fatalf("UpdateFindingStatus failed: %v", err)
+	}
+	trending, err = s.GetTrendingFindings("proj", 2)
+	if err != nil {
+		t.Fatalf("GetTrendingFindings after resolving latest failed: %v", err)
+	}
+	if len(trending) != 0 {
+		t.Fatalf("expected 0 trending after latest resolved, got %d", len(trending))
 	}
 }
 
@@ -784,6 +890,145 @@ func TestOpenMigratesLegacyDbForStingraySchema(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatalf("stingray_findings table missing after migration, got count %d", count)
+	}
+}
+
+func TestStingraySchemaMatchesDesignDefaultsAndIndexes(t *testing.T) {
+	s := tempStore(t)
+
+	_, err := s.DB().Exec(`INSERT INTO stingray_runs (project) VALUES ('design-run-defaults')`)
+	if err != nil {
+		t.Fatalf("insert default stingray run failed: %v", err)
+	}
+
+	var runID int64
+	var runAt string
+	var findingsTotal, findingsNew, findingsResolved int
+	var metricsJSON string
+	if err := s.DB().QueryRow(`
+		SELECT id, run_at, findings_total, findings_new, findings_resolved, metrics_json
+		FROM stingray_runs
+		WHERE project = ?
+		ORDER BY id DESC
+		LIMIT 1
+	`, "design-run-defaults").Scan(
+		&runID, &runAt, &findingsTotal, &findingsNew, &findingsResolved, &metricsJSON,
+	); err != nil {
+		t.Fatalf("query default stingray run failed: %v", err)
+	}
+	if runAt == "" {
+		t.Fatal("expected run_at default to be set")
+	}
+	if findingsTotal != 0 || findingsNew != 0 || findingsResolved != 0 {
+		t.Fatalf("expected zero counts by default, got total=%d new=%d resolved=%d", findingsTotal, findingsNew, findingsResolved)
+	}
+	if metricsJSON != "{}" {
+		t.Fatalf("expected default metrics_json='{}', got %q", metricsJSON)
+	}
+
+	res, err := s.DB().Exec(`
+		INSERT INTO stingray_findings (run_id, project, category, severity, title, detail)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`, runID, "design-findings-defaults", "coverage", "low", "title", "detail")
+	if err != nil {
+		t.Fatalf("insert default stingray finding failed: %v", err)
+	}
+	findingID, err := res.LastInsertId()
+	if err != nil {
+		t.Fatalf("last insert id failed: %v", err)
+	}
+
+	var filePath, evidence, beadID, status, firstSeen, lastSeen string
+	var findingIDFromDB, scannedRunID int64
+	if err := s.DB().QueryRow(`
+		SELECT id, run_id, file_path, evidence, bead_id, status, first_seen, last_seen
+		FROM stingray_findings
+		WHERE id = ?
+	`, findingID).Scan(
+		&findingIDFromDB, &scannedRunID, &filePath, &evidence, &beadID, &status, &firstSeen, &lastSeen,
+	); err != nil {
+		t.Fatalf("query default finding failed: %v", err)
+	}
+	if findingIDFromDB != findingID {
+		t.Fatalf("finding id = %d, want %d", findingIDFromDB, findingID)
+	}
+	if scannedRunID != runID {
+		t.Fatalf("finding run_id = %d, want %d", scannedRunID, runID)
+	}
+	if filePath != "" {
+		t.Fatalf("expected default file_path to be empty, got %q", filePath)
+	}
+	if evidence != "" {
+		t.Fatalf("expected default evidence to be empty, got %q", evidence)
+	}
+	if beadID != "" {
+		t.Fatalf("expected default bead_id to be empty, got %q", beadID)
+	}
+	if status != stingrayFindingStatusOpen {
+		t.Fatalf("expected default status=%q, got %q", stingrayFindingStatusOpen, status)
+	}
+	if firstSeen == "" {
+		t.Fatal("expected first_seen default")
+	}
+	if lastSeen == "" {
+		t.Fatal("expected last_seen default")
+	}
+
+	assertIndexesExist(t, s.DB(), "stingray_runs", []string{
+		"idx_stingray_runs_project",
+		"idx_stingray_runs_run_at",
+	})
+	assertIndexesExist(t, s.DB(), "stingray_findings", []string{
+		"idx_stingray_findings_run",
+		"idx_stingray_findings_project",
+		"idx_stingray_findings_status",
+		"idx_stingray_findings_category",
+		"idx_stingray_findings_project_status_title_file_path",
+		"idx_stingray_findings_project_last_seen",
+	})
+}
+
+func TestOpenIsIdempotentForStingrayMigration(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "legacy_reopen.db")
+
+	legacy, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("open legacy db failed: %v", err)
+	}
+	if _, err := legacy.Exec(`
+		CREATE TABLE dispatches (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			bead_id TEXT NOT NULL,
+			project TEXT NOT NULL,
+			agent_id TEXT NOT NULL,
+			provider TEXT NOT NULL,
+			tier TEXT NOT NULL
+		)
+	`); err != nil {
+		t.Fatalf("create legacy dispatches failed: %v", err)
+	}
+	if err := legacy.Close(); err != nil {
+		t.Fatalf("close legacy db failed: %v", err)
+	}
+
+	s1, err := Open(dbPath)
+	if err != nil {
+		t.Fatalf("first Open failed: %v", err)
+	}
+	s1.Close()
+
+	s2, err := Open(dbPath)
+	if err != nil {
+		t.Fatalf("second Open failed: %v", err)
+	}
+	defer s2.Close()
+
+	runID, err := s2.RecordRun("design-idempotent", 1, 1, 0, "{}")
+	if err != nil {
+		t.Fatalf("RecordRun on reopened db failed: %v", err)
+	}
+	if _, err := s2.RecordFinding(runID, "design-idempotent", "coverage", "low", "still present", "detail", "", ""); err != nil {
+		t.Fatalf("RecordFinding on reopened db failed: %v", err)
 	}
 }
 

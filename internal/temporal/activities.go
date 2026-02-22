@@ -532,3 +532,30 @@ func formatCriteria(criteria []string) string {
 	}
 	return sb.String()
 }
+
+// EscalationEvent is the payload for recording a tier escalation.
+type EscalationEvent struct {
+	BeadID         string
+	Project        string
+	FailedProvider string
+	FailedTier     string
+	EscalatedTo    string
+	EscalatedTier  string
+}
+
+// RecordEscalationActivity persists an escalation event to the store.
+func (a *Activities) RecordEscalationActivity(ctx context.Context, evt EscalationEvent) error {
+	if a.Store == nil {
+		return nil
+	}
+	return a.Store.RecordEscalation(store.ProviderEscalation{
+		BeadID:          evt.BeadID,
+		Project:         evt.Project,
+		FailedProvider:  evt.FailedProvider,
+		FailedTier:      evt.FailedTier,
+		FailureReason:   "exhausted_retries",
+		EscalatedTo:     evt.EscalatedTo,
+		EscalatedTier:   evt.EscalatedTier,
+		EscalatedResult: "pending",
+	})
+}

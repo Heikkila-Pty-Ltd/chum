@@ -4,15 +4,26 @@ import "time"
 
 // TaskRequest is submitted via the API to start a workflow.
 type TaskRequest struct {
-	TaskID            string        `json:"task_id"`
-	Project           string        `json:"project"`
-	Prompt            string        `json:"prompt"`
-	Agent             string        `json:"agent"`              // primary coding agent (claude, codex)
-	Reviewer          string        `json:"reviewer"`           // review agent — auto-assigned if empty
-	WorkDir           string        `json:"work_dir"`
-	Provider          string        `json:"provider"`
-	DoDChecks         []string      `json:"dod_checks"`         // e.g. ["go build ./cmd/chum", "go test ./..."]
-	SlowStepThreshold time.Duration `json:"slow_step_threshold"` // steps exceeding this are flagged slow
+	TaskID             string        `json:"task_id"`
+	Project            string        `json:"project"`
+	Prompt             string        `json:"prompt"`
+	Agent              string        `json:"agent"`               // primary coding agent (claude, codex, gemini)
+	Model              string        `json:"model"`               // model override for the CLI (e.g. "haiku", "gemini-2.5-flash")
+	Reviewer           string        `json:"reviewer"`            // review agent — auto-assigned if empty
+	WorkDir            string        `json:"work_dir"`
+	Provider           string        `json:"provider"`
+	DoDChecks          []string      `json:"dod_checks"`          // e.g. ["go build ./cmd/chum", "go test ./..."]
+	SlowStepThreshold  time.Duration `json:"slow_step_threshold"` // steps exceeding this are flagged slow
+	EscalationChain    []EscalationTier `json:"escalation_chain"` // ordered tiers for fail-upward retry
+}
+
+// EscalationTier defines one level in the fail-upward chain.
+type EscalationTier struct {
+	ProviderKey string `json:"provider_key"` // e.g. "codex-spark", "gemini-flash"
+	CLI         string `json:"cli"`          // CLI agent name: "codex", "gemini", "claude"
+	Model       string `json:"model"`        // model to pass via --model flag (empty = default)
+	Tier        string `json:"tier"`         // "fast", "balanced", "premium"
+	Enabled     bool   `json:"enabled"`      // false = skip this tier (gated)
 }
 
 // DefaultReviewer returns the cross-model reviewer for a given primary agent.
@@ -22,7 +33,9 @@ func DefaultReviewer(agent string) string {
 	case "claude":
 		return "codex"
 	case "codex":
-		return "claude"
+		return "gemini"
+	case "gemini":
+		return "codex"
 	default:
 		return "codex"
 	}
@@ -402,6 +415,7 @@ type ScanCandidatesResult struct {
 	Throttled       bool                `json:"throttled"`        // true if dispatch was blocked by token budget
 	ThrottleReason  string              `json:"throttle_reason"`  // human-readable reason for throttling
 	AvailableAgents []string            `json:"available_agents"` // enabled CLI agent names from config
+	EscalationTiers []EscalationTier    `json:"escalation_tiers"` // pre-computed escalation chain from config
 }
 
 // --- Crab Decomposition Types ---

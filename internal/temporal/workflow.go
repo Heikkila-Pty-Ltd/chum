@@ -12,12 +12,37 @@ import (
 )
 
 const (
-	maxDoDRetries = 3 // maximum DoD retry attempts
-	maxHandoffs   = 3 // maximum cross-model review handoffs
+	maxHandoffs = 3 // maximum cross-model review handoffs
 
 	// defaultSlowStepThreshold is used when no config override is provided.
 	defaultSlowStepThreshold = 2 * time.Minute
 )
+
+// tierForIndex maps chain index to tier name.
+func tierForIndex(idx int) string {
+	switch idx {
+	case 0:
+		return "fast"
+	case 1:
+		return "balanced"
+	default:
+		return "premium"
+	}
+}
+
+// retriesForTier returns the max retry attempts per tier level.
+// Cheap models get more retries; expensive models fewer.
+func retriesForTier(tier string) int {
+	switch strings.ToLower(tier) {
+	case "fast", "":
+		return 3
+	case "balanced":
+		return 2
+	case "premium":
+		return 1
+	}
+	return 2
+}
 
 // ChumAgentWorkflow implements the LeSS/SCRUM loop:
 //
@@ -157,10 +182,52 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 
 	// ===== PHASE 2: (gate removed — ready status IS the approval) =====
 
-	// ===== PHASE 3-6: EXECUTE → REVIEW → DOD LOOP =====
+	// ===== PHASE 3-6: EXECUTE → REVIEW → DOD LOOP (with tier escalation) =====
 	handoffCount := 0
+	escalationAttempt := 0
 
-	for attempt := 0; attempt < maxDoDRetries; attempt++ {
+	// Build escalation chain — either from TaskRequest or fallback to single provider.
+	chain := req.EscalationChain
+	if len(chain) == 0 {
+		chain = []EscalationTier{{
+			ProviderKey: req.Provider,
+			CLI:         req.Agent,
+			Model:       req.Model,
+			Tier:        "fast",
+			Enabled:     true,
+		}}
+	}
+
+	// Track the previous failed tier for escalation learning.
+	var lastFailedProvider, lastFailedTier string
+
+	for _, tier := range chain {
+		if !tier.Enabled {
+			logger.Info(SharkPrefix+" Skipping gated provider", "Provider", tier.ProviderKey, "Tier", tier.Tier)
+			continue
+		}
+
+		maxRetries := retriesForTier(tier.Tier)
+
+		// Override agent to use this tier's CLI+model
+		currentAgent = tier.CLI
+		req.Agent = tier.CLI
+		req.Model = tier.Model
+		req.Reviewer = DefaultReviewer(tier.CLI)
+		currentReviewer = req.Reviewer
+
+		logger.Info(SharkPrefix+" Tier escalation",
+			"Tier", tier.Tier, "Provider", tier.ProviderKey, "CLI", tier.CLI, "Model", tier.Model,
+			"MaxRetries", maxRetries)
+
+		// Record escalation from previous tier
+		if lastFailedProvider != "" {
+			recordEscalation(ctx, logger, a, req.TaskID, req.Project,
+				lastFailedProvider, lastFailedTier, tier.ProviderKey, tier.Tier)
+		}
+
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		escalationAttempt++
 		logger.Info(SharkPrefix+" Execution attempt", "Attempt", attempt+1, "Agent", currentAgent)
 		notify("execute", map[string]string{"agent": currentAgent, "attempt": fmt.Sprintf("%d", attempt+1)})
 
@@ -333,9 +400,16 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 		logger.Warn(SharkPrefix+" DoD failed, retrying", "Attempt", attempt+1, "Failures", failureMsg)
 	}
 
-	// ===== ESCALATE — all retries exhausted =====
+	// All retries exhausted for this tier — record failure and try next tier
+	lastFailedProvider = tier.ProviderKey
+	lastFailedTier = tier.Tier
+	logger.Warn(SharkPrefix+" Tier exhausted, escalating",
+		"Tier", tier.Tier, "Provider", tier.ProviderKey, "Attempts", maxRetries)
+	} // end tier loop
+
+	// ===== ESCALATE — all tiers exhausted =====
 	escalateStart := workflow.Now(ctx)
-	notify("escalate", map[string]string{"attempts": fmt.Sprintf("%d", maxDoDRetries)})
+	notify("escalate", map[string]string{"attempts": fmt.Sprintf("%d", escalationAttempt)})
 	logger.Error(SharkPrefix + " All attempts exhausted, escalating to chief")
 
 	escalateCtx := workflow.WithActivityOptions(ctx, recordOpts)
@@ -344,7 +418,7 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 		Project:      req.Project,
 		PlanSummary:  plan.Summary,
 		Failures:     allFailures,
-		AttemptCount: maxDoDRetries,
+		AttemptCount: escalationAttempt,
 		HandoffCount: handoffCount,
 	}).Get(ctx, nil); err != nil {
 		logger.Warn(SharkPrefix+" Escalation activity failed (best-effort)", "error", err)
@@ -354,7 +428,7 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 	recordOutcome(ctx, recordOpts, a, req, "escalated", 1,
 		handoffCount, false, strings.Join(allFailures, "\n"), startTime, totalTokens, activityTokens, stepMetrics)
 
-	return fmt.Errorf("task escalated after %d attempts: %s", maxDoDRetries, strings.Join(allFailures, "; "))
+	return fmt.Errorf("task escalated after %d attempts: %s", escalationAttempt, strings.Join(allFailures, "; "))
 }
 
 // recordOutcome is a helper to persist the workflow outcome via RecordOutcomeActivity.
@@ -437,4 +511,30 @@ func spawnCHUMWorkflows(ctx workflow.Context, logger log.Logger, req TaskRequest
 	} else {
 		logger.Info(SharkPrefix+" CHUM: TacticalGroom started", "WorkflowID", groomExec.ID, "RunID", groomExec.RunID)
 	}
+}
+
+// recordEscalation logs an escalation event to the store (best-effort).
+func recordEscalation(ctx workflow.Context, logger log.Logger, a *Activities,
+	taskID, project, failedProvider, failedTier, escalatedTo, escalatedTier string) {
+
+	if a.Store == nil {
+		return
+	}
+	logger.Info(SharkPrefix+" Recording escalation",
+		"From", failedProvider, "FromTier", failedTier,
+		"To", escalatedTo, "ToTier", escalatedTier)
+
+	ao := workflow.ActivityOptions{
+		StartToCloseTimeout: 5 * time.Second,
+		RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 1},
+	}
+	actCtx := workflow.WithActivityOptions(ctx, ao)
+	_ = workflow.ExecuteActivity(actCtx, a.RecordEscalationActivity, EscalationEvent{
+		BeadID:         taskID,
+		Project:        project,
+		FailedProvider: failedProvider,
+		FailedTier:     failedTier,
+		EscalatedTo:    escalatedTo,
+		EscalatedTier:  escalatedTier,
+	}).Get(ctx, nil)
 }

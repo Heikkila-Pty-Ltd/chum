@@ -94,6 +94,7 @@ func DispatcherWorkflow(ctx workflow.Context, _ struct{}) error {
 			Provider:          c.Provider,
 			DoDChecks:         c.DoDChecks,
 			SlowStepThreshold: slowStep,
+			EscalationChain:   result.EscalationTiers,
 		}
 
 		// Fire-and-forget — we don't wait for the child to complete.
@@ -370,6 +371,7 @@ func (da *DispatchActivities) ScanCandidatesActivity(ctx context.Context) (*Scan
 		Running:         running,
 		MaxTotal:        maxTotal,
 		AvailableAgents: enabledCLIAgents(cfg),
+		EscalationTiers: buildEscalationTiers(cfg),
 	}, nil
 }
 
@@ -428,6 +430,28 @@ type openWorkflowExecution struct {
 	startTime  time.Time
 }
 
+
+// buildEscalationTiers creates the ordered escalation chain from config.
+func buildEscalationTiers(cfg *config.Config) []EscalationTier {
+	chain := EscalationChain(cfg.Tiers, "fast")
+	tiers := make([]EscalationTier, 0, len(chain))
+	for i, providerKey := range chain {
+		cli, model := ResolveProviderCLI(cfg.Providers, providerKey)
+		prov, exists := cfg.Providers[providerKey]
+		enabled := true
+		if exists {
+			enabled = prov.IsEnabled()
+		}
+		tiers = append(tiers, EscalationTier{
+			ProviderKey: providerKey,
+			CLI:         cli,
+			Model:       model,
+			Tier:        tierForIndex(i),
+			Enabled:     enabled,
+		})
+	}
+	return tiers
+}
 
 // enabledCLIAgents returns deduplicated CLI agent names from enabled providers.
 func enabledCLIAgents(cfg *config.Config) []string {

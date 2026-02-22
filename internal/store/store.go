@@ -451,6 +451,7 @@ func migrate(db *sql.DB) error {
 		return err
 	}
 
+	// Ensure stingray persistence is available for both fresh and upgraded DBs.
 	if err := migrateStingrayTables(db); err != nil {
 		return fmt.Errorf("migrate stingray tables: %w", err)
 	}

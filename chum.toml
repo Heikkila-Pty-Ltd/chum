@@ -29,9 +29,13 @@ require_estimate = true
 require_acceptance = true
 
 [rate_limits]
-window_5h_cap = 150
-weekly_cap = 2000
-weekly_headroom_pct = 70
+# Claude output tokens — the scarce resource on Max20 auth plans.
+# 5h rolling window: ~200K output tokens before pausing dispatch.
+window_5h_cap = 200000
+# Weekly cap (resets Friday 14:00 local): ~1M output tokens total.
+weekly_cap = 1000000
+# Reserve 30% of weekly for human use (CHUM uses 70%).
+weekly_headroom_pct = 30
 
 [providers.codex-spark]
 tier = "fast"

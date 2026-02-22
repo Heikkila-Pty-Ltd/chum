@@ -13,10 +13,12 @@ import (
 	"go.temporal.io/api/workflowservice/v1"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/temporal"
+	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/workflow"
 
 	"github.com/antigravity-dev/chum/internal/config"
 	"github.com/antigravity-dev/chum/internal/graph"
+	"github.com/antigravity-dev/chum/internal/store"
 )
 
 // DispatcherWorkflow scans for ready tasks and dispatches ChumAgentWorkflow
@@ -39,6 +41,11 @@ func DispatcherWorkflow(ctx workflow.Context, _ struct{}) error {
 	if err := workflow.ExecuteActivity(actCtx, da.ScanCandidatesActivity).Get(ctx, &result); err != nil {
 		logger.Error(SharkPrefix+" Dispatcher: scan failed", "error", err)
 		return fmt.Errorf("scan candidates: %w", err)
+	}
+
+	if result.Throttled {
+		logger.Info(SharkPrefix+" ⏸️  Dispatcher: throttled", "reason", result.ThrottleReason)
+		return nil
 	}
 
 	if len(result.Candidates) == 0 {
@@ -150,12 +157,66 @@ type DispatchActivities struct {
 	CfgMgr config.ConfigManager
 	TC     client.Client
 	DAG    *graph.DAG
+	Store  *store.Store
 }
 
 // ScanCandidatesActivity does all the I/O-heavy work of discovering ready tasks.
 // This is the domain logic from the old scheduler.tick(), wrapped in an activity.
 func (da *DispatchActivities) ScanCandidatesActivity(ctx context.Context) (*ScanCandidatesResult, error) {
 	cfg := da.CfgMgr.Get()
+	logger := activity.GetLogger(ctx)
+
+	// --- Token budget gate ---
+	// Check rolling 5h window and weekly cap before dispatching.
+	if da.Store != nil {
+		now := time.Now()
+
+		// 5-hour rolling window check (output tokens — the scarce resource on auth plans).
+		if cap5h := cfg.RateLimits.Window5hCap; cap5h > 0 {
+			burn, err := da.Store.TokenBurnSince("claude", now.Add(-5*time.Hour))
+			if err != nil {
+				logger.Warn(SharkPrefix+" Dispatcher: token burn query failed", "error", err)
+			} else {
+				used := burn.OutputTokens
+				pct := float64(used) * 100 / float64(cap5h)
+				if used >= int64(cap5h) {
+					logger.Info(SharkPrefix+" ⏸️  Dispatcher: 5h token ceiling hit — cooling",
+						"used", used, "cap", cap5h, "pct", fmt.Sprintf("%.0f%%", pct))
+					return &ScanCandidatesResult{Throttled: true, ThrottleReason: fmt.Sprintf("5h claude output ceiling: %d/%d (%.0f%%)", used, cap5h, pct)}, nil
+				}
+				if pct > 80 {
+					logger.Info(SharkPrefix+" ⚠️  Dispatcher: 5h token budget at "+fmt.Sprintf("%.0f%%", pct),
+						"used", used, "cap", cap5h)
+				}
+			}
+		}
+
+		// Weekly cap check (total output tokens since the configured reset day).
+		if weeklyCap := cfg.RateLimits.WeeklyCap; weeklyCap > 0 {
+			weekStart := lastWeeklyReset(now)
+			burn, err := da.Store.TokenBurnSince("claude", weekStart)
+			if err != nil {
+				logger.Warn(SharkPrefix+" Dispatcher: weekly burn query failed", "error", err)
+			} else {
+				used := burn.OutputTokens
+				pct := float64(used) * 100 / float64(weeklyCap)
+				headroom := cfg.RateLimits.WeeklyHeadroomPct
+				if headroom <= 0 {
+					headroom = 20 // default 20% reserved for human use
+				}
+				ceiling := float64(weeklyCap) * float64(100-headroom) / 100
+				if float64(used) >= ceiling {
+					logger.Info(SharkPrefix+" ⏸️  Dispatcher: weekly token ceiling hit — cooling",
+						"used", used, "cap", weeklyCap, "headroom_pct", headroom, "pct", fmt.Sprintf("%.0f%%", pct))
+					return &ScanCandidatesResult{Throttled: true, ThrottleReason: fmt.Sprintf("weekly claude ceiling: %d/%d (%.0f%%, %d%% headroom reserved)", used, weeklyCap, pct, headroom)}, nil
+				}
+				if pct > 50 {
+					logger.Info(SharkPrefix+" 📊 Dispatcher: weekly token budget at "+fmt.Sprintf("%.0f%%", pct),
+						"used", used, "cap", weeklyCap)
+				}
+			}
+		}
+	}
 
 	// --- List open workflows ---
 	openWFs, err := listOpenAgentWorkflows(ctx, da.TC)
@@ -364,6 +425,17 @@ type openWorkflowExecution struct {
 	startTime  time.Time
 }
 
+
+// lastWeeklyReset returns the most recent Friday 14:00 local time (when Claude Max resets).
+func lastWeeklyReset(now time.Time) time.Time {
+	// Walk back to the most recent Friday.
+	daysBack := int(now.Weekday()-time.Friday+7) % 7
+	if daysBack == 0 && now.Hour() < 14 {
+		daysBack = 7 // before 2pm Friday = use previous Friday
+	}
+	friday := now.AddDate(0, 0, -daysBack)
+	return time.Date(friday.Year(), friday.Month(), friday.Day(), 14, 0, 0, 0, now.Location())
+}
 
 // isStrategicDeferredTask checks whether the task has the strategic deferred label.
 func isStrategicDeferredTask(t graph.Task) bool {

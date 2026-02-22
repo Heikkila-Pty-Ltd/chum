@@ -666,3 +666,38 @@ func (s *Store) GetStepMetricsByDispatch(dispatchID int64) ([]StepMetricRecord, 
 	return records, rows.Err()
 }
 
+// TokenBurn holds aggregate token counts for a rolling window query.
+type TokenBurn struct {
+	InputTokens  int64
+	OutputTokens int64
+	CacheRead    int64
+	CacheCreate  int64
+}
+
+// TokenBurnSince returns total token burns for a given agent since the cutoff time.
+// If agent is empty, all agents are included.
+func (s *Store) TokenBurnSince(agent string, since time.Time) (TokenBurn, error) {
+	cutoff := since.UTC().Format(time.DateTime)
+	var b TokenBurn
+	var query string
+	var args []any
+
+	if agent != "" {
+		query = `SELECT COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0),
+		                COALESCE(SUM(cache_read_tokens),0), COALESCE(SUM(cache_creation_tokens),0)
+		         FROM token_usage WHERE agent = ? AND recorded_at >= ?`
+		args = []any{agent, cutoff}
+	} else {
+		query = `SELECT COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0),
+		                COALESCE(SUM(cache_read_tokens),0), COALESCE(SUM(cache_creation_tokens),0)
+		         FROM token_usage WHERE recorded_at >= ?`
+		args = []any{cutoff}
+	}
+
+	err := s.db.QueryRow(query, args...).Scan(&b.InputTokens, &b.OutputTokens, &b.CacheRead, &b.CacheCreate)
+	if err != nil {
+		return b, fmt.Errorf("store: token burn since: %w", err)
+	}
+	return b, nil
+}
+

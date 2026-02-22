@@ -396,9 +396,11 @@ type DispatchCandidate struct {
 
 // ScanCandidatesResult is returned by ScanCandidatesActivity.
 type ScanCandidatesResult struct {
-	Candidates []DispatchCandidate `json:"candidates"`
-	Running    int                 `json:"running"` // currently running workflow count
-	MaxTotal   int                 `json:"max_total"`
+	Candidates     []DispatchCandidate `json:"candidates"`
+	Running        int                 `json:"running"`  // currently running workflow count
+	MaxTotal       int                 `json:"max_total"`
+	Throttled      bool                `json:"throttled"`       // true if dispatch was blocked by token budget
+	ThrottleReason string              `json:"throttle_reason"` // human-readable reason for throttling
 }
 
 // --- Crab Decomposition Types ---

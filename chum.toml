@@ -115,6 +115,20 @@ args = ["exec", "--full-auto"]
 model_flag = "-m"
 approval_flags = []
 
+[dispatch.cli.claude]
+cmd = "claude"
+prompt_mode = "stdin"
+args = ["--print", "--output-format", "json", "--dangerously-skip-permissions"]
+model_flag = "--model"
+approval_flags = []
+
+[dispatch.cli.gemini]
+cmd = "gemini"
+prompt_mode = "stdin"
+args = ["-p", "", "--yolo", "-o", "json"]
+model_flag = "--model"
+approval_flags = []
+
 [dispatch.cli.aider]
 cmd = "aider"
 prompt_mode = "file"

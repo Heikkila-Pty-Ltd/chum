@@ -8,7 +8,7 @@ import (
 // classifySpecies assigns a task to a species based on heuristics.
 // Species are global (not project-scoped) so knowledge cross-pollinates.
 // Tier 1: bootstrap heuristics. Tier 2: paleontologist refines over time.
-func classifySpecies(project, taskID, prompt string, files []string) string {
+func classifySpecies(taskID, prompt string, files []string) string {
 	// Check file extensions for dominant language
 	lang := detectDominantLanguage(files)
 	if lang != "" {

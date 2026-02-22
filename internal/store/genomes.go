@@ -11,32 +11,87 @@ import (
 // Inspired by ALMA's anti-pattern schema, adapted for evolutionary biology model.
 type GenomeEntry struct {
 	Pattern     string   `json:"pattern"`               // what was attempted
-	Reason      string   `json:"reason,omitempty"`       // why it succeeded/failed
-	Alternative string   `json:"alternative,omitempty"`  // what to do instead (antibodies/fossils only)
-	Count       int      `json:"count"`                  // how many times observed
-	Generation  int      `json:"generation"`             // which generation it was discovered
-	Files       []string `json:"files,omitempty"`        // affected files
-	Agent       string   `json:"agent,omitempty"`        // which agent produced this
+	Reason      string   `json:"reason,omitempty"`      // why it succeeded/failed
+	Alternative string   `json:"alternative,omitempty"` // what to do instead (antibodies/fossils only)
+	Count       int      `json:"count"`                 // how many times observed
+	Generation  int      `json:"generation"`            // which generation it was discovered
+	Files       []string `json:"files,omitempty"`       // affected files
+	Agent       string   `json:"agent,omitempty"`       // which agent produced this
+}
+
+// ProviderGene tracks which provider/model works best for this species.
+// The selfish gene: provider preferences persist across generations of mortal organisms.
+type ProviderGene struct {
+	Provider   string  `json:"provider"`    // e.g. "claude", "codex-spark", "gemini"
+	Successes  int     `json:"successes"`
+	Failures   int     `json:"failures"`
+	TotalCost  float64 `json:"total_cost"`  // USD spent through this provider
+	Generation int     `json:"generation"` // when first observed
+}
+
+// Fitness returns the provider's fitness score: success rate / cost per attempt.
+// Higher is better. A cheap provider that always succeeds is maximally fit.
+func (pg ProviderGene) Fitness() float64 {
+	total := pg.Successes + pg.Failures
+	if total == 0 {
+		return 0
+	}
+	successRate := float64(pg.Successes) / float64(total)
+	costPerAttempt := pg.TotalCost / float64(total)
+	if costPerAttempt == 0 {
+		return successRate * 1000 // free = maximally efficient
+	}
+	return successRate / costPerAttempt
 }
 
 // Genome represents the accumulated evolutionary memory for a task species.
 // Species are global and phylogenetic — "go-test-fix" crosses project boundaries.
+// Every organism is mortal. The genome is what persists.
 type Genome struct {
-	Species       string        `json:"species"`
-	ParentSpecies string        `json:"parent_species"`
-	Patterns      []GenomeEntry `json:"patterns"`   // DNA: approaches that passed DoD
-	Antibodies    []GenomeEntry `json:"antibodies"`  // Defensive knowledge from failures
-	Fossils       []GenomeEntry `json:"fossils"`     // Extinct approaches (failed 3+ times)
-	Generation    int           `json:"generation"`
-	Successes     int           `json:"successes"`
-	Failures      int           `json:"failures"`
-	LastEvolved   *time.Time    `json:"last_evolved,omitempty"`
-	CreatedAt     time.Time     `json:"created_at"`
+	Species        string         `json:"species"`
+	ParentSpecies  string         `json:"parent_species"`
+	Patterns       []GenomeEntry  `json:"patterns"`        // DNA: approaches that passed DoD
+	Antibodies     []GenomeEntry  `json:"antibodies"`      // Defensive knowledge from failures
+	Fossils        []GenomeEntry  `json:"fossils"`         // Extinct approaches (failed 3+ times)
+	ProviderGenes  []ProviderGene `json:"provider_genes"` // Selfish genes: which models survive
+	Generation     int            `json:"generation"`
+	Successes      int            `json:"successes"`
+	Failures       int            `json:"failures"`
+	TotalCostUSD   float64        `json:"total_cost_usd"` // Total energy consumed by this species
+	LastEvolved    *time.Time     `json:"last_evolved,omitempty"`
+	CreatedAt      time.Time      `json:"created_at"`
 }
 
 // FossilThreshold is the number of times an antibody must appear before
 // it auto-promotes to a fossil (extinct approach). Nature's selection pressure.
 const FossilThreshold = 3
+
+// Fitness returns the species-level fitness: success rate / cost per organism.
+// Higher is better. Cheap species that always succeed are maximally fit.
+func (g *Genome) Fitness() float64 {
+	total := g.Successes + g.Failures
+	if total == 0 {
+		return 0
+	}
+	successRate := float64(g.Successes) / float64(total)
+	costPerAttempt := g.TotalCostUSD / float64(total)
+	if costPerAttempt == 0 {
+		return successRate * 1000
+	}
+	return successRate / costPerAttempt
+}
+
+// FittestProvider returns the provider gene with highest fitness.
+// This is the selfish gene in action: the fittest provider persists.
+func (g *Genome) FittestProvider() *ProviderGene {
+	var best *ProviderGene
+	for i := range g.ProviderGenes {
+		if best == nil || g.ProviderGenes[i].Fitness() > best.Fitness() {
+			best = &g.ProviderGenes[i]
+		}
+	}
+	return best
+}
 
 // ensureGenomesTable creates the genomes table if it doesn't exist.
 func (s *Store) ensureGenomesTable() error {
@@ -46,9 +101,11 @@ func (s *Store) ensureGenomesTable() error {
 		patterns       TEXT    NOT NULL DEFAULT '[]',
 		antibodies     TEXT    NOT NULL DEFAULT '[]',
 		fossils        TEXT    NOT NULL DEFAULT '[]',
+		provider_genes TEXT    NOT NULL DEFAULT '[]',
 		generation     INTEGER NOT NULL DEFAULT 0,
 		successes      INTEGER NOT NULL DEFAULT 0,
 		failures       INTEGER NOT NULL DEFAULT 0,
+		total_cost_usd REAL    NOT NULL DEFAULT 0,
 		last_evolved   DATETIME,
 		created_at     DATETIME NOT NULL DEFAULT (datetime('now'))
 	)`)
@@ -58,15 +115,15 @@ func (s *Store) ensureGenomesTable() error {
 // GetGenome fetches the genome for a species, or returns an empty genome if none exists.
 func (s *Store) GetGenome(species string) (*Genome, error) {
 	g := &Genome{Species: species}
-	var patternsJSON, antibodiesJSON, fossilsJSON string
+	var patternsJSON, antibodiesJSON, fossilsJSON, providerGenesJSON string
 	var lastEvolved sql.NullString
 
 	err := s.db.QueryRow(
-		`SELECT species, parent_species, patterns, antibodies, fossils,
-		        generation, successes, failures, last_evolved, created_at
+		`SELECT species, parent_species, patterns, antibodies, fossils, provider_genes,
+		        generation, successes, failures, total_cost_usd, last_evolved, created_at
 		 FROM genomes WHERE species = ?`, species,
-	).Scan(&g.Species, &g.ParentSpecies, &patternsJSON, &antibodiesJSON, &fossilsJSON,
-		&g.Generation, &g.Successes, &g.Failures, &lastEvolved, &g.CreatedAt)
+	).Scan(&g.Species, &g.ParentSpecies, &patternsJSON, &antibodiesJSON, &fossilsJSON, &providerGenesJSON,
+		&g.Generation, &g.Successes, &g.Failures, &g.TotalCostUSD, &lastEvolved, &g.CreatedAt)
 
 	if err == sql.ErrNoRows {
 		return g, nil // empty genome — species not yet observed
@@ -84,8 +141,14 @@ func (s *Store) GetGenome(species string) (*Genome, error) {
 	if err := json.Unmarshal([]byte(fossilsJSON), &g.Fossils); err != nil {
 		g.Fossils = nil
 	}
+	if err := json.Unmarshal([]byte(providerGenesJSON), &g.ProviderGenes); err != nil {
+		g.ProviderGenes = nil
+	}
 	if lastEvolved.Valid {
-		t, _ := time.Parse("2006-01-02 15:04:05", lastEvolved.String)
+		t, err := time.Parse("2006-01-02 15:04:05", lastEvolved.String)
+		if err != nil {
+			return nil, fmt.Errorf("parse last_evolved for species %s: %w", species, err)
+		}
 		g.LastEvolved = &t
 	}
 	return g, nil
@@ -95,19 +158,57 @@ func (s *Store) GetGenome(species string) (*Genome, error) {
 // On success: the approach is added to patterns (DNA).
 // On failure: the approach is added to antibodies. If an antibody appears
 // FossilThreshold times, it auto-promotes to a fossil (extinct approach).
+// Provider genes track which model worked at what cost — the selfish gene
+// optimizes provider choice for its own survival across generations.
 func (s *Store) EvolveGenome(species string, doDPassed bool, entry GenomeEntry) error {
+	return s.EvolveGenomeWithCost(species, doDPassed, entry, "", 0)
+}
+
+// EvolveGenomeWithCost evolves the genome with cost and provider tracking.
+// The organism dies after this call. Only the genome persists.
+func (s *Store) EvolveGenomeWithCost(species string, doDPassed bool, entry GenomeEntry, provider string, costUSD float64) error {
 	g, err := s.GetGenome(species)
 	if err != nil {
 		return err
 	}
 
 	g.Generation++
+	g.TotalCostUSD += costUSD
 	entry.Generation = g.Generation
+
+	// Evolve provider gene — the selfish gene tracks which models survive
+	if provider != "" {
+		mergedProvider := false
+		for i, pg := range g.ProviderGenes {
+			if pg.Provider == provider {
+				g.ProviderGenes[i].TotalCost += costUSD
+				if doDPassed {
+					g.ProviderGenes[i].Successes++
+				} else {
+					g.ProviderGenes[i].Failures++
+				}
+				mergedProvider = true
+				break
+			}
+		}
+		if !mergedProvider {
+			pg := ProviderGene{
+				Provider:   provider,
+				TotalCost:  costUSD,
+				Generation: g.Generation,
+			}
+			if doDPassed {
+				pg.Successes = 1
+			} else {
+				pg.Failures = 1
+			}
+			g.ProviderGenes = append(g.ProviderGenes, pg)
+		}
+	}
 
 	if doDPassed {
 		g.Successes++
 		entry.Count = 1
-		// Check if this pattern already exists — increment count
 		merged := false
 		for i, p := range g.Patterns {
 			if p.Pattern == entry.Pattern {
@@ -121,16 +222,13 @@ func (s *Store) EvolveGenome(species string, doDPassed bool, entry GenomeEntry) 
 		}
 	} else {
 		g.Failures++
-		// Check if this antibody already exists — increment count
 		merged := false
 		for i, a := range g.Antibodies {
 			if a.Pattern == entry.Pattern {
 				g.Antibodies[i].Count++
-				// Auto-promote to fossil at threshold
 				if g.Antibodies[i].Count >= FossilThreshold {
 					fossil := g.Antibodies[i]
 					g.Fossils = append(g.Fossils, fossil)
-					// Remove from antibodies
 					g.Antibodies = append(g.Antibodies[:i], g.Antibodies[i+1:]...)
 				}
 				merged = true
@@ -144,22 +242,37 @@ func (s *Store) EvolveGenome(species string, doDPassed bool, entry GenomeEntry) 
 	}
 
 	// Serialize and upsert
-	patternsJSON, _ := json.Marshal(g.Patterns)
-	antibodiesJSON, _ := json.Marshal(g.Antibodies)
-	fossilsJSON, _ := json.Marshal(g.Fossils)
+	patternsJSON, err := json.Marshal(g.Patterns)
+	if err != nil {
+		return fmt.Errorf("marshal patterns for %s: %w", species, err)
+	}
+	antibodiesJSON, err := json.Marshal(g.Antibodies)
+	if err != nil {
+		return fmt.Errorf("marshal antibodies for %s: %w", species, err)
+	}
+	fossilsJSON, err := json.Marshal(g.Fossils)
+	if err != nil {
+		return fmt.Errorf("marshal fossils for %s: %w", species, err)
+	}
+	providerGenesJSON, err := json.Marshal(g.ProviderGenes)
+	if err != nil {
+		return fmt.Errorf("marshal provider_genes for %s: %w", species, err)
+	}
 
-	_, err = s.db.Exec(`INSERT INTO genomes (species, parent_species, patterns, antibodies, fossils, generation, successes, failures, last_evolved)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+	_, err = s.db.Exec(`INSERT INTO genomes (species, parent_species, patterns, antibodies, fossils, provider_genes, generation, successes, failures, total_cost_usd, last_evolved)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
 		ON CONFLICT(species) DO UPDATE SET
 			patterns = excluded.patterns,
 			antibodies = excluded.antibodies,
 			fossils = excluded.fossils,
+			provider_genes = excluded.provider_genes,
 			generation = excluded.generation,
 			successes = excluded.successes,
 			failures = excluded.failures,
+			total_cost_usd = excluded.total_cost_usd,
 			last_evolved = excluded.last_evolved`,
 		species, g.ParentSpecies, string(patternsJSON), string(antibodiesJSON), string(fossilsJSON),
-		g.Generation, g.Successes, g.Failures,
+		string(providerGenesJSON), g.Generation, g.Successes, g.Failures, g.TotalCostUSD,
 	)
 	return err
 }
@@ -175,7 +288,10 @@ func (s *Store) GetGenomeForPrompt(species string) (string, error) {
 	// If species has no data, try parent (phage inheritance)
 	if g.Generation == 0 && g.ParentSpecies != "" {
 		g, err = s.GetGenome(g.ParentSpecies)
-		if err != nil || g.Generation == 0 {
+		if err != nil {
+			return "", err
+		}
+		if g.Generation == 0 {
 			return "", nil
 		}
 	}
@@ -189,8 +305,13 @@ func (s *Store) GetGenomeForPrompt(species string) (string, error) {
 		survivalRate = float64(g.Successes) / float64(total) * 100
 	}
 
-	result := fmt.Sprintf("SPECIES GENOME: %s (gen %d, %.0f%% survival)\n",
-		g.Species, g.Generation, survivalRate)
+	result := fmt.Sprintf("SPECIES GENOME: %s (gen %d, %.0f%% survival, fitness %.1f, $%.4f/organism)\n",
+		g.Species, g.Generation, survivalRate, g.Fitness(), g.TotalCostUSD/float64(g.Successes+g.Failures))
+
+	if best := g.FittestProvider(); best != nil {
+		result += fmt.Sprintf("FITTEST PROVIDER: %s (fitness %.1f, %d/%d success, $%.4f/attempt)\n",
+			best.Provider, best.Fitness(), best.Successes, best.Successes+best.Failures, best.TotalCost/float64(best.Successes+best.Failures))
+	}
 
 	if len(g.Patterns) > 0 {
 		result += "\nPATTERNS (replicate these):\n"
@@ -269,7 +390,9 @@ func (s *Store) SpreadPhages(sourceSpecies string) error {
 				phage := pattern
 				phage.Count = 1 // reset count in new host
 				phage.Reason = fmt.Sprintf("phage from %s (gen %d)", sourceSpecies, pattern.Generation)
-				_ = s.EvolveGenome(sib, true, phage)
+				if err := s.EvolveGenome(sib, true, phage); err != nil {
+					return nil
+				}
 			}
 		}
 	}

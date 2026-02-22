@@ -38,7 +38,7 @@ func (a *Activities) StructuredPlanActivity(ctx context.Context, req TaskRequest
 	// The genome IS the real product; the plan is just metabolism.
 	var genomeContext string
 	if a.Store != nil {
-		species := classifySpecies(req.Project, req.TaskID, req.Prompt, nil)
+		species := classifySpecies(req.TaskID, req.Prompt, nil)
 		if genome, err := a.Store.GetGenomeForPrompt(species); err == nil && genome != "" {
 			genomeContext = "\n" + genome + "\n"
 			logger.Info(SharkPrefix+" Genome injected into planning prompt", "Species", species)
@@ -88,7 +88,14 @@ Be thorough. Planning space is cheap — implementation is expensive.`, req.Prom
 
 	// Gate: validate plan before it enters the coding engine
 	if issues := plan.Validate(); len(issues) > 0 {
-		return nil, fmt.Errorf("plan failed quality gate:\n- %s", strings.Join(issues, "\n- "))
+		// Log raw agent output so the octopus can learn why plans fail.
+		// Common cause: agent returns camelCase keys but struct expects snake_case.
+		logger.Warn(SharkPrefix+" Plan validation failed — raw JSON for octopus",
+			"TaskID", req.TaskID,
+			"RawJSON", truncate(jsonStr, 1000),
+			"AgentOutput", truncate(cliResult.Output, 500),
+			"Issues", issues)
+		return nil, fmt.Errorf("plan failed quality gate:\n- %s\nRaw JSON (first 500 chars): %s", strings.Join(issues, "\n- "), truncate(jsonStr, 500))
 	}
 
 	logger.Info(SharkPrefix+" Plan generated and validated",
@@ -575,12 +582,16 @@ func (a *Activities) SetupWorktreeActivity(ctx context.Context, baseDir, taskID 
 	// Remove stale worktree if exists (from a dead organism)
 	rmCmd := exec.CommandContext(ctx, "git", "worktree", "remove", "--force", wtDir)
 	rmCmd.Dir = baseDir
-	_ = rmCmd.Run() // ignore error — worktree may not exist
+	if err := rmCmd.Run(); err != nil {
+		logger.Debug(SharkPrefix+" No stale worktree to remove", "worktree", wtDir, "error", err)
+	}
 
 	// Delete stale branch if exists
 	delBranch := exec.CommandContext(ctx, "git", "branch", "-D", branch)
 	delBranch.Dir = baseDir
-	_ = delBranch.Run() // ignore error
+	if err := delBranch.Run(); err != nil {
+		logger.Debug(SharkPrefix+" No stale branch to delete", "branch", branch, "error", err)
+	}
 
 	// Create fresh worktree with a new branch from HEAD
 	addCmd := exec.CommandContext(ctx, "git", "worktree", "add", "-b", branch, wtDir)
@@ -604,7 +615,9 @@ func (a *Activities) SetupWorktreeActivity(ctx context.Context, baseDir, taskID 
 				// Symlink failed, install fresh
 				installCmd := exec.CommandContext(ctx, "npm", "install", "--prefer-offline")
 				installCmd.Dir = wtDir
-				_ = installCmd.Run()
+				if err := installCmd.Run(); err != nil {
+					logger.Warn(SharkPrefix+" npm install failed", "worktree", wtDir, "error", err)
+				}
 			}
 		}
 	}
@@ -629,7 +642,9 @@ func (a *Activities) CleanupWorktreeActivity(ctx context.Context, baseDir, wtDir
 	// Prune stale worktree entries
 	pruneCmd := exec.CommandContext(ctx, "git", "worktree", "prune")
 	pruneCmd.Dir = baseDir
-	_ = pruneCmd.Run()
+	if err := pruneCmd.Run(); err != nil {
+		logger.Warn(SharkPrefix+" git worktree prune failed", "error", err)
+	}
 
 	return nil
 }
@@ -753,11 +768,15 @@ func (a *Activities) AutoFixLintActivity(ctx context.Context, workDir string) (*
 	if result.FilesFixed > 0 {
 		stageCmd := exec.CommandContext(ctx, "git", "add", "-A")
 		stageCmd.Dir = workDir
-		_ = stageCmd.Run()
-
-		commitCmd := exec.CommandContext(ctx, "git", "commit", "-m", "chore: auto-fix formatting (gofmt/goimports)", "--no-verify")
-		commitCmd.Dir = workDir
-		_ = commitCmd.Run()
+		if err := stageCmd.Run(); err != nil {
+			logger.Warn(OrcaPrefix+" git add failed during auto-fix", "error", err)
+		} else {
+			commitCmd := exec.CommandContext(ctx, "git", "commit", "-m", "chore: auto-fix formatting (gofmt/goimports)", "--no-verify")
+			commitCmd.Dir = workDir
+			if err := commitCmd.Run(); err != nil {
+				logger.Warn(OrcaPrefix+" git commit failed during auto-fix", "error", err)
+			}
+		}
 	}
 
 	result.Output = allOutput.String()

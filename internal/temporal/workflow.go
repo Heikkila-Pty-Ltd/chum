@@ -686,6 +686,12 @@ func spawnCHUMWorkflows(ctx workflow.Context, logger log.Logger, req TaskRequest
 func recordEscalation(ctx workflow.Context, logger log.Logger, a *Activities,
 	taskID, project, failedProvider, failedTier, escalatedTo, escalatedTier string) {
 
+	// a is a Temporal typed nil — can't access fields on it.
+	// The Store check was panicking because a itself is nil.
+	if a == nil {
+		logger.Warn(SharkPrefix + " recordEscalation: activities pointer is nil, skipping")
+		return
+	}
 	if a.Store == nil {
 		return
 	}

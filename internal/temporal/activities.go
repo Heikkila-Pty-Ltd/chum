@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"go.temporal.io/sdk/activity"
+	"go.temporal.io/sdk/temporal"
 
 	"github.com/antigravity-dev/chum/internal/config"
 	"github.com/antigravity-dev/chum/internal/git"
@@ -77,25 +78,30 @@ Be thorough. Planning space is cheap — implementation is expensive.`, req.Prom
 	// Extract JSON from the output (agent might wrap it in markdown)
 	jsonStr := extractJSON(cliResult.Output)
 	if jsonStr == "" {
-		return nil, fmt.Errorf("agent did not produce valid JSON plan. Output:\n%s", truncate(cliResult.Output, 500))
+		return nil, temporal.NewNonRetryableApplicationError(
+			fmt.Sprintf("agent did not produce valid JSON plan. Output:\n%s", truncate(cliResult.Output, 500)),
+			"PLAN_NO_JSON", nil)
 	}
 
-	var plan StructuredPlan
-	if err := json.Unmarshal([]byte(jsonStr), &plan); err != nil {
-		return nil, fmt.Errorf("failed to parse plan JSON: %w\nRaw: %s", err, truncate(jsonStr, 500))
+	plan, err := flexUnmarshalPlan(jsonStr)
+	if err != nil {
+		return nil, temporal.NewNonRetryableApplicationError(
+			fmt.Sprintf("failed to parse plan JSON: %v\nRaw: %s", err, truncate(jsonStr, 500)),
+			"PLAN_PARSE_FAILED", err)
 	}
 	plan.TokenUsage = cliResult.Tokens
 
 	// Gate: validate plan before it enters the coding engine
 	if issues := plan.Validate(); len(issues) > 0 {
-		// Log raw agent output so the octopus can learn why plans fail.
-		// Common cause: agent returns camelCase keys but struct expects snake_case.
-		logger.Warn(SharkPrefix+" Plan validation failed — raw JSON for octopus",
+		logger.Warn(SharkPrefix+" Plan validation failed — orca killing shark",
 			"TaskID", req.TaskID,
+			"Agent", req.Agent,
 			"RawJSON", truncate(jsonStr, 1000),
-			"AgentOutput", truncate(cliResult.Output, 500),
 			"Issues", issues)
-		return nil, fmt.Errorf("plan failed quality gate:\n- %s\nRaw JSON (first 500 chars): %s", strings.Join(issues, "\n- "), truncate(jsonStr, 500))
+		// Non-retryable: the agent's JSON schema is wrong, retrying won't fix it.
+		return nil, temporal.NewNonRetryableApplicationError(
+			fmt.Sprintf("plan failed quality gate (orca kill):\n- %s\nRaw JSON: %s", strings.Join(issues, "\n- "), truncate(jsonStr, 500)),
+			"PLAN_QUALITY_GATE", nil)
 	}
 
 	logger.Info(SharkPrefix+" Plan generated and validated",
@@ -105,7 +111,7 @@ Be thorough. Planning space is cheap — implementation is expensive.`, req.Prom
 		"Criteria", len(plan.AcceptanceCriteria),
 	)
 
-	return &plan, nil
+	return plan, nil
 }
 
 // ExecuteActivity runs the primary coding agent to implement the plan.
@@ -628,6 +634,87 @@ func (a *Activities) SetupWorktreeActivity(ctx context.Context, baseDir, taskID 
 
 // CleanupWorktreeActivity removes the git worktree after the organism completes.
 // Called at both success and failure paths — organisms are mortal.
+
+// flexUnmarshalPlan tries to parse agent output into a StructuredPlan.
+// Handles multiple agent output formats:
+//  1. Direct JSON: {"summary":"...", "steps":[...]} — codex does this
+//  2. Gemini envelope: {"session_id":"...", "response":"{\"summary\":\"...\"}"} —
+//     gemini wraps the plan in a session envelope where "response" is a JSON *string*
+//  3. camelCase keys: {"filesToModify":[...]} — normalize to snake_case
+func flexUnmarshalPlan(jsonStr string) (*StructuredPlan, error) {
+	var plan StructuredPlan
+	if err := json.Unmarshal([]byte(jsonStr), &plan); err != nil {
+		return nil, err
+	}
+
+	// If standard unmarshal populated fields, we're done (codex path).
+	if plan.Summary != "" || len(plan.Steps) > 0 || len(plan.AcceptanceCriteria) > 0 || len(plan.FilesToModify) > 0 {
+		return &plan, nil
+	}
+
+	// Standard unmarshal gave us empty fields. Check for gemini envelope.
+	var envelope struct {
+		SessionID string `json:"session_id"`
+		Response  string `json:"response"`
+	}
+	if err := json.Unmarshal([]byte(jsonStr), &envelope); err == nil && envelope.Response != "" {
+		// Gemini wraps plan as a JSON string inside "response".
+		// The response value is the actual plan JSON.
+		var innerPlan StructuredPlan
+		if err := json.Unmarshal([]byte(envelope.Response), &innerPlan); err == nil {
+			if innerPlan.Summary != "" || len(innerPlan.Steps) > 0 {
+				return &innerPlan, nil
+			}
+		}
+		// Inner parse failed or still empty — try key normalization on inner JSON
+		if normalized, err := normalizeJSONKeys(envelope.Response); err == nil {
+			var innerPlan2 StructuredPlan
+			if err := json.Unmarshal(normalized, &innerPlan2); err == nil {
+				if innerPlan2.Summary != "" || len(innerPlan2.Steps) > 0 {
+					return &innerPlan2, nil
+				}
+			}
+		}
+	}
+
+	// Last resort: try key normalization on the original JSON.
+	if normalized, err := normalizeJSONKeys(jsonStr); err == nil {
+		var plan2 StructuredPlan
+		if err := json.Unmarshal(normalized, &plan2); err == nil {
+			return &plan2, nil
+		}
+	}
+
+	return &plan, nil // return the empty plan — Validate() will catch it
+}
+
+// normalizeJSONKeys converts camelCase keys to snake_case for known plan fields.
+func normalizeJSONKeys(jsonStr string) ([]byte, error) {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(jsonStr), &raw); err != nil {
+		return nil, err
+	}
+
+	keyMap := map[string]string{
+		"filesToModify":       "files_to_modify",
+		"acceptanceCriteria":  "acceptance_criteria",
+		"estimatedComplexity": "estimated_complexity",
+		"riskAssessment":      "risk_assessment",
+		"previousErrors":      "previous_errors",
+	}
+
+	normalized := make(map[string]json.RawMessage, len(raw))
+	for k, v := range raw {
+		if mapped, ok := keyMap[k]; ok {
+			normalized[mapped] = v
+		} else {
+			normalized[k] = v
+		}
+	}
+
+	return json.Marshal(normalized)
+}
+
 func (a *Activities) CleanupWorktreeActivity(ctx context.Context, baseDir, wtDir string) error {
 	logger := activity.GetLogger(ctx)
 	logger.Info(SharkPrefix+" Cleaning up worktree", "worktree", wtDir)

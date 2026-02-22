@@ -11,7 +11,7 @@ import (
 // ContinuousLearnerWorkflow runs after every morsel completion to extract and store lessons.
 // Spawned as a fire-and-forget child workflow (ParentClosePolicy: ABANDON).
 //
-// Pipeline: ExtractLessons -> StoreLessons -> GenerateSemgrepRules
+// Pipeline: ExtractLessons -> StoreLessons -> GenerateSemgrepRules -> SynthesizeCLAUDE.md -> CalcifyPattern
 //
 // All steps are non-fatal. Learner failure never blocks the main execution loop.
 func ContinuousLearnerWorkflow(ctx workflow.Context, req LearnerRequest) error {
@@ -79,6 +79,22 @@ func ContinuousLearnerWorkflow(ctx workflow.Context, req LearnerRequest) error {
 	synthesizeCtx := workflow.WithActivityOptions(ctx, synthesizeOpts)
 	if err := workflow.ExecuteActivity(synthesizeCtx, a.SynthesizeCLAUDEmdActivity, req).Get(ctx, nil); err != nil {
 		logger.Warn(OctopusPrefix+" CLAUDE.md synthesis failed (non-fatal)", "error", err)
+	}
+
+	// Step 5: Calcify Repeated Patterns into Deterministic Scripts (Margin Protection)
+	// If the LLM has successfully solved this morsel's type enough consecutive times,
+	// generate a hardcoded script to bypass the LLM entirely on the next run.
+	// This is the stochastic→deterministic migration: we fire the LLM.
+	calcifyOpts := workflow.ActivityOptions{
+		StartToCloseTimeout: 3 * time.Minute,
+		RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 1},
+	}
+	calcifyCtx := workflow.WithActivityOptions(ctx, calcifyOpts)
+	var calcified bool
+	if err := workflow.ExecuteActivity(calcifyCtx, a.CalcifyPatternActivity, req).Get(ctx, &calcified); err != nil {
+		logger.Warn(OctopusPrefix+" Pattern calcification failed (non-fatal)", "error", err)
+	} else if calcified {
+		logger.Info(OctopusPrefix+" Pattern calcified into shadow script", "TaskID", req.TaskID)
 	}
 
 	logger.Info(OctopusPrefix+" ContinuousLearner complete",

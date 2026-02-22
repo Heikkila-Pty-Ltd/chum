@@ -92,6 +92,7 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 	w.RegisterActivity(acts.SynthesizeCLAUDEmdActivity)
 	w.RegisterActivity(acts.RecordEscalationActivity)
 	w.RegisterActivity(acts.AutoFixLintActivity)
+	w.RegisterActivity(acts.CalcifyPatternActivity)
 
 	// --- CHUM Groom Activities ---
 	w.RegisterActivity(acts.MutateTasksActivity)

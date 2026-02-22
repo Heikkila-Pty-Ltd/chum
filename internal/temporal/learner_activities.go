@@ -473,3 +473,139 @@ func (a *Activities) SynthesizeCLAUDEmdActivity(ctx context.Context, req Learner
 	)
 	return nil
 }
+
+// CalcifyPatternActivity detects whether the just-completed morsel's type has
+// been solved successfully enough times to warrant a deterministic replacement
+// script. If so, it generates a .shadow script via a premium LLM.
+//
+// This is Step 5 of the learner pipeline — the stochastic→deterministic migration.
+// The LLM is expensive and non-deterministic. Every repeated pattern that can be
+// replaced by a script is pure margin.
+func (a *Activities) CalcifyPatternActivity(ctx context.Context, req LearnerRequest) (bool, error) {
+	logger := activity.GetLogger(ctx)
+
+	// Only calcify successful completions
+	if !req.DoDPassed {
+		return false, nil
+	}
+	if a.Store == nil {
+		return false, nil
+	}
+
+	// Derive morsel type from task ID prefix (e.g., "parse-lead-form-001" → "parse")
+	morselType := req.TaskID
+	if idx := strings.Index(morselType, "-"); idx > 0 {
+		morselType = morselType[:idx]
+	}
+
+	// Skip if a script already exists for this type (active or shadow)
+	active, _ := a.Store.GetActiveScriptForType(morselType)
+	if active != nil {
+		logger.Info(OctopusPrefix+" Active script already exists, skipping calcification", "type", morselType)
+		return false, nil
+	}
+	shadow, _ := a.Store.GetShadowScriptForType(morselType)
+	if shadow != nil {
+		logger.Info(OctopusPrefix+" Shadow script already exists, skipping calcification", "type", morselType)
+		return false, nil
+	}
+
+	// Count consecutive successes for this morsel type
+	streak, err := a.Store.GetConsecutiveSuccessfulDispatches(morselType, req.Project)
+	if err != nil {
+		logger.Warn(OctopusPrefix+" Failed to count successes", "type", morselType, "error", err)
+		return false, nil
+	}
+
+	// Apply risk-weighted threshold
+	// Fetch labels for this morsel from the most recent dispatch
+	var labels string
+	_ = a.Store.DB().QueryRowContext(ctx,
+		`SELECT labels FROM dispatches WHERE morsel_id LIKE ? AND project = ? ORDER BY id DESC LIMIT 1`,
+		morselType+"%", req.Project,
+	).Scan(&labels)
+
+	var labelList []string
+	if labels != "" {
+		labelList = strings.Split(labels, ",")
+	}
+
+	threshold := a.calcifierThreshold(labelList)
+	if streak < threshold {
+		logger.Info(OctopusPrefix+" Not enough consecutive successes for calcification",
+			"type", morselType, "streak", streak, "threshold", threshold)
+		return false, nil
+	}
+
+	logger.Info(OctopusPrefix+" Calcification threshold reached!",
+		"type", morselType, "streak", streak, "threshold", threshold)
+
+	// Gather recent successful prompts/outputs for context
+	rows, err := a.Store.DB().QueryContext(ctx,
+		`SELECT prompt FROM dispatches
+		 WHERE morsel_id LIKE ? AND project = ? AND status = 'completed'
+		 ORDER BY id DESC LIMIT 10`,
+		morselType+"%", req.Project,
+	)
+	if err != nil {
+		return false, fmt.Errorf("gather dispatch history: %w", err)
+	}
+	defer rows.Close()
+
+	var prompts []string
+	for rows.Next() {
+		var p string
+		if rows.Scan(&p) == nil && p != "" {
+			prompts = append(prompts, p)
+		}
+	}
+	if len(prompts) == 0 {
+		return false, nil
+	}
+
+	// Build compilation prompt and dispatch to premium model
+	compilationPrompt := buildCompilationPrompt(morselType, prompts)
+	agent := ResolveTierAgent(a.Tiers, "premium")
+	cliResult, err := runAgent(ctx, agent, compilationPrompt, req.WorkDir)
+	if err != nil {
+		logger.Warn(OctopusPrefix+" Calcification LLM failed", "error", err)
+		return false, nil // non-fatal
+	}
+
+	// Extract and validate script content
+	scriptContent := extractScriptContent(cliResult.Output)
+	if scriptContent == "" {
+		logger.Warn(OctopusPrefix + " LLM did not produce a valid script")
+		return false, nil
+	}
+
+	// Write the shadow script
+	_, ext := detectScriptLanguage(scriptContent)
+	calcifiedDir := filepath.Join(req.WorkDir, ".cortex", "calcified")
+	if err := os.MkdirAll(calcifiedDir, 0o755); err != nil {
+		return false, fmt.Errorf("create calcified dir: %w", err)
+	}
+
+	scriptName := fmt.Sprintf("%s.%s.shadow", sanitizeForFilename(morselType), ext)
+	scriptPath := filepath.Join(calcifiedDir, scriptName)
+
+	if err := os.WriteFile(scriptPath, []byte(scriptContent), 0o755); err != nil {
+		return false, fmt.Errorf("write shadow script: %w", err)
+	}
+
+	// Compute SHA-256 provenance hash
+	hash, err := hashFile(scriptPath)
+	if err != nil {
+		return false, fmt.Errorf("hash script: %w", err)
+	}
+
+	// Record in store
+	_, err = a.Store.RecordCalcifiedScript(morselType, req.Project, scriptPath, hash)
+	if err != nil {
+		return false, fmt.Errorf("record script: %w", err)
+	}
+
+	logger.Info(OctopusPrefix+" Pattern calcified into shadow script",
+		"type", morselType, "path", scriptPath, "sha256", hash[:12])
+	return true, nil
+}

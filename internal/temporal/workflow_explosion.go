@@ -130,5 +130,11 @@ func CambrianExplosionWorkflow(ctx workflow.Context, req TaskRequest, providers 
 	workflow.ExecuteActivity(recordCtx, a.CloseTaskActivity, req.TaskID, "completed").Get(ctx, nil)
 	recordOutcome(ctx, recordOpts, a, req, "completed", 0, 0, true, "", workflow.Now(ctx), TokenUsage{}, nil, nil)
 
+	// Clean up all worktrees created during the explosion
+	for _, res := range results {
+		resDir := fmt.Sprintf("/tmp/chum-wt-%s-%s", req.TaskID, res.ExplosionID)
+		workflow.ExecuteActivity(recordCtx, a.CleanupWorktreeActivity, req.WorkDir, resDir).Get(ctx, nil)
+	}
+
 	return nil
 }

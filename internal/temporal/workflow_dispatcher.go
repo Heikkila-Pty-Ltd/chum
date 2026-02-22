@@ -104,7 +104,13 @@ func DispatcherWorkflow(ctx workflow.Context, _ struct{}) error {
 
 		// Fire-and-forget — we don't wait for the child to complete.
 		// The dispatcher's job is to START workflows, not babysit them.
-		future := workflow.ExecuteChildWorkflow(childCtx, ChumAgentWorkflow, req)
+		var future workflow.ChildWorkflowFuture
+		if c.Generation == 0 && len(result.EscalationTiers) > 1 {
+			// Trigger Cambrian Explosion for new species 🌋
+			future = workflow.ExecuteChildWorkflow(childCtx, CambrianExplosionWorkflow, req, result.EscalationTiers)
+		} else {
+			future = workflow.ExecuteChildWorkflow(childCtx, ChumAgentWorkflow, req)
+		}
 
 		// Wait for the child to actually start (avoid ABANDON killing it).
 		var childExec workflow.Execution
@@ -373,12 +379,14 @@ func (da *DispatchActivities) ScanCandidatesActivity(ctx context.Context) (*Scan
 		prompt := buildPrompt(c.task)
 		species := classifySpecies(c.task.ID, prompt, nil) // no plan files yet
 
+		var generation int
 		// Check hibernation (skip if hibernating unless it's the golf project per user override)
-		if c.project != "golf-directory" {
-			if genome, err := da.Store.GetGenome(species); err == nil && genome.Hibernating {
+		if genome, err := da.Store.GetGenome(species); err == nil {
+			if c.project != "golf-directory" && genome.Hibernating {
 				// Species is hibernating — skip dispatching this organism.
 				continue
 			}
+			generation = genome.Generation
 		}
 
 		result = append(result, DispatchCandidate{
@@ -394,6 +402,7 @@ func (da *DispatchActivities) ScanCandidatesActivity(ctx context.Context) (*Scan
 			Priority:          clampTaskPriority(c.task.Priority),
 			EstimateMinutes:   c.task.EstimateMinutes,
 			PreviousErrors:    strings.Split(c.task.ErrorLog, "\n---\n"),
+			Generation:        generation,
 		})
 		projectRunning[c.project]++
 	}

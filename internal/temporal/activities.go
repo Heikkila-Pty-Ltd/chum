@@ -599,12 +599,16 @@ func truncate(s string, maxLen int) string {
 // Each organism gets its own workspace so concurrent sharks don't compete for
 // build locks, .next/ directories, or other stateful artifacts.
 // Returns the absolute path to the worktree directory.
-func (a *Activities) SetupWorktreeActivity(ctx context.Context, baseDir, taskID string) (string, error) {
+func (a *Activities) SetupWorktreeActivity(ctx context.Context, baseDir, taskID, explosionID string) (string, error) {
 	logger := activity.GetLogger(ctx)
 
-	// Worktree path: /tmp/chum-wt-{taskID} (unique per organism)
+	// Worktree path: /tmp/chum-wt-{taskID}[-{explosionID}] (unique per organism)
 	wtDir := fmt.Sprintf("/tmp/chum-wt-%s", taskID)
 	branch := fmt.Sprintf("chum/%s", taskID)
+	if explosionID != "" {
+		wtDir = fmt.Sprintf("/tmp/chum-wt-%s-%s", taskID, explosionID)
+		branch = fmt.Sprintf("chum/%s-%s", taskID, explosionID)
+	}
 
 	logger.Info(SharkPrefix+" Setting up worktree", "base", baseDir, "worktree", wtDir, "branch", branch)
 

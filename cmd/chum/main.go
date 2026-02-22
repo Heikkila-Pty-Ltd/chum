@@ -179,7 +179,8 @@ func runAdminMode(args []string, logger *slog.Logger) error {
 	adminFS := flag.NewFlagSet("admin", flag.ContinueOnError)
 	adminFS.SetOutput(io.Discard)
 	configPath := adminFS.String("config", "chum.toml", "path to config file")
-	if err := adminFS.Parse(args[1:]); err != nil {
+	// args is ["./chum", "admin", "resume", ...], we want to parse starting from index 2
+	if err := adminFS.Parse(args[2:]); err != nil {
 		return err
 	}
 

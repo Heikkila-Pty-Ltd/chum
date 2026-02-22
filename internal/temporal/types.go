@@ -18,6 +18,7 @@ type TaskRequest struct {
 	SlowStepThreshold time.Duration    `json:"slow_step_threshold"` // steps exceeding this are flagged slow
 	EscalationChain   []EscalationTier `json:"escalation_chain"`    // ordered tiers for fail-upward retry
 	PreviousErrors    []string         `json:"previous_errors,omitempty"`
+	ExplosionID       string           `json:"explosion_id,omitempty"` // If set, workflow runs in isolated sandbox mode (Cambrian Explosion)
 }
 
 // EscalationTier defines one level in the fail-upward chain.
@@ -411,6 +412,7 @@ type DispatchCandidate struct {
 	SlowStepThreshold time.Duration `json:"slow_step_threshold"`
 	EstimateMinutes   int           `json:"estimate_minutes"`
 	PreviousErrors    []string      `json:"previous_errors,omitempty"`
+	Generation        int           `json:"generation"` // 0 = new species (triggers Cambrian Explosion)
 }
 
 // ScanCandidatesResult is returned by ScanCandidatesActivity.

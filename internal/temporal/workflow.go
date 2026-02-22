@@ -194,7 +194,7 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 	}
 	wtCtx := workflow.WithActivityOptions(ctx, worktreeOpts)
 	var worktreePath string
-	if err := workflow.ExecuteActivity(wtCtx, a.SetupWorktreeActivity, baseWorkDir, req.TaskID).Get(ctx, &worktreePath); err != nil {
+	if err := workflow.ExecuteActivity(wtCtx, a.SetupWorktreeActivity, baseWorkDir, req.TaskID, req.ExplosionID).Get(ctx, &worktreePath); err != nil {
 		logger.Warn(SharkPrefix+" Worktree setup failed, falling back to shared workspace", "error", err)
 		worktreePath = "" // signal: no worktree, use shared workspace
 	} else {
@@ -202,10 +202,12 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 		logger.Info(SharkPrefix+" Worktree isolated", "path", worktreePath)
 	}
 
+	var retainWorktree bool
+
 	// cleanupWorktree removes the worktree on any exit path.
 	cleanupWorktree := func() {
-		if worktreePath == "" {
-			return // no worktree to clean
+		if worktreePath == "" || retainWorktree {
+			return // no worktree to clean, or explicitly retained for explosion winner
 		}
 		cleanCtx := workflow.WithActivityOptions(ctx, worktreeOpts)
 		if err := workflow.ExecuteActivity(cleanCtx, a.CleanupWorktreeActivity, baseWorkDir, worktreePath).Get(ctx, nil); err != nil {
@@ -499,6 +501,11 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 				)
 
 				updateSearchAttributes(chumWorkflowStatusCompleted)
+
+				if req.ExplosionID != "" {
+					retainWorktree = true
+					return nil // CambrianExplosionWorkflow will handle DB closing, recording, and pushing
+				}
 
 				// Close the task — it's done. New work = new morsel.
 				closeCtx := workflow.WithActivityOptions(ctx, recordOpts)

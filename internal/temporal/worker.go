@@ -62,11 +62,10 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 		Store:  st,
 	}
 
-	// --- Core Workflows ---
+	// --- Primary Workflows ---
 	w.RegisterWorkflow(ChumAgentWorkflow)
 	w.RegisterWorkflow(PlanningCeremonyWorkflow)
-
-	// --- Dispatcher Workflow ---
+	w.RegisterWorkflow(CambrianExplosionWorkflow)
 	w.RegisterWorkflow(DispatcherWorkflow)
 
 	// --- CHUM Workflows ---

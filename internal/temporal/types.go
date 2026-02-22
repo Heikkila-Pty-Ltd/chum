@@ -17,6 +17,7 @@ type TaskRequest struct {
 	DoDChecks         []string         `json:"dod_checks"`          // e.g. ["go build ./cmd/chum", "go test ./..."]
 	SlowStepThreshold time.Duration    `json:"slow_step_threshold"` // steps exceeding this are flagged slow
 	EscalationChain   []EscalationTier `json:"escalation_chain"`    // ordered tiers for fail-upward retry
+	PreviousErrors    []string         `json:"previous_errors,omitempty"`
 }
 
 // EscalationTier defines one level in the fail-upward chain.

@@ -725,6 +725,21 @@ func normalizeJSONKeys(jsonStr string) ([]byte, error) {
 	return json.Marshal(normalized)
 }
 
+// PushWorktreeActivity pushes the organism's code branch to the remote origin.
+func (a *Activities) PushWorktreeActivity(ctx context.Context, wtDir string) error {
+	logger := activity.GetLogger(ctx)
+	logger.Info(SharkPrefix+" Pushing worktree branch to remote", "worktree", wtDir)
+
+	pushCmd := exec.CommandContext(ctx, "git", "push", "origin", "HEAD")
+	pushCmd.Dir = wtDir
+	if out, err := pushCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git push origin HEAD failed: %w\n%s", err, string(out))
+	}
+
+	logger.Info(SharkPrefix+" Worktree branch pushed successfully")
+	return nil
+}
+
 func (a *Activities) CleanupWorktreeActivity(ctx context.Context, baseDir, wtDir string) error {
 	logger := activity.GetLogger(ctx)
 	logger.Info(SharkPrefix+" Cleaning up worktree", "worktree", wtDir)

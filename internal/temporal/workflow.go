@@ -144,7 +144,7 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 	// --- Activity options ---
 	planOpts := workflow.ActivityOptions{
 		StartToCloseTimeout: 5 * time.Minute,
-		RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 2},
+		RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 1},
 	}
 	execOpts := workflow.ActivityOptions{
 		StartToCloseTimeout: 15 * time.Minute,
@@ -153,7 +153,7 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 	}
 	reviewOpts := workflow.ActivityOptions{
 		StartToCloseTimeout: 5 * time.Minute,
-		RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 2},
+		RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 1},
 	}
 	dodOpts := workflow.ActivityOptions{
 		StartToCloseTimeout: 5 * time.Minute,
@@ -161,7 +161,7 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 	}
 	recordOpts := workflow.ActivityOptions{
 		StartToCloseTimeout: 30 * time.Second,
-		RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 3},
+		RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 1},
 	}
 	notifyOpts := workflow.ActivityOptions{
 		StartToCloseTimeout: 5 * time.Second,
@@ -213,6 +213,7 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 	var plan StructuredPlan
 	logger.Info(SharkPrefix + " Phase 1: Generating structured plan via LLM")
 	planCtx := workflow.WithActivityOptions(ctx, planOpts)
+	plan.PreviousErrors = req.PreviousErrors
 
 	if err := workflow.ExecuteActivity(planCtx, a.StructuredPlanActivity, req).Get(ctx, &plan); err != nil {
 		recordStep("plan", planStart, "failed")
@@ -513,6 +514,13 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 				} else {
 					logger.Info(SharkPrefix+" Genome evolved — pattern added",
 						"Species", species, "Pattern", truncate(plan.Summary, 80))
+				}
+
+				// ===== PROPAGATION — Push validated code to remote =====
+				// The gene must propagate. A commit without a push is a dead gene.
+				pushCtx := workflow.WithActivityOptions(ctx, worktreeOpts)
+				if err := workflow.ExecuteActivity(pushCtx, a.PushWorktreeActivity, worktreePath).Get(ctx, nil); err != nil {
+					logger.Warn(SharkPrefix+" Failed to push worktree branch", "error", err)
 				}
 
 				cleanupWorktree()

@@ -6,31 +6,44 @@ type: feature
 labels:
   - whale:infrastructure
   - ai
-estimate_minutes: 45
+estimate_minutes: 60
 acceptance_criteria: |
-  - Before CrabDecompositionWorkflow runs, a BlastRadiusScanActivity analyzes the target morsel.
-  - Scanner identifies: affected files, function call graph, import/dependency chains, test coverage.
-  - Output is passed to the crab's decomposition prompt as structured context.
-  - Uses tree-sitter or AST parsing (not LLM) for deterministic, cheap analysis.
+  - BlastRadiusScanActivity runs before CrabDecompositionWorkflow.
+  - Scanner outputs: affected files, dependency graph, import chains, dead code, test coverage.
+  - Output is injected into the crab's decomposition prompt as structured context.
+  - Language-aware: uses Go tools for Go projects, JS/TS tools for Node projects.
+  - All tools run as CLI subprocesses — no library dependencies in the CHUM binary.
 design: |
-  **Tools to evaluate:**
-  - `madge` (npm) — JS/TS dependency graphs, circular dependency detection
-  - `go-callvis` — Go function call graphs
-  - `tree-sitter` CLI — language-agnostic AST parsing
-  - `depcheck` — unused dependency detection
-  - Built-in: `go list -m -json all`, `tsc --listFiles`
+  **Tier 1 — JS/TS projects (npx-able, zero config):**
+  - `madge` — dependency graph, circular dep detection, orphan detection
+    - `npx madge --json ./app` → JSON dep graph
+    - `npx madge --circular ./app` → circular deps
+    - `npx madge --orphans ./app` → dead code
+  - `knip` — finds unused files, dependencies, exports, types
+    - `npx knip --reporter json` → unused code report
+  - `depcheck` — unused package.json dependencies
+    - `npx depcheck --json` → unused deps
   
-  **Approach:**
-  1. Add `BlastRadiusScanActivity` that runs before crab decomposition.
-  2. Parse the morsel's acceptance_criteria and design fields to identify target files/packages.
-  3. Run the appropriate scanner (Go or TS based on project language).
-  4. Output: file list, dependency graph, estimated blast radius (LOC affected).
-  5. Inject this into the crab's prompt alongside the repo map.
+  **Tier 2 — Go projects:**
+  - `go-callvis` — function-level call graphs
+    - `go-callvis -format json ./cmd/chum` → call graph
+  - `go list -m -json all` — module dependency tree (built-in)
+  - `go vet ./...` — static analysis (built-in)
   
-  **Benefit:** Crabs produce tighter, more accurate decompositions because they know
-  exactly which files and functions are involved, not just package names.
+  **Tier 3 — Universal (any language):**
+  - `tree-sitter` CLI — language-agnostic AST parsing for symbol extraction
+  - Aider-style repomap — tree-sitter + graph ranking to find most relevant
+    files for a given context. Port the approach from github.com/paul-gauthier/aider
+    into a Go helper that builds ranked file graphs.
+  
+  **Integration:**
+  1. Add `BlastRadiusScanActivity` that detects project language (Go vs TS).
+  2. Runs the appropriate tier of tools.
+  3. Aggregates output into a structured `BlastRadiusReport`.
+  4. CrabDecompositionWorkflow receives this report alongside the repo map.
+  5. Crabs use it to produce tighter decompositions with exact file lists.
 depends_on: []
 ---
 
-Pre-crab blast radius scanning. Use static analysis tools (tree-sitter, madge, go-callvis)
-to map affected files and dependencies before the crabs decompose a morsel.
+Pre-crab blast radius scanning using madge, knip, go-callvis, tree-sitter,
+and aider-style repomap ranking. Language-aware, deterministic, cheap.

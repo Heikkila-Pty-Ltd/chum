@@ -668,6 +668,12 @@ func migrateMorselStagesTable(db *sql.DB) error {
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_morsel_stages_project_stage ON morsel_stages(project, current_stage)`); err != nil {
 		return fmt.Errorf("create morsel_stages project_stage index: %w", err)
 	}
+
+	// Add recurring_failures column to paleontology_runs (for systemic DoD failure detection)
+	if err := addColumnIfNotExists(db, "paleontology_runs", "recurring_failures", "recurring_failures INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+
 	return nil
 }
 

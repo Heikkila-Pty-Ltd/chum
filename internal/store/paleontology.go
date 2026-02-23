@@ -64,6 +64,16 @@ type CostTrend struct {
 	CostPerSuccess float64
 }
 
+// RecurringDoDFailure holds a DoD failure pattern that appears across multiple dispatches.
+type RecurringDoDFailure struct {
+	Failures    string   // the failure text
+	Count       int      // how many times this exact failure appeared
+	Projects    []string // which projects are affected
+	MorselIDs   []string // which morsels failed with this error
+	FirstSeenAt string   // when this failure first appeared
+	LastSeenAt  string   // when this failure last appeared
+}
+
 // PaleontologyRunResult holds the summary of a paleontologist analysis run.
 type PaleontologyRunResult struct {
 	AntibodiesDiscovered int
@@ -71,6 +81,7 @@ type PaleontologyRunResult struct {
 	ProteinsNominated    int
 	SpeciesAudited       int
 	CostAlerts           int
+	RecurringFailures    int
 	Summary              string
 }
 
@@ -386,13 +397,59 @@ func (s *Store) CreateEmptyGenome(species string) error {
 	return nil
 }
 
+// GetRecurringDoDFailures finds DoD failure patterns that appear across multiple dispatches.
+func (s *Store) GetRecurringDoDFailures(minCount int, since time.Time) ([]RecurringDoDFailure, error) {
+	rows, err := s.db.Query(`
+		SELECT
+			failures,
+			COUNT(*) as cnt,
+			GROUP_CONCAT(DISTINCT project) as projects,
+			GROUP_CONCAT(DISTINCT morsel_id) as morsels,
+			MIN(checked_at) as first_seen,
+			MAX(checked_at) as last_seen
+		FROM dod_results
+		WHERE passed = 0
+		  AND failures != ''
+		  AND checked_at >= ?
+		GROUP BY failures
+		HAVING cnt >= ?
+		ORDER BY cnt DESC, last_seen DESC
+		LIMIT 20
+	`, since.Format("2006-01-02 15:04:05"), minCount)
+	if err != nil {
+		return nil, fmt.Errorf("query recurring DoD failures: %w", err)
+	}
+	defer rows.Close()
+
+	var results []RecurringDoDFailure
+	for rows.Next() {
+		var r RecurringDoDFailure
+		var projects, morsels string
+		if err := rows.Scan(&r.Failures, &r.Count, &projects, &morsels, &r.FirstSeenAt, &r.LastSeenAt); err != nil {
+			return nil, fmt.Errorf("scan recurring DoD failure: %w", err)
+		}
+		if projects != "" {
+			for _, p := range splitCSV(projects) {
+				r.Projects = append(r.Projects, p)
+			}
+		}
+		if morsels != "" {
+			for _, m := range splitCSV(morsels) {
+				r.MorselIDs = append(r.MorselIDs, m)
+			}
+		}
+		results = append(results, r)
+	}
+	return results, rows.Err()
+}
+
 // RecordPaleontologyRun saves a summary of a paleontologist analysis run.
 func (s *Store) RecordPaleontologyRun(result PaleontologyRunResult) error {
 	_, err := s.db.Exec(`
-		INSERT INTO paleontology_runs (antibodies_discovered, genes_mutated, proteins_nominated, species_audited, cost_alerts, summary)
-		VALUES (?, ?, ?, ?, ?, ?)
+		INSERT INTO paleontology_runs (antibodies_discovered, genes_mutated, proteins_nominated, species_audited, cost_alerts, recurring_failures, summary)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
 	`, result.AntibodiesDiscovered, result.GenesMutated, result.ProteinsNominated,
-		result.SpeciesAudited, result.CostAlerts, result.Summary)
+		result.SpeciesAudited, result.CostAlerts, result.RecurringFailures, result.Summary)
 	if err != nil {
 		return fmt.Errorf("record paleontology run: %w", err)
 	}

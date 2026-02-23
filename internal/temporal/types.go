@@ -295,10 +295,13 @@ type SemgrepRule struct {
 
 // TacticalGroomRequest is passed to TacticalGroomWorkflow after a task completes.
 type TacticalGroomRequest struct {
-	TaskID  string `json:"task_id"`
-	Project string `json:"project"`
-	WorkDir string `json:"work_dir"`
-	Tier    string `json:"tier"` // "fast" for tactical
+	TaskID       string   `json:"task_id"`
+	Project      string   `json:"project"`
+	WorkDir      string   `json:"work_dir"`
+	Tier         string   `json:"tier"`                        // "fast" for tactical
+	FilesChanged []string `json:"files_changed,omitempty"`     // files modified by the landed morsel
+	DiffSummary  string   `json:"diff_summary,omitempty"`      // git diff --stat output
+	TaskTitle    string   `json:"task_title,omitempty"`         // title of the completed morsel
 }
 
 // MorselMutation is a single mutation the groombot wants to apply to the backlog.

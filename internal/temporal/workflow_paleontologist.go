@@ -103,12 +103,21 @@ func PaleontologistWorkflow(ctx workflow.Context, req PaleontologistRequest) err
 		logger.Info(PaleontologistPrefix+" Cost trend analysis complete", "CostAlerts", alerts)
 	}
 
+	// Step 6: Recurring DoD Failure Detection
+	// This is the critical missing piece — detect systemic build failures across morsels.
+	var recurringFailures int
+	if err := workflow.ExecuteActivity(sqlCtx, a.DiscoverRecurringDoDFailuresActivity, req).Get(ctx, &recurringFailures); err != nil {
+		logger.Warn(PaleontologistPrefix+" Recurring DoD failure detection failed (non-fatal)", "error", err)
+	} else {
+		logger.Info(PaleontologistPrefix+" Recurring DoD failure detection complete", "RecurringFailures", recurringFailures)
+	}
+
 	// Record the run
-	summary := fmt.Sprintf("Antibodies:%d Genes:%d Proteins:%d Audited:%d Alerts:%d",
-		totalAntibodies, totalGenes, totalProteins, totalAudited, totalAlerts)
+	summary := fmt.Sprintf("Antibodies:%d Genes:%d Proteins:%d Audited:%d Alerts:%d RecurringFailures:%d",
+		totalAntibodies, totalGenes, totalProteins, totalAudited, totalAlerts, recurringFailures)
 
 	_ = workflow.ExecuteActivity(sqlCtx, a.RecordPaleontologyRunActivity,
-		totalAntibodies, totalGenes, totalProteins, totalAudited, totalAlerts, summary).Get(ctx, nil)
+		totalAntibodies, totalGenes, totalProteins, totalAudited, totalAlerts, recurringFailures, summary).Get(ctx, nil)
 
 	logger.Info(PaleontologistPrefix+" Paleontological analysis complete", "Summary", summary)
 

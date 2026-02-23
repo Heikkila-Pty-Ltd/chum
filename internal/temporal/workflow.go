@@ -817,10 +817,13 @@ func spawnCHUMWorkflows(ctx workflow.Context, logger log.Logger, req TaskRequest
 
 	// --- Spawn TacticalGroomWorkflow ---
 	groomReq := TacticalGroomRequest{
-		TaskID:  req.TaskID,
-		Project: req.Project,
-		WorkDir: baseWorkDir,
-		Tier:    "fast",
+		TaskID:       req.TaskID,
+		Project:      req.Project,
+		WorkDir:      baseWorkDir,
+		Tier:         "fast",
+		FilesChanged: plan.FilesToModify,
+		DiffSummary:  truncate(plan.Summary, 500),
+		TaskTitle:    req.TaskTitle,
 	}
 	groomOpts := chumOpts
 	groomOpts.WorkflowID = fmt.Sprintf("groom-%s-%d", req.TaskID, workflow.Now(ctx).Unix())

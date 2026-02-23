@@ -1544,15 +1544,96 @@ func (a *Activities) AnalyzeCostTrendsActivity(ctx context.Context, req Paleonto
 	return alerts, nil
 }
 
+// DiscoverRecurringDoDFailuresActivity detects DoD failure patterns that appear
+// across multiple dispatches and raises alerts for systemic issues.
+// Returns the number of recurring failure patterns detected.
+func (a *Activities) DiscoverRecurringDoDFailuresActivity(ctx context.Context, req PaleontologistRequest) (int, error) {
+	logger := activity.GetLogger(ctx)
+	logger.Info(PaleontologistPrefix+" Discovering recurring DoD failures")
+
+	since := time.Now().UTC().Add(-time.Duration(req.LookbackH) * time.Hour)
+	patterns, err := a.Store.GetRecurringDoDFailures(3, since) // threshold: 3+ occurrences
+	if err != nil {
+		return 0, fmt.Errorf("get recurring DoD failures: %w", err)
+	}
+
+	detected := 0
+	for _, p := range patterns {
+		detected++
+
+		// Truncate failure message for logging
+		failureSnippet := p.Failures
+		if len(failureSnippet) > 200 {
+			failureSnippet = failureSnippet[:200] + "..."
+		}
+
+		logger.Warn(PaleontologistPrefix+" RECURRING DOD FAILURE DETECTED",
+			"Count", p.Count,
+			"Projects", strings.Join(p.Projects, ", "),
+			"MorselIDs", strings.Join(p.MorselIDs, ", "),
+			"FirstSeen", p.FirstSeenAt,
+			"LastSeen", p.LastSeenAt,
+			"Failures", failureSnippet)
+
+		// Send Matrix alert for high-frequency failures (5+ occurrences)
+		if p.Count >= 5 && a.Sender != nil {
+			targetRoom := a.AdminRoom
+			if targetRoom == "" {
+				targetRoom = a.DefaultRoom
+			}
+
+			// Build affected morsels list (max 5 for brevity)
+			morselList := p.MorselIDs
+			if len(morselList) > 5 {
+				morselList = append(morselList[:5], "...")
+			}
+
+			msg := fmt.Sprintf(
+				"🚨 **SYSTEMIC BUILD FAILURE DETECTED** 🚨\n\n"+
+					"**Pattern:** Same DoD failure across **%d morsels** in the last %dh\n\n"+
+					"**Affected projects:** %s\n\n"+
+					"**Affected morsels:**\n%s\n\n"+
+					"**Failure:**\n```\n%s\n```\n\n"+
+					"**Action required:** This is a systemic issue, not an individual morsel problem. "+
+					"Investigate the root cause (e.g., broken dependency, missing env var, infrastructure issue) "+
+					"before dispatching more morsels. Fix the underlying issue to unblock the pipeline.",
+				p.Count,
+				req.LookbackH,
+				strings.Join(p.Projects, ", "),
+				"- `"+strings.Join(morselList, "`\n- `")+"`",
+				truncate(p.Failures, 500),
+			)
+
+			if sendErr := a.Sender.SendMessage(ctx, targetRoom, msg); sendErr != nil {
+				logger.Warn(PaleontologistPrefix+" Failed to send recurring failure alert", "error", sendErr)
+			} else {
+				logger.Info(PaleontologistPrefix+" Recurring failure alert sent to Matrix",
+					"count", p.Count, "projects", len(p.Projects))
+			}
+		}
+
+		// Record health event for visibility in observability tools
+		if a.Store != nil {
+			details := fmt.Sprintf("Recurring DoD failure (%d occurrences): %s", p.Count, truncate(p.Failures, 200))
+			if recErr := a.Store.RecordHealthEvent("recurring_dod_failure", details); recErr != nil {
+				logger.Warn(PaleontologistPrefix+" Failed to record health event", "error", recErr)
+			}
+		}
+	}
+
+	return detected, nil
+}
+
 // RecordPaleontologyRunActivity records a paleontologist analysis run in the audit table.
 func (a *Activities) RecordPaleontologyRunActivity(ctx context.Context,
-	antibodies, genes, proteins, audited, alerts int, summary string) error {
+	antibodies, genes, proteins, audited, alerts, recurringFailures int, summary string) error {
 	return a.Store.RecordPaleontologyRun(store.PaleontologyRunResult{
 		AntibodiesDiscovered: antibodies,
 		GenesMutated:         genes,
 		ProteinsNominated:    proteins,
 		SpeciesAudited:       audited,
 		CostAlerts:           alerts,
+		RecurringFailures:    recurringFailures,
 		Summary:              summary,
 	})
 }

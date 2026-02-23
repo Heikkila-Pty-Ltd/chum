@@ -112,6 +112,15 @@ func PaleontologistWorkflow(ctx workflow.Context, req PaleontologistRequest) err
 		logger.Info(PaleontologistPrefix+" Recurring DoD failure detection complete", "RecurringFailures", recurringFailures)
 	}
 
+	// Step 7: Failure Rate Trend Analysis
+	// Track failure rates over time to measure evolutionary improvement.
+	// Goal: Continuous reduction through antibodies and genome evolution.
+	if err := workflow.ExecuteActivity(sqlCtx, a.AnalyzeFailureRateTrendsActivity, req).Get(ctx, nil); err != nil {
+		logger.Warn(PaleontologistPrefix+" Failure rate trend analysis failed (non-fatal)", "error", err)
+	} else {
+		logger.Info(PaleontologistPrefix+" Failure rate trend analysis complete")
+	}
+
 	// Record the run
 	summary := fmt.Sprintf("Antibodies:%d Genes:%d Proteins:%d Audited:%d Alerts:%d RecurringFailures:%d",
 		totalAntibodies, totalGenes, totalProteins, totalAudited, totalAlerts, recurringFailures)

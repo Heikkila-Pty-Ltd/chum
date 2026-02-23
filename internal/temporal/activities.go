@@ -1624,6 +1624,118 @@ func (a *Activities) DiscoverRecurringDoDFailuresActivity(ctx context.Context, r
 	return detected, nil
 }
 
+// AnalyzeFailureRateTrendsActivity compares current vs previous failure rates
+// and maintains a "doomsday clock" that escalates warnings to Hex.
+// NOT a hard gate - Hex decides whether to pause based on the clock.
+func (a *Activities) AnalyzeFailureRateTrendsActivity(ctx context.Context, req PaleontologistRequest) error {
+	logger := activity.GetLogger(ctx)
+	logger.Info(PaleontologistPrefix+" Analyzing failure rate trends")
+
+	// Analyze overall failure rate delta (all projects)
+	delta, err := a.Store.GetFailureRateDelta("", req.LookbackH)
+	if err != nil {
+		return fmt.Errorf("get overall failure rate delta: %w", err)
+	}
+
+	logger.Info(PaleontologistPrefix+" Failure rate trend",
+		"Trend", delta.Trend,
+		"CurrentRate", fmt.Sprintf("%.1f%%", delta.CurrentRate),
+		"PreviousRate", fmt.Sprintf("%.1f%%", delta.PreviousRate),
+		"Delta", fmt.Sprintf("%+.1f%%", delta.Delta),
+		"CurrentDispatches", delta.CurrentDispatches,
+		"PreviousDispatches", delta.PreviousDispatches)
+
+	// Record health event FIRST (feeds doomsday clock)
+	if delta.Trend != "stable" {
+		details := fmt.Sprintf("Failure rate %s: %.1f%% → %.1f%% (%+.1f%% points)",
+			delta.Trend, delta.PreviousRate, delta.CurrentRate, delta.Delta)
+		if recErr := a.Store.RecordHealthEvent("failure_rate_"+delta.Trend, details); recErr != nil {
+			logger.Warn(PaleontologistPrefix+" Failed to record health event", "error", recErr)
+		}
+	}
+
+	// Calculate doomsday clock (system health score)
+	healthScore, err := a.Store.GetSystemHealthScore()
+	if err != nil {
+		logger.Warn(PaleontologistPrefix+" Failed to calculate health score", "error", err)
+		healthScore = &store.SystemHealthScore{
+			Score:      50,
+			AlertLevel: "yellow",
+			ClockTime:  "Unknown",
+		}
+	}
+
+	logger.Info(PaleontologistPrefix+" System health score",
+		"Score", healthScore.Score,
+		"AlertLevel", healthScore.AlertLevel,
+		"Clock", healthScore.ClockTime,
+		"DegradationStreak", healthScore.DegradationStreak,
+		"ImprovementStreak", healthScore.ImprovementStreak)
+
+	// Send to Hex via Matrix with escalating urgency
+	if a.Sender != nil && delta.CurrentDispatches >= 10 {
+		targetRoom := a.AdminRoom // Always send to Hex
+		if targetRoom == "" {
+			targetRoom = a.DefaultRoom
+		}
+
+		var emoji, header string
+		switch healthScore.AlertLevel {
+		case "green":
+			emoji = "✅"
+			header = "**SYSTEM HEALTHY**"
+		case "yellow":
+			emoji = "⚠️"
+			header = "**WARNING: Degradation Detected**"
+		case "orange":
+			emoji = "🔶"
+			header = "**CRITICAL: Multiple Degrading Periods**"
+		case "red":
+			emoji = "🚨"
+			header = "**EMERGENCY: System Failing**"
+		}
+
+		msg := fmt.Sprintf(
+			"%s %s — Doomsday Clock Report\n\n"+
+				"🕐 **Clock Time:** %s\n"+
+				"📊 **Health Score:** %d/100 (%s)\n"+
+				"📉 **Degradation Streak:** %d consecutive periods\n"+
+				"📈 **Improvement Streak:** %d consecutive periods\n\n"+
+				"**Current Failure Rate:** %.1f%% (%d failed / %d total)\n"+
+				"**Previous Failure Rate:** %.1f%% (%d failed / %d total)\n"+
+				"**Change:** %+.1f%% points (%s)\n\n"+
+				"**Recommendation for Hex:**\n%s\n\n"+
+				"**Window:** Last %dh vs previous %dh\n"+
+				"**Next Check:** 30 minutes",
+			emoji, header,
+			healthScore.ClockTime,
+			healthScore.Score, healthScore.AlertLevel,
+			healthScore.DegradationStreak,
+			healthScore.ImprovementStreak,
+			delta.CurrentRate,
+			int(float64(delta.CurrentDispatches)*(delta.CurrentRate/100)),
+			delta.CurrentDispatches,
+			delta.PreviousRate,
+			int(float64(delta.PreviousDispatches)*(delta.PreviousRate/100)),
+			delta.PreviousDispatches,
+			delta.Delta,
+			delta.Trend,
+			healthScore.Recommendation,
+			req.LookbackH, req.LookbackH,
+		)
+
+		if sendErr := a.Sender.SendMessage(ctx, targetRoom, msg); sendErr != nil {
+			logger.Warn(PaleontologistPrefix+" Failed to send doomsday clock report to Hex", "error", sendErr)
+		} else {
+			logger.Info(PaleontologistPrefix+" Doomsday clock report sent to Hex",
+				"AlertLevel", healthScore.AlertLevel,
+				"Score", healthScore.Score)
+		}
+	}
+
+	return nil
+}
+
 // RecordPaleontologyRunActivity records a paleontologist analysis run in the audit table.
 func (a *Activities) RecordPaleontologyRunActivity(ctx context.Context,
 	antibodies, genes, proteins, audited, alerts, recurringFailures int, summary string) error {

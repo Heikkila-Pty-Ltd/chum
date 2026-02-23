@@ -74,6 +74,39 @@ type RecurringDoDFailure struct {
 	LastSeenAt  string   // when this failure last appeared
 }
 
+// FailureRateTrend holds DoD failure rate metrics for a time window.
+type FailureRateTrend struct {
+	Project        string
+	WindowStart    time.Time
+	WindowEnd      time.Time
+	TotalDispatches int
+	DoDPassed      int
+	DoDFailed      int
+	FailureRate    float64 // percentage (0-100)
+}
+
+// FailureRateDelta compares failure rates between two time windows.
+type FailureRateDelta struct {
+	Project            string
+	CurrentRate        float64
+	PreviousRate       float64
+	Delta              float64 // positive = getting worse, negative = improving
+	CurrentDispatches  int
+	PreviousDispatches int
+	Trend              string // "improving", "degrading", "stable"
+}
+
+// SystemHealthScore represents the doomsday clock state.
+type SystemHealthScore struct {
+	Score              int       // 0-100 (0 = midnight, 100 = healthy)
+	DegradationStreak  int       // consecutive degrading periods
+	ImprovementStreak  int       // consecutive improving periods
+	LastTrendChange    time.Time // when trend last changed
+	ClockTime          string    // "11:58 PM", "11:59 PM", "MIDNIGHT"
+	AlertLevel         string    // "green", "yellow", "orange", "red"
+	Recommendation     string    // what Hex should consider
+}
+
 // PaleontologyRunResult holds the summary of a paleontologist analysis run.
 type PaleontologyRunResult struct {
 	AntibodiesDiscovered int
@@ -441,6 +474,201 @@ func (s *Store) GetRecurringDoDFailures(minCount int, since time.Time) ([]Recurr
 		results = append(results, r)
 	}
 	return results, rows.Err()
+}
+
+// GetFailureRateTrend calculates DoD failure rate for a time window.
+func (s *Store) GetFailureRateTrend(project string, windowStart, windowEnd time.Time) (*FailureRateTrend, error) {
+	var trend FailureRateTrend
+	trend.Project = project
+	trend.WindowStart = windowStart
+	trend.WindowEnd = windowEnd
+
+	query := `
+		SELECT
+			COUNT(*) as total,
+			SUM(CASE WHEN passed = 1 THEN 1 ELSE 0 END) as passed,
+			SUM(CASE WHEN passed = 0 THEN 1 ELSE 0 END) as failed
+		FROM dod_results
+		WHERE checked_at >= ? AND checked_at < ?`
+
+	args := []interface{}{
+		windowStart.Format("2006-01-02 15:04:05"),
+		windowEnd.Format("2006-01-02 15:04:05"),
+	}
+
+	if project != "" {
+		query += ` AND project = ?`
+		args = append(args, project)
+	}
+
+	if err := s.db.QueryRow(query, args...).Scan(&trend.TotalDispatches, &trend.DoDPassed, &trend.DoDFailed); err != nil {
+		return nil, fmt.Errorf("query failure rate trend: %w", err)
+	}
+
+	if trend.TotalDispatches > 0 {
+		trend.FailureRate = (float64(trend.DoDFailed) / float64(trend.TotalDispatches)) * 100
+	}
+
+	return &trend, nil
+}
+
+// GetFailureRateDelta compares failure rates between current and previous windows.
+func (s *Store) GetFailureRateDelta(project string, windowHours int) (*FailureRateDelta, error) {
+	now := time.Now().UTC()
+	windowDur := time.Duration(windowHours) * time.Hour
+
+	currentStart := now.Add(-windowDur)
+	previousStart := now.Add(-2 * windowDur)
+
+	current, err := s.GetFailureRateTrend(project, currentStart, now)
+	if err != nil {
+		return nil, fmt.Errorf("get current failure rate: %w", err)
+	}
+
+	previous, err := s.GetFailureRateTrend(project, previousStart, currentStart)
+	if err != nil {
+		return nil, fmt.Errorf("get previous failure rate: %w", err)
+	}
+
+	delta := &FailureRateDelta{
+		Project:            project,
+		CurrentRate:        current.FailureRate,
+		PreviousRate:       previous.FailureRate,
+		Delta:              current.FailureRate - previous.FailureRate,
+		CurrentDispatches:  current.TotalDispatches,
+		PreviousDispatches: previous.TotalDispatches,
+	}
+
+	// Classify trend
+	if delta.Delta < -5.0 {
+		delta.Trend = "improving"
+	} else if delta.Delta > 5.0 {
+		delta.Trend = "degrading"
+	} else {
+		delta.Trend = "stable"
+	}
+
+	return delta, nil
+}
+
+// GetFailureRateHistory returns failure rates for multiple time windows (for charting).
+func (s *Store) GetFailureRateHistory(project string, windows int, windowHours int) ([]FailureRateTrend, error) {
+	now := time.Now().UTC()
+	windowDur := time.Duration(windowHours) * time.Hour
+
+	var trends []FailureRateTrend
+	for i := 0; i < windows; i++ {
+		windowEnd := now.Add(-time.Duration(i) * windowDur)
+		windowStart := windowEnd.Add(-windowDur)
+
+		trend, err := s.GetFailureRateTrend(project, windowStart, windowEnd)
+		if err != nil {
+			return nil, fmt.Errorf("get failure rate window %d: %w", i, err)
+		}
+		trends = append(trends, *trend)
+	}
+
+	return trends, nil
+}
+
+// GetSystemHealthScore calculates the doomsday clock state from recent health events.
+func (s *Store) GetSystemHealthScore() (*SystemHealthScore, error) {
+	// Query last 10 health events related to failure rate trends
+	rows, err := s.db.Query(`
+		SELECT event_type, created_at
+		FROM health_events
+		WHERE event_type IN ('failure_rate_improving', 'failure_rate_degrading', 'failure_rate_stable')
+		ORDER BY created_at DESC
+		LIMIT 10
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("query health events: %w", err)
+	}
+	defer rows.Close()
+
+	var events []struct {
+		eventType string
+		createdAt time.Time
+	}
+	for rows.Next() {
+		var e struct {
+			eventType string
+			createdAt time.Time
+		}
+		if err := rows.Scan(&e.eventType, &e.createdAt); err != nil {
+			return nil, fmt.Errorf("scan health event: %w", err)
+		}
+		events = append(events, e)
+	}
+
+	score := &SystemHealthScore{
+		Score:      100,
+		AlertLevel: "green",
+		ClockTime:  "12:00 AM (Healthy)",
+	}
+
+	if len(events) == 0 {
+		score.Recommendation = "Baseline - no trend data yet"
+		return score, nil
+	}
+
+	// Count consecutive degrading/improving from most recent
+	for i := range events {
+		if events[i].eventType == "failure_rate_degrading" {
+			score.DegradationStreak++
+		} else {
+			break
+		}
+	}
+
+	for i := range events {
+		if events[i].eventType == "failure_rate_improving" {
+			score.ImprovementStreak++
+		} else {
+			break
+		}
+	}
+
+	if len(events) > 0 {
+		score.LastTrendChange = events[0].createdAt
+	}
+
+	// Calculate score (0-100) based on streaks
+	// Each degrading period: -15 points
+	// Each improving period: +10 points (but cap at 100)
+	score.Score = 100 - (score.DegradationStreak * 15)
+	if score.Score < 0 {
+		score.Score = 0
+	}
+	if score.ImprovementStreak > 0 {
+		score.Score = 100 // improving = back to healthy
+	}
+
+	// Set doomsday clock time and alert level
+	switch {
+	case score.Score >= 85:
+		score.AlertLevel = "green"
+		score.ClockTime = "12:00 AM (Healthy)"
+		score.Recommendation = "System healthy - continue normal operations"
+	case score.Score >= 70:
+		score.AlertLevel = "yellow"
+		score.ClockTime = "11:45 PM (Warning)"
+		score.Recommendation = "Monitor closely - check for pattern changes"
+	case score.Score >= 40:
+		score.AlertLevel = "orange"
+		score.ClockTime = "11:55 PM (Critical)"
+		score.Recommendation = "Consider pausing low-priority work - investigate root cause"
+	case score.Score >= 15:
+		score.AlertLevel = "red"
+		score.ClockTime = "11:59 PM (Emergency)"
+		score.Recommendation = "⚠️ URGENT: Pause all non-critical dispatches - systemic failure detected"
+	default:
+		score.AlertLevel = "red"
+		score.ClockTime = "🔴 MIDNIGHT (System Failing)"
+		score.Recommendation = "🚨 STOP THE LINE: Pause dispatching until root cause identified and fixed"
+	}
+
+	return score, nil
 }
 
 // RecordPaleontologyRun saves a summary of a paleontologist analysis run.

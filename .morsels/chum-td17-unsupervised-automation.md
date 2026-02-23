@@ -1,6 +1,6 @@
 ---
 title: "Implement Unsupervised Automation Pipeline"
-status: ready
+status: done # decomposed into chum-td17a/b/c
 priority: 3
 type: feature
 labels:

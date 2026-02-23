@@ -1,6 +1,6 @@
 ---
 title: "Auto-investigate workflow failures with post-mortem LLM analysis"
-status: ready
+status: done # decomposed into chum-td19a/b
 priority: 1
 type: feature
 labels:

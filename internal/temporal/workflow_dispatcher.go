@@ -252,6 +252,28 @@ func (da *DispatchActivities) ScanCandidatesActivity(ctx context.Context) (*Scan
 			continue
 		}
 
+		// --- Auto-unblock spider ---
+		// Walk done/closed tasks and promote any downstream blocked tasks
+		// whose deps are now all satisfied.
+		for j := range all {
+			s := strings.ToLower(all[j].Status)
+			if s == "done" || s == "closed" {
+				unblocked, unblockErr := da.DAG.AutoUnblockDependents(ctx, all[j].ID)
+				if unblockErr != nil {
+					logger.Warn(SharkPrefix+" Auto-unblock failed", "task", all[j].ID, "error", unblockErr)
+				}
+				for _, uid := range unblocked {
+					logger.Info(SharkPrefix+" Auto-unblocked task", "task", uid, "triggered_by", all[j].ID)
+				}
+			}
+		}
+
+		// Re-list tasks after unblocking to pick up newly ready ones
+		all, listErr = da.DAG.ListTasks(ctx, name)
+		if listErr != nil {
+			continue
+		}
+
 		depGraph := graph.BuildDepGraph(all)
 		ready := graph.FilterUnblockedOpen(all, depGraph)
 

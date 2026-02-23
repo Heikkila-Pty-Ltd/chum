@@ -537,6 +537,113 @@ func (d *DAG) GetReadyNodes(ctx context.Context, project string) ([]Task, error)
 	return tasks, nil
 }
 
+// AutoUnblockDependents walks the reverse DAG edges from a completed task
+// and automatically promotes any downstream 'blocked' tasks to 'ready'
+// if all their dependencies are now done/closed. Cascades: if promoting
+// task B unblocks task C, C gets promoted too.
+// Returns the list of task IDs that were unblocked.
+func (d *DAG) AutoUnblockDependents(ctx context.Context, completedTaskID string) ([]string, error) {
+	if d == nil || d.db == nil {
+		return nil, fmt.Errorf("graph: DAG is not initialized")
+	}
+	completedTaskID = strings.TrimSpace(completedTaskID)
+	if completedTaskID == "" {
+		return nil, fmt.Errorf("completed task ID is required")
+	}
+
+	var unblocked []string
+	queue := []string{completedTaskID}
+	visited := make(map[string]bool)
+
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+
+		if visited[current] {
+			continue
+		}
+		visited[current] = true
+
+		// Get all tasks that depend on the current task (reverse edge lookup)
+		dependents, err := d.getDependents(ctx, current)
+		if err != nil {
+			return unblocked, fmt.Errorf("get dependents of %s: %w", current, err)
+		}
+
+		for _, dep := range dependents {
+			if visited[dep.id] {
+				continue
+			}
+
+			// Only promote blocked tasks
+			if strings.ToLower(dep.status) != "blocked" {
+				continue
+			}
+
+			// Check if ALL of this task's deps are now done/closed
+			unsatisfied, err := d.countUnsatisfiedDeps(ctx, dep.id)
+			if err != nil {
+				return unblocked, fmt.Errorf("count unsatisfied deps for %s: %w", dep.id, err)
+			}
+
+			if unsatisfied == 0 {
+				// All deps satisfied — promote to ready
+				if err := d.UpdateTask(ctx, dep.id, map[string]any{"status": "ready"}); err != nil {
+					return unblocked, fmt.Errorf("promote %s to ready: %w", dep.id, err)
+				}
+				unblocked = append(unblocked, dep.id)
+
+				// Cascade: this newly-ready task might unblock further downstream tasks
+				queue = append(queue, dep.id)
+			}
+		}
+	}
+
+	return unblocked, nil
+}
+
+// dependentInfo is a lightweight struct for reverse edge lookups.
+type dependentInfo struct {
+	id     string
+	status string
+}
+
+// getDependents returns all tasks that depend on the given task (reverse edges).
+func (d *DAG) getDependents(ctx context.Context, taskID string) ([]dependentInfo, error) {
+	rows, err := queryContext(ctx, d.db,
+		`SELECT t.id, t.status FROM task_edges e JOIN tasks t ON t.id = e.from_task WHERE e.to_task = ?`,
+		taskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []dependentInfo
+	for rows.Next() {
+		var di dependentInfo
+		if err := rows.Scan(&di.id, &di.status); err != nil {
+			return nil, err
+		}
+		result = append(result, di)
+	}
+	return result, rows.Err()
+}
+
+// countUnsatisfiedDeps counts how many of a task's dependencies are NOT done/closed.
+func (d *DAG) countUnsatisfiedDeps(ctx context.Context, taskID string) (int, error) {
+	var count int
+	err := queryRowContext(ctx, d.db,
+		`SELECT COUNT(*) FROM task_edges e
+		 JOIN tasks t ON t.id = e.to_task
+		 WHERE e.from_task = ?
+		   AND lower(t.status) NOT IN ('done', 'closed')`,
+		taskID).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
 func (d *DAG) taskProject(ctx context.Context, id string) (string, error) {
 	row := queryRowContext(ctx, d.db, selectTaskProjectSQL, id)
 	var project string

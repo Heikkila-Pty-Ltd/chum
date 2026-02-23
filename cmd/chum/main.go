@@ -471,6 +471,44 @@ func main() {
 				logger.Info("paleontologist schedule registered", "project", name, "interval", "30m")
 			}
 		}
+
+		// --- Janitor Schedule (hourly worktree/branch cleanup) ---
+		var janitorWorkspaces []string
+		for _, proj := range cfg.Projects {
+			if proj.Enabled && proj.Workspace != "" {
+				janitorWorkspaces = append(janitorWorkspaces, config.ExpandHome(strings.TrimSpace(proj.Workspace)))
+			}
+		}
+		_, janitorErr := schedClient.Create(ctx, tclient.ScheduleOptions{
+			ID: "chum-janitor",
+			Spec: tclient.ScheduleSpec{
+				Intervals: []tclient.ScheduleIntervalSpec{
+					{Every: 1 * time.Hour},
+				},
+			},
+			Action: &tclient.ScheduleWorkflowAction{
+				Workflow:  temporal.JanitorWorkflow,
+				Args:      []interface{}{janitorWorkspaces},
+				TaskQueue: temporal.DefaultTaskQueue,
+				ID:        "janitor",
+			},
+			Overlap: enumspb.SCHEDULE_OVERLAP_POLICY_SKIP,
+		})
+		if janitorErr != nil {
+			var alreadyExists *serviceerror.WorkflowExecutionAlreadyStarted
+			switch {
+			case errors.As(janitorErr, &alreadyExists):
+				logger.Info("janitor schedule already exists")
+			case strings.Contains(janitorErr.Error(), "already exists") ||
+				strings.Contains(janitorErr.Error(), "AlreadyExists") ||
+				strings.Contains(janitorErr.Error(), "already registered"):
+				logger.Info("janitor schedule already exists")
+			default:
+				logger.Error("failed to create janitor schedule", "error", janitorErr)
+			}
+		} else {
+			logger.Info("janitor schedule registered", "interval", "1h")
+		}
 	}()
 
 	// Start API server

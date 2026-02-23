@@ -165,6 +165,10 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 	w.RegisterActivity(acts.PromoteCalcifiedScriptActivity)
 	w.RegisterActivity(acts.QuarantineAndRewireActivity)
 
+	// --- Janitor (Worktree/Branch Cleanup) ---
+	w.RegisterWorkflow(JanitorWorkflow)
+	w.RegisterActivity(acts.JanitorSweepActivity)
+
 	logger.Info("temporal worker started", "task_queue", DefaultTaskQueue)
 	return w.Run(worker.InterruptCh())
 }

@@ -241,6 +241,36 @@ CREATE INDEX IF NOT EXISTS idx_ubs_provider ON ubs_findings(provider);
 CREATE INDEX IF NOT EXISTS idx_ubs_species  ON ubs_findings(species, rule_id);
 CREATE INDEX IF NOT EXISTS idx_ubs_project  ON ubs_findings(project, created_at);
 
+CREATE TABLE IF NOT EXISTS proteins (
+	id          TEXT PRIMARY KEY,
+	category    TEXT NOT NULL DEFAULT '',
+	name        TEXT NOT NULL DEFAULT '',
+	molecules   TEXT NOT NULL DEFAULT '[]',
+	generation  INTEGER NOT NULL DEFAULT 0,
+	successes   INTEGER NOT NULL DEFAULT 0,
+	failures    INTEGER NOT NULL DEFAULT 0,
+	avg_tokens  REAL NOT NULL DEFAULT 0,
+	fitness     REAL NOT NULL DEFAULT 0,
+	parent_id   TEXT NOT NULL DEFAULT '',
+	created_at  DATETIME NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_proteins_category ON proteins(category);
+
+CREATE TABLE IF NOT EXISTS protein_folds (
+	id           INTEGER PRIMARY KEY AUTOINCREMENT,
+	protein_id   TEXT NOT NULL DEFAULT '',
+	project      TEXT NOT NULL DEFAULT '',
+	morsel_id    TEXT NOT NULL DEFAULT '',
+	provider     TEXT NOT NULL DEFAULT '',
+	total_tokens INTEGER NOT NULL DEFAULT 0,
+	duration_s   REAL NOT NULL DEFAULT 0,
+	success      BOOLEAN NOT NULL DEFAULT 0,
+	retro        TEXT NOT NULL DEFAULT '{}',
+	created_at   DATETIME NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_folds_protein ON protein_folds(protein_id);
+CREATE INDEX IF NOT EXISTS idx_folds_project ON protein_folds(project);
+
 `
 
 // Open creates or opens a SQLite database at the given path and ensures the schema exists.
@@ -274,6 +304,12 @@ func Open(dbPath string) (*Store, error) {
 	if err := s.ensureGenomesTable(); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("store: genomes table: %w", err)
+	}
+
+	// Seed initial proteins (deterministic workflow sequences)
+	if err := s.SeedProteins(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("store: seed proteins: %w", err)
 	}
 
 	return s, nil

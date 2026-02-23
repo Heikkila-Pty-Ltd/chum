@@ -109,6 +109,11 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 	w.RegisterActivity(acts.RunUBSScanActivity)
 	w.RegisterActivity(acts.GetBugPrimingActivity)
 
+	// --- Proteins (Deterministic Workflow Sequences) ---
+	w.RegisterActivity(acts.GetProteinInstructionsActivity)
+	w.RegisterActivity(acts.RecordProteinFoldActivity)
+	w.RegisterActivity(acts.MoleculeRetroActivity)
+
 	// --- Genome Evolution ---
 	w.RegisterActivity(acts.EvolveGenomeActivity)
 	w.RegisterActivity(acts.HibernateGenomeActivity)

@@ -236,6 +236,19 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 		}
 	}
 
+	// ===== PROTEIN INJECTION — deterministic workflow instructions =====
+	var activeProteinID string
+	var proteinInstructions string
+	{
+		proteinCtx := workflow.WithActivityOptions(ctx, recordOpts)
+		_ = workflow.ExecuteActivity(proteinCtx, a.GetProteinInstructionsActivity, earlySpecies).Get(ctx, &proteinInstructions)
+		if proteinInstructions != "" {
+			logger.Info(SharkPrefix+" Protein protocol injected", "Species", earlySpecies)
+			req.Prompt = req.Prompt + "\n\n" + proteinInstructions
+			activeProteinID = earlySpecies // tracks which protein was used
+		}
+	}
+
 	// ===== PHASE 1: PLAN =====
 	awaitResumeGate()
 	planStart := workflow.Now(ctx)
@@ -538,6 +551,30 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 
 				// ===== CHUM LOOP — spawn async learner + groomer =====
 				spawnCHUMWorkflows(ctx, logger, req, plan, baseWorkDir)
+
+				// ===== PROTEIN FOLD — record execution result =====
+				if activeProteinID != "" {
+					retroReq := MoleculeRetroRequest{
+						ProteinID:    activeProteinID,
+						MorselID:     req.TaskID,
+						DoDPassed:    true,
+						BuildPassed:  true,
+						AttemptCount: attempt + 1,
+					}
+					var retro store.MoleculeRetro
+					retroCtx := workflow.WithActivityOptions(ctx, recordOpts)
+					_ = workflow.ExecuteActivity(retroCtx, a.MoleculeRetroActivity, retroReq).Get(ctx, &retro)
+
+					fold := store.ProteinFold{
+						ProteinID: activeProteinID,
+						Project:   req.Project,
+						MorselID:  req.TaskID,
+						Provider:  req.Agent,
+						Success:   true,
+						Retro:     FormatRetroJSON(&retro),
+					}
+					_ = workflow.ExecuteActivity(retroCtx, a.RecordProteinFoldActivity, fold).Get(ctx, nil)
+				}
 
 				// ===== GENOME EVOLUTION — DoD pass feeds DNA =====
 				// The organism succeeded. Its approach becomes a pattern (DNA)

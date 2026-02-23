@@ -116,6 +116,15 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 	w.RegisterActivity(acts.RecordEscalationActivity)
 	w.RegisterActivity(acts.AutoFixLintActivity)
 
+	// --- Paleontologist Activities ---
+	w.RegisterWorkflow(PaleontologistWorkflow)
+	w.RegisterActivity(acts.AnalyzeProviderFitnessActivity)
+	w.RegisterActivity(acts.DiscoverAntibodiesActivity)
+	w.RegisterActivity(acts.ScanProteinCandidatesActivity)
+	w.RegisterActivity(acts.AuditSpeciesHealthActivity)
+	w.RegisterActivity(acts.AnalyzeCostTrendsActivity)
+	w.RegisterActivity(acts.RecordPaleontologyRunActivity)
+
 	// --- UBS (Ultimate Bug Scanner) ---
 	w.RegisterActivity(acts.RunUBSScanActivity)
 	w.RegisterActivity(acts.GetBugPrimingActivity)

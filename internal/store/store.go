@@ -271,6 +271,17 @@ CREATE TABLE IF NOT EXISTS protein_folds (
 CREATE INDEX IF NOT EXISTS idx_folds_protein ON protein_folds(protein_id);
 CREATE INDEX IF NOT EXISTS idx_folds_project ON protein_folds(project);
 
+CREATE TABLE IF NOT EXISTS paleontology_runs (
+	id                     INTEGER PRIMARY KEY AUTOINCREMENT,
+	run_at                 DATETIME NOT NULL DEFAULT (datetime('now')),
+	antibodies_discovered  INTEGER NOT NULL DEFAULT 0,
+	genes_mutated          INTEGER NOT NULL DEFAULT 0,
+	proteins_nominated     INTEGER NOT NULL DEFAULT 0,
+	species_audited        INTEGER NOT NULL DEFAULT 0,
+	cost_alerts            INTEGER NOT NULL DEFAULT 0,
+	summary                TEXT NOT NULL DEFAULT ''
+);
+
 `
 
 // Open creates or opens a SQLite database at the given path and ensures the schema exists.

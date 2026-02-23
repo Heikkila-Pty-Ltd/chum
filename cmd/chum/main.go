@@ -431,6 +431,46 @@ func main() {
 			}
 			logger.Info("strategic cron registered", "project", name, "workflow_id", workflowID, "schedule", "0 5 * * *")
 		}
+
+		// --- Paleontologist Schedule (every 30 minutes, per-project) ---
+		for name, project := range cfg.Projects { //nolint:gocritic
+			if !project.Enabled {
+				continue
+			}
+
+			paleoReq := temporal.PaleontologistRequest{
+				Project:   name,
+				WorkDir:   config.ExpandHome(project.Workspace),
+				LookbackH: 6,
+				Tier:      "premium",
+			}
+
+			paleoID := fmt.Sprintf("paleontologist-%s", name)
+			_, paleoErr := schedClient.Create(ctx, tclient.ScheduleOptions{
+				ID: paleoID,
+				Spec: tclient.ScheduleSpec{
+					Intervals: []tclient.ScheduleIntervalSpec{
+						{Every: 30 * time.Minute},
+					},
+				},
+				Action: &tclient.ScheduleWorkflowAction{
+					Workflow:  temporal.PaleontologistWorkflow,
+					Args:      []interface{}{paleoReq},
+					TaskQueue: "chum-task-queue",
+				},
+			})
+			if paleoErr != nil {
+				switch {
+				case strings.Contains(paleoErr.Error(), "AlreadyExists") ||
+					strings.Contains(paleoErr.Error(), "already registered"):
+					logger.Info("paleontologist schedule already exists", "project", name)
+				default:
+					logger.Error("failed to create paleontologist schedule", "project", name, "error", paleoErr)
+				}
+			} else {
+				logger.Info("paleontologist schedule registered", "project", name, "interval", "30m")
+			}
+		}
 	}()
 
 	// Start API server

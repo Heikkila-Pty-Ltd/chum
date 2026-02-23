@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/antigravity-dev/chum/internal/dispatch"
+
 	enumspb "go.temporal.io/api/enums/v1"
 	"go.temporal.io/api/workflowservice/v1"
 	"go.temporal.io/sdk/activity"
@@ -152,16 +154,26 @@ func workflowTimeout(estimateMinutes int) time.Duration {
 // main Activities struct because the dispatcher needs ConfigManager and a
 // Temporal client for listing workflows — things the regular activities don't need.
 type DispatchActivities struct {
-	CfgMgr config.ConfigManager
-	TC     client.Client
-	DAG    *graph.DAG
-	Store  *store.Store
+	CfgMgr      config.ConfigManager
+	TC          client.Client
+	DAG         *graph.DAG
+	Store       *store.Store
+	RateLimiter *dispatch.RateLimiter
 }
 
 // ScanCandidatesActivity does all the I/O-heavy work of discovering ready tasks.
 // This is the domain logic from the old scheduler.tick(), wrapped in an activity.
 func (da *DispatchActivities) ScanCandidatesActivity(ctx context.Context) (*ScanCandidatesResult, error) {
+	logger := activity.GetLogger(ctx)
 	cfg := da.CfgMgr.Get()
+
+	// --- Rate limit gate ---
+	if da.RateLimiter != nil {
+		if ok, reason := da.RateLimiter.CanDispatchAuthed(); !ok {
+			logger.Warn(SharkPrefix+" Rate limit reached — pausing dispatch", "Reason", reason)
+			return &ScanCandidatesResult{RateLimited: true, RateLimitReason: reason}, nil
+		}
+	}
 
 	// --- List open workflows ---
 	openWFs, err := listOpenAgentWorkflows(ctx, da.TC)

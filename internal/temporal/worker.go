@@ -12,6 +12,7 @@ import (
 	"go.temporal.io/sdk/worker"
 
 	"github.com/antigravity-dev/chum/internal/config"
+	"github.com/antigravity-dev/chum/internal/dispatch"
 	"github.com/antigravity-dev/chum/internal/graph"
 	"github.com/antigravity-dev/chum/internal/store"
 )
@@ -71,11 +72,13 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 	w := worker.New(c, DefaultTaskQueue, worker.Options{})
 
 	acts := &Activities{Store: st, Tiers: tiers, DAG: dag}
+	rl := dispatch.NewRateLimiter(st, cfgMgr.Get().RateLimits)
 	dispatchActs := &DispatchActivities{
-		CfgMgr: cfgMgr,
-		TC:     c,
-		DAG:    dag,
-		Store:  st,
+		CfgMgr:      cfgMgr,
+		TC:          c,
+		DAG:         dag,
+		Store:       st,
+		RateLimiter: rl,
 	}
 
 	// --- Core Workflows ---

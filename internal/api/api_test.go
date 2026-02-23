@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/antigravity-dev/chum/internal/config"
+	"github.com/antigravity-dev/chum/internal/graph"
 	"github.com/antigravity-dev/chum/internal/store"
 )
 
@@ -35,7 +36,8 @@ func setupTestServer(t *testing.T) *Server {
 	}
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	srv, err := NewServer(cfg, st, logger)
+	dag := graph.NewDAG(st.DB())
+	srv, err := NewServer(cfg, st, dag, logger)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -698,6 +698,23 @@ func (a *Activities) SetupWorktreeActivity(ctx context.Context, baseDir, taskID,
 		}
 	}
 
+	// Copy .env* files from base repo — git worktrees don't include .gitignore'd files.
+	// Without .env.local, Next.js/Supabase builds fail because NEXT_PUBLIC_* vars are missing at build time.
+	envGlob, _ := filepath.Glob(filepath.Join(baseDir, ".env*"))
+	for _, envFile := range envGlob {
+		baseName := filepath.Base(envFile)
+		dst := filepath.Join(wtDir, baseName)
+		// Only copy if not already present (don't overwrite if the branch has its own)
+		if _, err := os.Stat(dst); err != nil {
+			src, readErr := os.ReadFile(envFile)
+			if readErr == nil {
+				if writeErr := os.WriteFile(dst, src, 0600); writeErr == nil {
+					logger.Info(SharkPrefix+" Copied env file to worktree", "file", baseName)
+				}
+			}
+		}
+	}
+
 	logger.Info(SharkPrefix+" Worktree ready", "path", wtDir)
 	return wtDir, nil
 }

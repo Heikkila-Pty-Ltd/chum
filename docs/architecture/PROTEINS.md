@@ -332,6 +332,76 @@ DISCOVERY → CODIFICATION → REUSE → MUTATION → NATURAL SELECTION
    → Winning molecules spread to other proteins
 ```
 
+## Automated Retrospectives
+
+Every molecule and every protein fold gets a **mini-retro** — a cheap, structured post-mortem that feeds directly back into protein evolution.
+
+### Molecule-Level Retro (runs after each step)
+
+```yaml
+retro:
+  provider: gemini-flash  # retros should be cheap
+  input:
+    - molecule definition (what was asked)
+    - execution log (what actually happened)
+    - token usage + duration
+    - UBS findings (if any)
+    - DoD result (if applicable)
+  output: molecule_retro.json
+  schema:
+    worked: ["Used correct import paths", "Component rendered on first try"]
+    failed: ["Hardcoded color instead of using design token", "Missed mobile breakpoint"]
+    improve: ["Should have read tokens.ts before writing CSS", "Add 375px viewport check"]
+    token_waste: "650 tokens spent on a retry that could be avoided by reading types first"
+    verdict: "keep | rewrite | split | merge | remove"
+```
+
+### Protein-Level Retro (runs after all molecules complete)
+
+```yaml
+retro:
+  provider: claude-sonnet  # needs reasoning for cross-molecule analysis
+  input:
+    - all molecule retros from this fold
+    - total protein metrics (tokens, duration, success, quality)
+    - comparison to previous folds of same protein (if any)
+  output: protein_retro.json
+  schema:
+    sequence_issues: ["Molecule 3 had info Molecule 5 needed — should swap order"]
+    redundant_steps: ["Molecule 2 and 4 both checked typography — merge"]
+    missing_steps: ["No mobile viewport check until Molecule 7 — add earlier"]
+    provider_mismatch: ["Molecule 1 used claude-sonnet but only needed gemini-flash"]
+    recommended_mutations:
+      - action: swap_order
+        molecules: [3, 5]
+        reason: "Molecule 5 needed competitor data that Molecule 3 produces"
+      - action: merge
+        molecules: [2, 4]
+        reason: "Both run /critique on typography — single pass is cheaper"
+      - action: add_step
+        after: 1
+        template: "Verify all competitor URLs resolve before crawling"
+      - action: change_provider
+        molecule: 1
+        from: claude-sonnet
+        to: gemini-flash
+        reason: "Tool orchestration doesn't need expensive reasoning"
+```
+
+### How Retros Drive Mutations
+
+```
+Fold 1: protein-v1 runs → retro says "swap molecules 3 and 5"
+Fold 2: protein-v1 runs again → same retro finding
+Fold 3: PaleontologistActivity sees pattern (2+ identical findings)
+  → Forks protein-v1 → protein-v2 with molecules swapped
+  → Next similar task: A/B test v1 vs v2
+  → v2 wins (fewer tokens, higher quality)
+  → v1 deprecated, v2 becomes default
+```
+
+Retro findings that appear **once** are noted. Findings that appear **twice** trigger a mutation proposal. Findings that appear **three times** trigger an automatic fork — the system doesn't wait for permission. Nature has no meetings.
+
 ## The Fossil Record (Cross-Project Genome Accumulation)
 
 > After several frontend projects, the system should have templated components, sections, buttons, cards — a fossil record. The next project doesn't reinvent the wheel; it evolves from the previous generation's best work.

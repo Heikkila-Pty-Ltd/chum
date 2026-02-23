@@ -38,7 +38,15 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 		return err
 	}
 
-	w := worker.New(c, DefaultTaskQueue, worker.Options{})
+	w := worker.New(c, DefaultTaskQueue, worker.Options{
+		// Concurrency tuning for Cambrian Explosion (6 concurrent workflows).
+		// Default MaxConcurrentActivityExecutionSize is 1000 but the single
+		// poller can't keep up — bump pollers so activities get picked up faster.
+		MaxConcurrentActivityExecutionSize:      20,
+		MaxConcurrentWorkflowTaskExecutionSize:  10,
+		MaxConcurrentActivityTaskPollers:         4,
+		MaxConcurrentWorkflowTaskPollers:         2,
+	})
 
 	// Wire Matrix notifications (nil sender = notifications disabled).
 	cfg := cfgMgr.Get()

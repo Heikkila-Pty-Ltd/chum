@@ -30,17 +30,7 @@ type BugPattern struct {
 	SelfFixed  int    `json:"self_fixed"`
 }
 
-// RecordUBSFinding inserts a single UBS finding into the database.
-func (s *Store) RecordUBSFinding(f UBSFinding) error {
-	_, err := s.db.Exec(`INSERT INTO ubs_findings
-		(dispatch_id, morsel_id, project, provider, species, rule_id, severity,
-		 file_path, line_number, message, language, attempt, fixed)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		f.DispatchID, f.MorselID, f.Project, f.Provider, f.Species,
-		f.RuleID, f.Severity, f.FilePath, f.LineNumber, f.Message,
-		f.Language, f.Attempt, f.Fixed)
-	return err
-}
+
 
 // RecordUBSFindings batch-inserts multiple findings.
 func (s *Store) RecordUBSFindings(findings []UBSFinding) error {

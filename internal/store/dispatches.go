@@ -146,18 +146,6 @@ func (s *Store) UpdateDispatchStatus(id int64, status string, exitCode int, dura
 	return nil
 }
 
-// UpdateDispatchStage updates a dispatch's stage.
-func (s *Store) UpdateDispatchStage(id int64, stage string) error {
-	_, err := s.db.Exec(
-		`UPDATE dispatches SET stage = ? WHERE id = ?`,
-		stage,
-		id,
-	)
-	if err != nil {
-		return fmt.Errorf("store: update dispatch stage: %w", err)
-	}
-	return nil
-}
 
 // MarkDispatchPendingRetry marks a failed dispatch for retry, increments retries,
 // and updates the tier for the next retry attempt.
@@ -192,44 +180,7 @@ func (s *Store) MarkDispatchPendingRetry(id int64, nextTier string, nextRetryAt 
 	return nil
 }
 
-// UpdateDispatchPR updates a dispatch's PR information.
-func (s *Store) UpdateDispatchPR(id int64, prURL string, prNumber int) error {
-	_, err := s.db.Exec(
-		`UPDATE dispatches SET pr_url = ?, pr_number = ? WHERE id = ?`,
-		prURL,
-		prNumber,
-		id,
-	)
-	if err != nil {
-		return fmt.Errorf("store: update dispatch PR: %w", err)
-	}
-	return nil
-}
 
-// GetLastDispatchIDForMorsel returns the ID of the most recent dispatch for a morsel.
-func (s *Store) GetLastDispatchIDForMorsel(morselID string) (int64, error) {
-	var id int64
-	err := s.db.QueryRow(`SELECT id FROM dispatches WHERE morsel_id = ? ORDER BY dispatched_at DESC LIMIT 1`, morselID).Scan(&id)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return 0, nil
-		}
-		return 0, fmt.Errorf("store: get last dispatch ID: %w", err)
-	}
-	return id, nil
-}
-
-// GetLatestDispatchForMorsel returns the most recent dispatch row for a morsel.
-func (s *Store) GetLatestDispatchForMorsel(morselID string) (*Dispatch, error) {
-	dispatches, err := s.queryDispatches(`SELECT `+dispatchCols+` FROM dispatches WHERE morsel_id = ? ORDER BY id DESC LIMIT 1`, morselID)
-	if err != nil {
-		return nil, err
-	}
-	if len(dispatches) == 0 {
-		return nil, nil
-	}
-	return &dispatches[0], nil
-}
 
 // CountRecentDispatchesByFailureCategory counts dispatches diagnosed with category within a window.
 func (s *Store) CountRecentDispatchesByFailureCategory(category string, window time.Duration) (int, error) {

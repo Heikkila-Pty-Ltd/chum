@@ -470,7 +470,9 @@ Be opinionated. Say what matters most and why.`,
 		lessonsContext,
 	)
 
-	agent := ResolveTierAgent(a.Tiers, req.Tier)
+	// Strategic analysis requires deep reasoning — always use gemini-pro.
+	// codex-spark crashes on the large repo-map + task-state prompts.
+	agent := "gemini-pro"
 	cliResult, err := runAgent(ctx, agent, prompt, req.WorkDir)
 	if err != nil {
 		return nil, fmt.Errorf("strategic analysis failed: %w", err)

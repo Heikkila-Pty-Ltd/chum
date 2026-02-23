@@ -61,7 +61,7 @@ func parseAgentOutput(agent, raw string) CLIResult {
 		return parseJSONOutput(raw)
 	case "codex":
 		return parseCodexOutput(raw)
-	case "gemini":
+	case "gemini", "gemini-pro":
 		return parseGeminiOutput(raw)
 	default:
 		return CLIResult{Output: raw}

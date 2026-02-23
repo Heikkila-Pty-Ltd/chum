@@ -99,6 +99,9 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 	w.RegisterActivity(acts.GenerateQuestionsActivity)
 	w.RegisterActivity(acts.SummarizePlanActivity)
 	w.RegisterActivity(acts.NotifyActivity)
+	w.RegisterActivity(acts.MergeToMainActivity)
+	w.RegisterActivity(acts.GetWorktreeDiffActivity)
+	w.RegisterActivity(acts.ReviewExplosionCandidatesActivity)
 
 	// --- Dispatcher Activities ---
 	w.RegisterActivity(dispatchActs.ScanCandidatesActivity)

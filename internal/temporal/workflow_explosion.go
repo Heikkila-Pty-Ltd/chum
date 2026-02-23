@@ -15,6 +15,7 @@ import (
 func CambrianExplosionWorkflow(ctx workflow.Context, req TaskRequest, providers []EscalationTier) error {
 	logger := workflow.GetLogger(ctx)
 	logger.Info(SharkPrefix+" Triggering Cambrian Explosion!", "TaskID", req.TaskID, "Providers", len(providers))
+	startTime := workflow.Now(ctx)
 
 	var a *Activities
 
@@ -51,53 +52,67 @@ func CambrianExplosionWorkflow(ctx workflow.Context, req TaskRequest, providers 
 		futures = append(futures, fut)
 	}
 
-	// Gather results
+	// Gather results — wait for ALL children to complete before scoring.
 	type ExplosionResult struct {
-		Provider       string
-		DoDPassed      bool
-		CostUSD        float64
-		Error          string
-		Worktree       string
-		ExplosionID    string
+		Provider    string
+		DoDPassed   bool
+		Error       string
+		ExplosionID string
+		ElapsedS    float64
 	}
 
 	var results []ExplosionResult
+
+	sel := workflow.NewSelector(ctx)
+	remaining := len(futures)
+
 	for i, fut := range futures {
-		provider := providers[i].ProviderKey
-		explosionID := explosionIDs[i]
+		i, fut := i, fut // capture loop vars
+		sel.AddFuture(fut, func(f workflow.Future) {
+			provider := providers[i].ProviderKey
+			explosionID := explosionIDs[i]
 
-		// Execute child and wait for its completion logic
-		// We expect the workflow to return nil if it passed, or an error if it escalated/failed.
-		err := fut.Get(ctx, nil)
-		passed := (err == nil)
-		errMsg := ""
-		if err != nil {
-			errMsg = err.Error()
-		}
+			err := f.Get(ctx, nil)
+			passed := (err == nil)
+			errMsg := ""
+			if err != nil {
+				errMsg = err.Error()
+			}
 
-		results = append(results, ExplosionResult{
-			Provider:    provider,
-			DoDPassed:   passed,
-			ExplosionID: explosionID,
-			Error:       errMsg,
+			elapsed := workflow.Now(ctx).Sub(startTime).Seconds()
+			results = append(results, ExplosionResult{
+				Provider:    provider,
+				DoDPassed:   passed,
+				ExplosionID: explosionID,
+				Error:       errMsg,
+				ElapsedS:    elapsed,
+			})
+
+			status := "PASSED"
+			if !passed {
+				status = "FAILED"
+			}
+			logger.Info(SharkPrefix+" Explosion organism finished",
+				"Provider", provider, "Status", status, "ElapsedS", elapsed)
 		})
 	}
 
-	// We have the results; now pick the fittest!
-	var winner *ExplosionResult
+	// Drain all futures — every organism must finish before we can compare.
+	for remaining > 0 {
+		sel.Select(ctx)
+		remaining--
+	}
 
-	// Score them out
-	for i := range results {
-		res := &results[i]
-		if !res.DoDPassed {
-			continue // Dead branches don't get selected
-		}
-		// In MVP we just pick the first one that passed DoD. 
-		// Future: track costs from a shared store or return from workflow to compute true Fitness.
-		if winner == nil {
-			winner = res
+	// === FOSSIL RECORD — log all results for paleontologist analysis ===
+	passedCount := 0
+	for _, res := range results {
+		if res.DoDPassed {
+			passedCount++
 		}
 	}
+	logger.Info(SharkPrefix+" Cambrian Explosion complete",
+		"TaskID", req.TaskID, "Total", len(results), "Passed", passedCount,
+		"Failed", len(results)-passedCount)
 
 	recordOpts := workflow.ActivityOptions{
 		StartToCloseTimeout: 30 * time.Second,
@@ -105,7 +120,15 @@ func CambrianExplosionWorkflow(ctx workflow.Context, req TaskRequest, providers 
 	}
 	recordCtx := workflow.WithActivityOptions(ctx, recordOpts)
 
-	if winner == nil {
+	// === WINNER SELECTION ===
+	var passingResults []ExplosionResult
+	for _, res := range results {
+		if res.DoDPassed {
+			passingResults = append(passingResults, res)
+		}
+	}
+
+	if len(passingResults) == 0 {
 		logger.Error(SharkPrefix + " Cambrian Explosion failed — all species variations went extinct")
 		var allFailures []string
 		for _, res := range results {
@@ -114,23 +137,82 @@ func CambrianExplosionWorkflow(ctx workflow.Context, req TaskRequest, providers 
 			}
 		}
 		workflow.ExecuteActivity(recordCtx, a.EscalateActivity, req.TaskID, allFailures).Get(ctx, nil)
+
+		// Clean up all worktrees
+		for _, res := range results {
+			resDir := WorktreeDir(req.TaskID, res.ExplosionID)
+			workflow.ExecuteActivity(recordCtx, a.CleanupWorktreeActivity, req.WorkDir, resDir).Get(ctx, nil)
+		}
 		return fmt.Errorf("all providers failed the explosion")
 	}
 
-	logger.Info(SharkPrefix+" Cambrian Explosion selected winner", "Winner", winner.Provider)
+	// Determine winner: if only 1 passed, it wins. If multiple, senior review.
+	var winner *ExplosionResult
 
-	// Since ChumAgentWorkflow skipped merging/pushing, we have to push the winner's branch!
-	// Re-construct the winner's worktree branch format
+	if len(passingResults) == 1 {
+		winner = &passingResults[0]
+		logger.Info(SharkPrefix+" Single DoD-passing organism — auto-selected",
+			"Winner", winner.Provider, "ElapsedS", winner.ElapsedS)
+	} else {
+		// Multiple candidates passed — get git diffs and call senior reviewer.
+		reviewOpts := workflow.ActivityOptions{
+			StartToCloseTimeout: 5 * time.Minute,
+			RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 1},
+		}
+		reviewCtx := workflow.WithActivityOptions(ctx, reviewOpts)
+
+		// Build candidates with their git diffs
+		var candidates []ExplosionCandidate
+		for _, res := range passingResults {
+			wtDir := WorktreeDir(req.TaskID, res.ExplosionID)
+			// Get the diff for this candidate
+			var diff string
+			diffOpts := workflow.ActivityOptions{
+				StartToCloseTimeout: 30 * time.Second,
+				RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 1},
+			}
+			diffCtx := workflow.WithActivityOptions(ctx, diffOpts)
+			_ = workflow.ExecuteActivity(diffCtx, a.GetWorktreeDiffActivity, wtDir).Get(ctx, &diff)
+
+			candidates = append(candidates, ExplosionCandidate{
+				Provider:    res.Provider,
+				ExplosionID: res.ExplosionID,
+				Diff:        diff,
+				ElapsedS:    res.ElapsedS,
+			})
+		}
+
+		var winnerIdx int
+		if err := workflow.ExecuteActivity(reviewCtx, a.ReviewExplosionCandidatesActivity,
+			req.TaskID, candidates).Get(ctx, &winnerIdx); err != nil {
+			logger.Warn(SharkPrefix+" Senior review failed — using fastest candidate", "error", err)
+			winnerIdx = 0
+		}
+		winner = &passingResults[winnerIdx]
+		logger.Info(SharkPrefix+" Senior review selected winner",
+			"Winner", winner.Provider, "ElapsedS", winner.ElapsedS,
+			"CandidatesReviewed", len(passingResults))
+	}
+
+	logger.Info(SharkPrefix+" Cambrian Explosion — pushing winner", "Winner", winner.Provider)
+
+	// Push and merge the winner's branch.
 	wtDir := WorktreeDir(req.TaskID, winner.ExplosionID)
 	if err := workflow.ExecuteActivity(recordCtx, a.PushWorktreeActivity, wtDir).Get(ctx, nil); err != nil {
 		logger.Warn(SharkPrefix+" Failed to push winner worktree", "error", err)
 	}
 
-	// Update Task Status
+	featureBranch := fmt.Sprintf("chum/%s-%s", req.TaskID, winner.ExplosionID)
+	if err := workflow.ExecuteActivity(recordCtx, a.MergeToMainActivity,
+		req.WorkDir, featureBranch, "Cambrian Explosion winner: "+winner.Provider).Get(ctx, nil); err != nil {
+		logger.Warn(SharkPrefix+" Merge to main failed for explosion winner", "error", err, "branch", featureBranch)
+	}
+
+	// Close the task.
 	workflow.ExecuteActivity(recordCtx, a.CloseTaskActivity, req.TaskID, "completed").Get(ctx, nil)
 	recordOutcome(ctx, recordOpts, a, req, "completed", 0, 0, true, "", workflow.Now(ctx), TokenUsage{}, nil, nil)
 
-	// Clean up all worktrees created during the explosion
+	// Clean up ALL worktrees (including winner's, since it's merged now).
 	for _, res := range results {
 		resDir := WorktreeDir(req.TaskID, res.ExplosionID)
 		workflow.ExecuteActivity(recordCtx, a.CleanupWorktreeActivity, req.WorkDir, resDir).Get(ctx, nil)

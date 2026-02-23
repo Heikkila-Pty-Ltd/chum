@@ -539,7 +539,11 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 
 				if req.ExplosionID != "" {
 					retainWorktree = true
-					return nil // CambrianExplosionWorkflow will handle DB closing, recording, and pushing
+					// Record outcome even in explosion mode — the parent needs
+					// this data for winner scoring and the learner needs patterns.
+					recordOutcome(ctx, recordOpts, a, req, "completed", 0,
+						handoffCount, true, "", startTime, totalTokens, activityTokens, stepMetrics)
+					return nil // CambrianExplosionWorkflow will handle task closing, pushing, and merging
 				}
 
 				// Close the task — it's done. New work = new morsel.
@@ -600,6 +604,17 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 				pushCtx := workflow.WithActivityOptions(ctx, worktreeOpts)
 				if err := workflow.ExecuteActivity(pushCtx, a.PushWorktreeActivity, worktreePath).Get(ctx, nil); err != nil {
 					logger.Warn(SharkPrefix+" Failed to push worktree branch", "error", err)
+				}
+
+				// ===== MERGE TO MAIN — squash-merge feature branch into main =====
+				featureBranch := fmt.Sprintf("chum/%s", req.TaskID)
+				mergeCtx := workflow.WithActivityOptions(ctx, worktreeOpts)
+				if err := workflow.ExecuteActivity(mergeCtx, a.MergeToMainActivity,
+					baseWorkDir, featureBranch, plan.Summary).Get(ctx, nil); err != nil {
+					logger.Warn(SharkPrefix+" Merge to main failed — branch pushed but not merged",
+						"error", err, "branch", featureBranch)
+					// If conflict, mark task as conflict status instead of completed.
+					notify("conflict", map[string]string{"branch": featureBranch, "error": err.Error()})
 				}
 
 				cleanupWorktree()

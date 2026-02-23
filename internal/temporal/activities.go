@@ -766,9 +766,176 @@ func (a *Activities) PushWorktreeActivity(ctx context.Context, wtDir string) err
 	return nil
 }
 
+// MergeToMainActivity squash-merges a feature branch into the base branch (default: main),
+// pushes the result, and cleans up the feature branch (local + remote).
+// If a merge conflict is detected, returns git.ErrMergeConflict so the workflow can escalate.
+func (a *Activities) MergeToMainActivity(ctx context.Context, baseDir, featureBranch, taskSummary string) error {
+	logger := activity.GetLogger(ctx)
+	logger.Info(SharkPrefix+" Merging feature branch into main",
+		"baseDir", baseDir, "featureBranch", featureBranch)
+
+	// Pull latest main to minimize stale-base conflicts.
+	pullCmd := exec.CommandContext(ctx, "git", "checkout", "main")
+	pullCmd.Dir = baseDir
+	if out, err := pullCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("checkout main failed: %w\n%s", err, string(out))
+	}
+
+	pullOrigin := exec.CommandContext(ctx, "git", "pull", "--rebase", "origin", "main")
+	pullOrigin.Dir = baseDir
+	if out, err := pullOrigin.CombinedOutput(); err != nil {
+		logger.Warn(SharkPrefix+" pull --rebase origin main failed (proceeding anyway)", "error", err, "output", string(out))
+	}
+
+	// Squash-merge the feature branch into main.
+	if err := git.MergeBranchIntoBase(baseDir, featureBranch, "main", "squash"); err != nil {
+		if errors.Is(err, git.ErrMergeConflict) {
+			logger.Warn(SharkPrefix+" Merge conflict detected — escalating",
+				"featureBranch", featureBranch, "error", err)
+			return err
+		}
+		return fmt.Errorf("merge failed: %w", err)
+	}
+
+	// The squash merge stages changes but git.MergeBranchIntoBase already commits
+	// for squash strategy. Push main to remote.
+	pushCmd := exec.CommandContext(ctx, "git", "push", "origin", "main")
+	pushCmd.Dir = baseDir
+	if out, err := pushCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("push main failed: %w\n%s", err, string(out))
+	}
+
+	logger.Info(SharkPrefix+" Feature branch merged into main and pushed", "featureBranch", featureBranch)
+
+	// Cleanup: delete the local and remote feature branch.
+	delLocal := exec.CommandContext(ctx, "git", "branch", "-D", featureBranch)
+	delLocal.Dir = baseDir
+	if err := delLocal.Run(); err != nil {
+		logger.Debug(SharkPrefix+" Failed to delete local branch (best-effort)", "branch", featureBranch, "error", err)
+	}
+
+	delRemote := exec.CommandContext(ctx, "git", "push", "origin", "--delete", featureBranch)
+	delRemote.Dir = baseDir
+	if err := delRemote.Run(); err != nil {
+		logger.Debug(SharkPrefix+" Failed to delete remote branch (best-effort)", "branch", featureBranch, "error", err)
+	}
+
+	return nil
+}
+
+// ExplosionCandidate holds data about a single explosion candidate for senior review.
+type ExplosionCandidate struct {
+	Provider    string
+	ExplosionID string
+	Diff        string // git diff output
+	ElapsedS    float64
+}
+
+// ReviewExplosionCandidatesActivity uses a senior model to compare multiple DoD-passing
+// implementations and pick the best one. Returns the index of the winner (0-based).
+func (a *Activities) ReviewExplosionCandidatesActivity(ctx context.Context, taskID string, candidates []ExplosionCandidate) (int, error) {
+	logger := activity.GetLogger(ctx)
+	logger.Info(SharkPrefix+" Senior review of explosion candidates",
+		"TaskID", taskID, "Candidates", len(candidates))
+
+	if len(candidates) == 1 {
+		return 0, nil // Only one candidate — it wins by default
+	}
+
+	// Build a comparison prompt with all diffs
+	var promptBuilder strings.Builder
+	promptBuilder.WriteString(fmt.Sprintf("You are a senior engineering lead. %d AI agents all attempted the same task and passed their build checks.\n", len(candidates)))
+	promptBuilder.WriteString("Compare their implementations and pick the BEST one.\n\n")
+	promptBuilder.WriteString("Evaluate on: code quality, simplicity, correctness, maintainability, and efficiency.\n\n")
+
+	for i, c := range candidates {
+		promptBuilder.WriteString(fmt.Sprintf("=== CANDIDATE %d: %s (completed in %.0fs) ===\n", i+1, c.Provider, c.ElapsedS))
+		diff := c.Diff
+		if len(diff) > 4000 {
+			diff = diff[:4000] + "\n... [truncated]"
+		}
+		promptBuilder.WriteString(diff)
+		promptBuilder.WriteString("\n\n")
+	}
+
+	promptBuilder.WriteString(`Respond with ONLY a JSON object:
+{
+  "winner": <1-based candidate number>,
+  "rationale": "brief explanation of why this implementation is best",
+  "patterns": {
+    "good": ["pattern 1 from winner", "pattern 2"],
+    "bad": ["anti-pattern from losers", "issue found"]
+  }
+}`)
+
+	// Use gemini as the senior reviewer for explosion comparison
+	reviewer := "gemini"
+	cliResult, err := runReviewAgent(ctx, reviewer, promptBuilder.String(), "")
+	if err != nil {
+		logger.Warn(SharkPrefix+" Senior review failed — falling back to fastest candidate", "error", err)
+		return 0, nil // Fall back to first candidate (fastest)
+	}
+
+	jsonStr := extractJSON(cliResult.Output)
+	if jsonStr == "" {
+		logger.Warn(SharkPrefix+" Senior review output was not valid JSON — falling back to fastest")
+		return 0, nil
+	}
+
+	// Parse the winner index
+	var reviewResult struct {
+		Winner    int      `json:"winner"`
+		Rationale string   `json:"rationale"`
+		Patterns  struct {
+			Good []string `json:"good"`
+			Bad  []string `json:"bad"`
+		} `json:"patterns"`
+	}
+	if err := json.Unmarshal([]byte(jsonStr), &reviewResult); err != nil {
+		logger.Warn(SharkPrefix+" Failed to parse review JSON", "error", err)
+		return 0, nil
+	}
+
+	winnerIdx := reviewResult.Winner - 1 // convert 1-based to 0-based
+	if winnerIdx < 0 || winnerIdx >= len(candidates) {
+		logger.Warn(SharkPrefix+" Invalid winner index from reviewer", "winner", reviewResult.Winner)
+		return 0, nil
+	}
+
+	logger.Info(SharkPrefix+" Senior review complete",
+		"Winner", candidates[winnerIdx].Provider,
+		"Rationale", reviewResult.Rationale,
+		"GoodPatterns", len(reviewResult.Patterns.Good),
+		"BadPatterns", len(reviewResult.Patterns.Bad))
+
+	return winnerIdx, nil
+}
+
+// GetWorktreeDiffActivity returns the git diff of a worktree against its base branch.
+// Used by the explosion workflow to get diffs for senior reviewer comparison.
+func (a *Activities) GetWorktreeDiffActivity(ctx context.Context, wtDir string) (string, error) {
+	cmd := exec.CommandContext(ctx, "git", "diff", "main", "--stat", "--patch")
+	cmd.Dir = wtDir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("git diff in %s failed: %w\n%s", wtDir, err, string(out))
+	}
+	diff := string(out)
+	if len(diff) > 8000 {
+		diff = diff[:8000] + "\n... [truncated]"
+	}
+	return diff, nil
+}
+
 func (a *Activities) CleanupWorktreeActivity(ctx context.Context, baseDir, wtDir string) error {
 	logger := activity.GetLogger(ctx)
 	logger.Info(SharkPrefix+" Cleaning up worktree", "worktree", wtDir)
+
+	// Detect the branch name before removal so we can cleanup remote.
+	branchCmd := exec.CommandContext(ctx, "git", "rev-parse", "--abbrev-ref", "HEAD")
+	branchCmd.Dir = wtDir
+	branchOut, _ := branchCmd.Output()
+	branchName := strings.TrimSpace(string(branchOut))
 
 	// Remove the worktree
 	rmCmd := exec.CommandContext(ctx, "git", "worktree", "remove", "--force", wtDir)
@@ -782,6 +949,21 @@ func (a *Activities) CleanupWorktreeActivity(ctx context.Context, baseDir, wtDir
 	pruneCmd.Dir = baseDir
 	if err := pruneCmd.Run(); err != nil {
 		logger.Warn(SharkPrefix+" git worktree prune failed", "error", err)
+	}
+
+	// Delete the remote branch to prevent stale chum/* branches accumulating.
+	if branchName != "" && branchName != "HEAD" && strings.HasPrefix(branchName, "chum/") {
+		delRemote := exec.CommandContext(ctx, "git", "push", "origin", "--delete", branchName)
+		delRemote.Dir = baseDir
+		if err := delRemote.Run(); err != nil {
+			logger.Debug(SharkPrefix+" Failed to delete remote branch (best-effort)", "branch", branchName, "error", err)
+		}
+
+		delLocal := exec.CommandContext(ctx, "git", "branch", "-D", branchName)
+		delLocal.Dir = baseDir
+		if err := delLocal.Run(); err != nil {
+			logger.Debug(SharkPrefix+" Failed to delete local branch (best-effort)", "branch", branchName, "error", err)
+		}
 	}
 
 	return nil

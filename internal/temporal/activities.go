@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -588,48 +589,160 @@ func (a *Activities) RecordHealthEventActivity(ctx context.Context, eventType, d
 // --- helpers ---
 
 // extractJSON finds the first JSON object in text (handles markdown code fences).
+// Applies sanitizeJSON to fix common LLM output issues (invalid escapes, trailing commas).
 func extractJSON(text string) string {
+	var raw string
+
 	// Try to find JSON between code fences first
 	if idx := strings.Index(text, "```json"); idx >= 0 {
 		start := idx + 7
 		if end := strings.Index(text[start:], "```"); end >= 0 {
-			return strings.TrimSpace(text[start : start+end])
+			raw = strings.TrimSpace(text[start : start+end])
 		}
 	}
-	if idx := strings.Index(text, "```"); idx >= 0 {
-		start := idx + 3
-		// Skip optional language tag on same line
-		if nl := strings.Index(text[start:], "\n"); nl >= 0 {
-			start += nl + 1
-		}
-		if end := strings.Index(text[start:], "```"); end >= 0 {
-			candidate := strings.TrimSpace(text[start : start+end])
-			if candidate != "" && candidate[0] == '{' {
-				return candidate
+	if raw == "" {
+		if idx := strings.Index(text, "```"); idx >= 0 {
+			start := idx + 3
+			// Skip optional language tag on same line
+			if nl := strings.Index(text[start:], "\n"); nl >= 0 {
+				start += nl + 1
+			}
+			if end := strings.Index(text[start:], "```"); end >= 0 {
+				candidate := strings.TrimSpace(text[start : start+end])
+				if candidate != "" && candidate[0] == '{' {
+					raw = candidate
+				}
 			}
 		}
 	}
 
-	// Try to find raw JSON object
-	start := strings.Index(text, "{")
-	if start < 0 {
-		return ""
-	}
-	// Find matching closing brace
-	depth := 0
-	for i := start; i < len(text); i++ {
-		switch text[i] {
-		case '{':
-			depth++
-		case '}':
-			depth--
-			if depth == 0 {
-				return text[start : i+1]
+	if raw == "" {
+		// Try to find raw JSON object
+		start := strings.Index(text, "{")
+		if start < 0 {
+			return ""
+		}
+		// Find matching closing brace (skip braces inside strings)
+		depth := 0
+		inString := false
+		escaped := false
+		for i := start; i < len(text); i++ {
+			ch := text[i]
+			if escaped {
+				escaped = false
+				continue
+			}
+			if ch == '\\' && inString {
+				escaped = true
+				continue
+			}
+			if ch == '"' {
+				inString = !inString
+				continue
+			}
+			if inString {
+				continue
+			}
+			switch ch {
+			case '{':
+				depth++
+			case '}':
+				depth--
+				if depth == 0 {
+					raw = text[start : i+1]
+					break
+				}
+			}
+			if raw != "" {
+				break
 			}
 		}
 	}
-	return ""
+
+	if raw == "" {
+		return ""
+	}
+	return sanitizeJSON(raw)
 }
+
+// sanitizeJSON fixes common issues in LLM-generated JSON that cause
+// json.Unmarshal to fail:
+//  1. Invalid backslash escapes (\n literal outside strings → \\n)
+//  2. Trailing commas before } or ] (common LLM mistake)
+//  3. Unescaped control characters in string values
+func sanitizeJSON(s string) string {
+	// First, try to parse as-is — fast path for valid JSON.
+	if json.Valid([]byte(s)) {
+		return s
+	}
+
+	// Walk through the string and fix issues inside JSON string values.
+	var buf strings.Builder
+	buf.Grow(len(s))
+	inString := false
+	i := 0
+	for i < len(s) {
+		ch := s[i]
+		if !inString {
+			if ch == '"' {
+				inString = true
+			}
+			buf.WriteByte(ch)
+			i++
+			continue
+		}
+		// Inside a JSON string value
+		if ch == '"' {
+			// End of string
+			inString = false
+			buf.WriteByte(ch)
+			i++
+			continue
+		}
+		if ch == '\\' && i+1 < len(s) {
+			next := s[i+1]
+			// Valid JSON escapes: " \ / b f n r t u
+			switch next {
+			case '"', '\\', '/', 'b', 'f', 'n', 'r', 't', 'u':
+				buf.WriteByte(ch)
+				buf.WriteByte(next)
+				i += 2
+				continue
+			default:
+				// Invalid escape — double-escape the backslash
+				buf.WriteString("\\\\")
+				i++
+				continue
+			}
+		}
+		// Control characters (0x00-0x1F) must be escaped in JSON strings
+		if ch < 0x20 {
+			switch ch {
+			case '\n':
+				buf.WriteString("\\n")
+			case '\r':
+				buf.WriteString("\\r")
+			case '\t':
+				buf.WriteString("\\t")
+			default:
+				buf.WriteString(fmt.Sprintf("\\u%04x", ch))
+			}
+			i++
+			continue
+		}
+		buf.WriteByte(ch)
+		i++
+	}
+
+	result := buf.String()
+
+	// Fix trailing commas: ,} → } and ,] → ]
+	result = trailingCommaRe.ReplaceAllString(result, "$1")
+
+	return result
+}
+
+var trailingCommaRe = regexp.MustCompile(`,\s*([}\]])`)
 
 func truncate(s string, maxLen int) string {
 	if len(s) <= maxLen {

@@ -2,10 +2,10 @@
 
 [general]
 tick_interval = "1m"
-max_per_tick = 7
-max_concurrent_coders = 7
-max_concurrent_reviewers = 2
-max_concurrent_total = 10
+max_per_tick = 10
+max_concurrent_coders = 10
+max_concurrent_reviewers = 3
+max_concurrent_total = 15
 stuck_timeout = "30m"
 max_retries = 6
 log_level = "info"
@@ -103,7 +103,8 @@ enabled = false
 
 [tiers]
 # Active agents: codex + gemini (claude gated off)
-fast = ["codex-spark", "gemini-flash"]
+# Favour gemini-pro (97% headroom) over flash (29% remaining).
+fast = ["codex-spark", "gemini-pro"]
 balanced = ["codex-spark", "gemini-pro"]
 premium = ["codex-spark", "gemini-pro"]
 
@@ -117,7 +118,7 @@ channel = "matrix"
 agent_id = "main"
 matrix_bot_account = "spritzbot"
 default_room = "!adJhqAxLcYqQuYraGf:vmi3041112.contaboserver.net"
-admin_room = "" # Fill in with DM room ID for critical health escalations
+admin_room = "!cUBDGkwSjaemsiueKq:vmi3041112.contaboserver.net" # DM with Hex for critical escalations
 daily_digest_time = "09:00"
 weekly_retro_day = "Monday"
 
@@ -193,7 +194,7 @@ premium = "120m"
 branch_prefix = "chum/"
 branch_cleanup_days = 7
 merge_strategy = "squash"
-max_concurrent_per_project = 3
+max_concurrent_per_project = 5
 
 [chief]
 enabled = true

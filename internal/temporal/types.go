@@ -161,6 +161,7 @@ type OutcomeRecord struct {
 	TotalTokens    TokenUsage            `json:"total_tokens"`
 	ActivityTokens []ActivityTokenUsage   `json:"activity_tokens,omitempty"`
 	StepMetrics    []StepMetric           `json:"step_metrics,omitempty"`
+	CheckResults   []CheckResult          `json:"check_results,omitempty"` // last DoD check output for diagnostics
 }
 
 // EscalationRequest is sent to the chief when DoD fails after retries.

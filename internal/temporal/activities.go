@@ -355,8 +355,14 @@ func (a *Activities) RecordOutcomeActivity(ctx context.Context, outcome OutcomeR
 		logger.Error(OrcaPrefix+" Failed to update dispatch status", "error", err)
 	}
 
-	// Record DoD result
-	if err := a.Store.RecordDoDResult(dispatchID, outcome.TaskID, outcome.Project, outcome.DoDPassed, outcome.DoDFailures, ""); err != nil {
+	// Record DoD result with check output for post-mortem diagnostics
+	checkResultsJSON := ""
+	if len(outcome.CheckResults) > 0 {
+		if b, err := json.Marshal(outcome.CheckResults); err == nil {
+			checkResultsJSON = string(b)
+		}
+	}
+	if err := a.Store.RecordDoDResult(dispatchID, outcome.TaskID, outcome.Project, outcome.DoDPassed, outcome.DoDFailures, checkResultsJSON); err != nil {
 		logger.Error(OrcaPrefix+" Failed to record DoD result", "error", err)
 	}
 

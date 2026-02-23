@@ -158,10 +158,39 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 	}
 	resetAttemptTokens()
 
-	// ===== PHASE 2: (gate removed — ready status IS the approval) =====
+	// ===== PRE-FLIGHT: verify workspace builds before we touch it =====
+	upsertStage("preflight")
+	preflightStart := workflow.Now(ctx)
+	preflightCtx := workflow.WithActivityOptions(ctx, dodOpts)
+	var preflightResult DoDResult
+	if err := workflow.ExecuteActivity(preflightCtx, a.DoDVerifyActivity, req).Get(ctx, &preflightResult); err != nil {
+		logger.Warn(SharkPrefix+" Pre-flight check activity failed (proceeding)", "error", err)
+		recordStep("preflight", preflightStart, "skipped")
+	} else if !preflightResult.Passed {
+		recordStep("preflight", preflightStart, "failed")
+		failureMsg := strings.Join(preflightResult.Failures, "; ")
+		logger.Error(SharkPrefix+" Pre-flight FAILED — workspace broken before agent touched it", "Failures", failureMsg)
+
+		// File a morsel for crab review so the broken build gets triaged
+		fileCtx := workflow.WithActivityOptions(ctx, recordOpts)
+		_ = workflow.ExecuteActivity(fileCtx, a.FilePreflightFailureActivity, PreflightFailureRequest{
+			TaskID:   req.TaskID,
+			Project:  req.Project,
+			WorkDir:  req.WorkDir,
+			Failures: preflightResult.Failures,
+			Checks:   preflightResult.Checks,
+		}).Get(ctx, nil)
+
+		recordOutcome(ctx, recordOpts, a, req, "preflight_failed", 1,
+			0, false, failureMsg, startTime, totalTokens, activityTokens, stepMetrics, preflightResult.Checks)
+		return fmt.Errorf("workspace failed pre-flight build check: %s", failureMsg)
+	} else {
+		recordStep("preflight", preflightStart, "ok")
+	}
 
 	// ===== PHASE 3-6: EXECUTE → REVIEW → DOD LOOP =====
 	handoffCount := 0
+	var lastDoDChecks []CheckResult
 
 	for attempt := 0; attempt < maxDoDRetries; attempt++ {
 		logger.Info(SharkPrefix+" Execution attempt", "Attempt", attempt+1, "Agent", currentAgent)
@@ -316,7 +345,7 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 				"TotalCostUSD", totalTokens.CostUSD,
 			)
 			recordOutcome(ctx, recordOpts, a, req, "completed", 0,
-				handoffCount, true, "", startTime, totalTokens, activityTokens, stepMetrics)
+				handoffCount, true, "", startTime, totalTokens, activityTokens, stepMetrics, dodResult.Checks)
 
 			// ===== CHUM LOOP — spawn async learner + groomer =====
 			spawnCHUMWorkflows(ctx, logger, req, plan)
@@ -324,11 +353,21 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 			return nil
 		}
 
-		// DoD failed — feed failures back into plan
+		// DoD failed — feed failures back into plan with ACTUAL build output
 		recordStep(fmt.Sprintf("dod[%d]", attempt+1), dodStart, "failed")
 		failureMsg := strings.Join(dodResult.Failures, "; ")
 		allFailures = append(allFailures, fmt.Sprintf("Attempt %d DoD failed: %s", attempt+1, failureMsg))
-		plan.PreviousErrors = append(plan.PreviousErrors, "DoD check failures: "+failureMsg)
+		lastDoDChecks = dodResult.Checks
+
+		// Feed actual command output so the agent knows WHAT to fix
+		var dodDetail strings.Builder
+		dodDetail.WriteString("DoD check failures:\n")
+		for _, c := range dodResult.Checks {
+			if !c.Passed && c.Output != "" {
+				dodDetail.WriteString(fmt.Sprintf("$ %s (exit %d):\n%s\n", c.Command, c.ExitCode, c.Output))
+			}
+		}
+		plan.PreviousErrors = append(plan.PreviousErrors, dodDetail.String())
 
 		logger.Warn(SharkPrefix+" DoD failed, retrying", "Attempt", attempt+1, "Failures", failureMsg)
 	}
@@ -352,7 +391,7 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 	recordStep("escalate", escalateStart, "ok")
 
 	recordOutcome(ctx, recordOpts, a, req, "escalated", 1,
-		handoffCount, false, strings.Join(allFailures, "\n"), startTime, totalTokens, activityTokens, stepMetrics)
+		handoffCount, false, strings.Join(allFailures, "\n"), startTime, totalTokens, activityTokens, stepMetrics, lastDoDChecks)
 
 	return fmt.Errorf("task escalated after %d attempts: %s", maxDoDRetries, strings.Join(allFailures, "; "))
 }
@@ -361,7 +400,7 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 func recordOutcome(ctx workflow.Context, opts workflow.ActivityOptions, a *Activities,
 	req TaskRequest, status string, exitCode, handoffs int,
 	dodPassed bool, dodFailures string, startTime time.Time,
-	tokens TokenUsage, activityTokens []ActivityTokenUsage, steps []StepMetric) {
+	tokens TokenUsage, activityTokens []ActivityTokenUsage, steps []StepMetric, checkResults []CheckResult) {
 
 	logger := workflow.GetLogger(ctx)
 	recordCtx := workflow.WithActivityOptions(ctx, opts)
@@ -382,6 +421,7 @@ func recordOutcome(ctx workflow.Context, opts workflow.ActivityOptions, a *Activ
 		TotalTokens:    tokens,
 		ActivityTokens: activityTokens,
 		StepMetrics:    steps,
+		CheckResults:   checkResults,
 	}).Get(ctx, nil); err != nil {
 		logger.Warn(SharkPrefix+" RecordOutcome activity failed (best-effort)", "error", err)
 	}

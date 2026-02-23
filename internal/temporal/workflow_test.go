@@ -124,10 +124,14 @@ func TestCHUMNotSpawnedOnFailure(t *testing.T) {
 		Passed: true,
 	}, nil)
 
-	// DoD always fails
+	// Pre-flight DoD passes (workspace clean), then actual DoD always fails
+	env.OnActivity(a.DoDVerifyActivity, mock.Anything, mock.Anything).Return(&DoDResult{
+		Passed: true,
+	}, nil).Once()
 	env.OnActivity(a.DoDVerifyActivity, mock.Anything, mock.Anything).Return(&DoDResult{
 		Passed: false, Failures: []string{"go test failed"},
 	}, nil)
+	env.OnActivity(a.FilePreflightFailureActivity, mock.Anything, mock.Anything).Return(nil).Maybe()
 
 	var outcome OutcomeRecord
 	outcomeSet := false
@@ -617,9 +621,14 @@ func TestStepDurationLoggingEscalation(t *testing.T) {
 	env.OnActivity(a.RunSemgrepScanActivity, mock.Anything, mock.Anything).Return(&SemgrepScanResult{
 		Passed: true,
 	}, nil)
+	// Pre-flight DoD passes (workspace clean), then actual DoD always fails
+	env.OnActivity(a.DoDVerifyActivity, mock.Anything, mock.Anything).Return(&DoDResult{
+		Passed: true,
+	}, nil).Once()
 	env.OnActivity(a.DoDVerifyActivity, mock.Anything, mock.Anything).Return(&DoDResult{
 		Passed: false, Failures: []string{"tests failed"},
 	}, nil)
+	env.OnActivity(a.FilePreflightFailureActivity, mock.Anything, mock.Anything).Return(nil).Maybe()
 	env.OnActivity(a.EscalateActivity, mock.Anything, mock.Anything).Return(nil)
 
 	env.OnWorkflow(ContinuousLearnerWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()

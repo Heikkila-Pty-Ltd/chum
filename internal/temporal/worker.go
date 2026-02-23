@@ -111,6 +111,9 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 	w.RegisterActivity(acts.GenerateSemgrepRuleActivity)
 	w.RegisterActivity(acts.RunSemgrepScanActivity)
 
+	// --- Pre-flight Activities ---
+	w.RegisterActivity(acts.FilePreflightFailureActivity)
+
 	// --- CHUM Groom Activities ---
 	w.RegisterActivity(acts.MutateTasksActivity)
 	w.RegisterActivity(acts.GenerateRepoMapActivity)

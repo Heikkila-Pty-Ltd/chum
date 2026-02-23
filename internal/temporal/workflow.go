@@ -639,7 +639,15 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 			}
 			plan.PreviousErrors = append(plan.PreviousErrors, detailedFeedback.String())
 
-			notify("dod_fail", map[string]string{"failures": failureMsg, "attempt": fmt.Sprintf("%d", attempt+1)})
+			// Extract truncated build output for the Matrix notification
+			var notifyDetail string
+			for _, check := range dodResult.Checks {
+				if !check.Passed && check.Output != "" {
+					notifyDetail = truncate(check.Output, 500)
+					break
+				}
+			}
+			notify("dod_fail", map[string]string{"failures": failureMsg, "attempt": fmt.Sprintf("%d", attempt+1), "detail": notifyDetail})
 			logger.Warn(SharkPrefix+" DoD failed, retrying", "Attempt", attempt+1, "Failures", failureMsg)
 
 			// --- AUTO-FIX: run gofmt + goimports before next retry ---

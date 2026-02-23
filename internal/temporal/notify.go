@@ -91,7 +91,12 @@ func themed(event, taskID string, extra map[string]string) string {
 	case "dod_fail":
 		failures := get("failures")
 		attempt := get("attempt")
-		return fmt.Sprintf("❌ **orca rejected** — `%s` DoD failed (attempt %s/3): %s", taskID, attempt, failures)
+		detail := get("detail")
+		msg := fmt.Sprintf("❌ **orca rejected** — `%s` DoD failed (attempt %s/3): %s", taskID, attempt, failures)
+		if detail != "" {
+			msg += fmt.Sprintf("\n```\n%s\n```", detail)
+		}
+		return msg
 
 	case "escalate":
 		attempts := get("attempts")

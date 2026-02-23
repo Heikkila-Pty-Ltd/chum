@@ -497,6 +497,7 @@ func (a *Activities) RecordOutcomeActivity(ctx context.Context, outcome OutcomeR
 
 // EscalateActivity escalates a failed task to the chief/scrum-master with human in the loop.
 // This is called when DoD fails after all retries — the task needs human intervention.
+// Sends a detailed escalation message to the Matrix admin room for the Hex agent to review.
 func (a *Activities) EscalateActivity(ctx context.Context, escalation EscalationRequest) error {
 	logger := activity.GetLogger(ctx)
 	logger.Error(OrcaPrefix+" ESCALATION: Task failed after all retries",
@@ -517,8 +518,39 @@ func (a *Activities) EscalateActivity(ctx context.Context, escalation Escalation
 		}
 	}
 
-	// In V0, escalation is logged + stored. The human sees it via /health endpoint.
-	// Future: trigger chief/scrum-master ceremony, Matrix notification, etc.
+	// Send escalation to Matrix admin room for Hex agent to review and act on.
+	if a.Sender != nil && a.AdminRoom != "" {
+		// Build a concise failure summary (last 3 failures max)
+		failureSummary := escalation.Failures
+		if len(failureSummary) > 3 {
+			failureSummary = failureSummary[len(failureSummary)-3:]
+		}
+
+		msg := fmt.Sprintf(
+			"🚨 **ESCALATION REQUIRED** — `%s` (`%s`)\n\n"+
+				"All %d attempts exhausted across the entire escalation chain.\n\n"+
+				"**Recent failures:**\n```\n%s\n```\n\n"+
+				"**Plan summary:** %s\n\n"+
+				"**Action needed:** This task likely requires human intervention "+
+				"(e.g. manual credential rotation, external service config, infrastructure change). "+
+				"Please review the failures above, diagnose the root cause, and either:\n"+
+				"1. Fix the underlying issue and re-queue the morsel\n"+
+				"2. Close the morsel if it's no longer relevant\n"+
+				"3. Decompose it into smaller tasks that the sharks can handle",
+			escalation.TaskID,
+			escalation.Project,
+			escalation.AttemptCount,
+			strings.Join(failureSummary, "\n"),
+			truncate(escalation.PlanSummary, 200),
+		)
+
+		if sendErr := a.Sender.SendMessage(ctx, a.AdminRoom, msg); sendErr != nil {
+			logger.Warn(OrcaPrefix+" Failed to send escalation to Matrix", "error", sendErr)
+		} else {
+			logger.Info(OrcaPrefix+" Escalation sent to Matrix admin room", "task", escalation.TaskID)
+		}
+	}
+
 	return nil
 }
 

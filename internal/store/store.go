@@ -609,6 +609,17 @@ func migrateBeadToMorsel(db *sql.DB) error {
 		if hasOld == 0 {
 			continue // Already renamed or table doesn't have this column
 		}
+		// Check if new column already exists (partial migration recovery)
+		var hasNew int
+		if err := db.QueryRow(
+			`SELECT COUNT(*) FROM pragma_table_info('`+r.table+`') WHERE name = ?`, r.newCol,
+		).Scan(&hasNew); err != nil {
+			continue
+		}
+		if hasNew > 0 {
+			// Both old and new columns exist — partial migration. Skip rename.
+			continue
+		}
 		if _, err := db.Exec(`ALTER TABLE ` + r.table + ` RENAME COLUMN ` + r.oldCol + ` TO ` + r.newCol); err != nil {
 			return fmt.Errorf("rename %s.%s → %s: %w", r.table, r.oldCol, r.newCol, err)
 		}

@@ -59,9 +59,9 @@ func (s *Store) GetProteinForSpecies(species string) (*Protein, error) {
 	row := s.db.QueryRow(`
 		SELECT id, category, name, molecules, generation, successes, failures,
 		  avg_tokens, fitness, parent_id, created_at
-		FROM proteins WHERE category = ?
+		FROM proteins WHERE category = ? OR category LIKE '%' || ?
 		ORDER BY fitness DESC, successes DESC
-		LIMIT 1`, species)
+		LIMIT 1`, species, species)
 
 	var p Protein
 	var molJSON string
@@ -99,8 +99,8 @@ func (s *Store) RecordProteinFold(f ProteinFold) error {
 // SeedProteins inserts the initial hardcoded proteins if they don't exist yet.
 func (s *Store) SeedProteins() error {
 	reactComponentProtein := Protein{
-		ID:       "react-component-v1",
-		Category: "react-component",
+		ID:       "component-v1",
+		Category: "component",
 		Name:     "React Component Build Sequence",
 		Molecules: []Molecule{
 			{
@@ -159,5 +159,11 @@ If any issues found, fix them and re-run npm run build.`,
 		VALUES (?, ?, ?, ?, ?)`,
 		reactComponentProtein.ID, reactComponentProtein.Category,
 		reactComponentProtein.Name, string(molJSON), reactComponentProtein.Generation)
+	if err != nil {
+		return err
+	}
+	// Update existing protein in case molecules changed
+	_, err = s.db.Exec(`UPDATE proteins SET molecules = ?, category = ?, name = ? WHERE id = ?`,
+		string(molJSON), reactComponentProtein.Category, reactComponentProtein.Name, reactComponentProtein.ID)
 	return err
 }

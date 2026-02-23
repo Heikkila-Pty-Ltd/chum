@@ -103,6 +103,31 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 
 	var a *Activities
 
+	// ===== PRE-FLIGHT: Verify project builds before the shark starts =====
+	// If DoD checks already fail on the clean workspace, abort immediately.
+	// This prevents wasting 3 retries + handoffs on a systematically broken project.
+	if len(req.DoDChecks) > 0 {
+		preflightStart := workflow.Now(ctx)
+		logger.Info(SharkPrefix + " Pre-flight: verifying project builds clean")
+		preflightCtx := workflow.WithActivityOptions(ctx, dodOpts)
+
+		var preflightResult DoDResult
+		if err := workflow.ExecuteActivity(preflightCtx, a.DoDVerifyActivity, req).Get(ctx, &preflightResult); err != nil {
+			logger.Warn(SharkPrefix+" Pre-flight check activity failed (non-fatal)", "error", err)
+		} else if !preflightResult.Passed {
+			failMsg := strings.Join(preflightResult.Failures, "; ")
+			recordStep("preflight", preflightStart, "failed")
+			logger.Error(SharkPrefix+" PRE-FLIGHT FAILED — project is broken before shark started",
+				"Failures", failMsg)
+			recordOutcome(ctx, recordOpts, a, req, "preflight_failed", 1,
+				0, false, failMsg, startTime, TokenUsage{}, nil, stepMetrics, preflightResult.Checks)
+			return fmt.Errorf("pre-flight failed: project does not build clean: %s", failMsg)
+		} else {
+			recordStep("preflight", preflightStart, "ok")
+			logger.Info(SharkPrefix + " Pre-flight PASSED — project builds clean")
+		}
+	}
+
 	// ===== PHASE 1: PLAN =====
 	planStart := workflow.Now(ctx)
 	var plan StructuredPlan

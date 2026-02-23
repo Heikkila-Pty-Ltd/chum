@@ -270,6 +270,19 @@ func (da *DispatchActivities) ScanCandidatesActivity(ctx context.Context) (*Scan
 		runningSet[taskID] = struct{}{}
 	}
 
+	// Also check for running CambrianExplosionWorkflow instances.
+	// The dispatcher spawns CambrianExplosionWorkflow (not ChumAgentWorkflow directly),
+	// so we must include these to prevent re-dispatching tasks with in-flight explosions.
+	explosionWFs, err := listOpenExplosionWorkflows(ctx, da.TC)
+	if err != nil {
+		logger.Warn(SharkPrefix+" Dispatcher: failed to list explosion workflows", "error", err)
+	} else {
+		for _, wf := range explosionWFs {
+			taskID := extractTaskIDFromWorkflowID(wf.workflowID)
+			runningSet[taskID] = struct{}{}
+		}
+	}
+
 	maxPerProject := cfg.Dispatch.Git.MaxConcurrentPerProject
 	if maxPerProject <= 0 {
 		maxPerProject = 3
@@ -468,6 +481,55 @@ func listOpenAgentWorkflowsForAgent(ctx context.Context, tc workflowListClient, 
 
 func listOpenAgentWorkflows(ctx context.Context, tc workflowListClient, project string) ([]openWorkflowExecution, error) {
 	return listOpenAgentWorkflowsForAgent(ctx, tc, project, "")
+}
+
+// listOpenExplosionWorkflows returns all currently running CambrianExplosionWorkflow
+// instances. The dispatcher must check these to prevent re-dispatching tasks that
+// already have an in-flight explosion (which spawns child ChumAgentWorkflows).
+func listOpenExplosionWorkflows(ctx context.Context, tc workflowListClient) ([]openWorkflowExecution, error) {
+	query := "WorkflowType = 'CambrianExplosionWorkflow' AND ExecutionStatus = 'Running'"
+
+	var pageToken []byte
+	executions := make([]openWorkflowExecution, 0, 50)
+	for {
+		resp, err := tc.ListWorkflow(ctx, &workflowservice.ListWorkflowExecutionsRequest{
+			Query:         query,
+			PageSize:      200,
+			NextPageToken: pageToken,
+		})
+		if err != nil {
+			return nil, err
+		}
+		if resp == nil {
+			return nil, fmt.Errorf("temporal list workflow returned nil response")
+		}
+
+		for _, exec := range resp.Executions {
+			execInfo := exec.GetExecution()
+			if execInfo == nil {
+				continue
+			}
+			wfID := execInfo.GetWorkflowId()
+			if wfID == "" {
+				continue
+			}
+			startTime := time.Time{}
+			if exec.StartTime != nil {
+				startTime = exec.StartTime.AsTime()
+			}
+			executions = append(executions, openWorkflowExecution{
+				workflowID: wfID,
+				runID:      execInfo.GetRunId(),
+				startTime:  startTime,
+			})
+		}
+
+		if len(resp.NextPageToken) == 0 {
+			break
+		}
+		pageToken = resp.NextPageToken
+	}
+	return executions, nil
 }
 
 func buildOpenAgentWorkflowQuery(project string) string {

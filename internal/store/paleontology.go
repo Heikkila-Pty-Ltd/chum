@@ -331,6 +331,61 @@ func (s *Store) GetStaleHibernators(olderThan time.Duration) ([]SpeciesHealthRep
 	return results, rows.Err()
 }
 
+// GetStuckSpecies returns species that have a high number of antibodies but zero fossils.
+// This indicates the system keeps failing but isn't consolidating the failures into extinct approaches.
+func (s *Store) GetStuckSpecies(minAntibodies int) ([]SpeciesHealthReport, error) {
+	rows, err := s.db.Query(`
+		SELECT species, generation, successes, failures, patterns, antibodies, fossils, last_evolved
+		FROM genomes
+		WHERE hibernating = 0
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("query stuck species: %w", err)
+	}
+	defer rows.Close()
+
+	var results []SpeciesHealthReport
+	for rows.Next() {
+		var r SpeciesHealthReport
+		var patternsJSON, antibodiesJSON, fossilsJSON string
+		var lastEvolved *string
+		if err := rows.Scan(&r.Species, &r.Generation, &r.Successes, &r.Failures,
+			&patternsJSON, &antibodiesJSON, &fossilsJSON, &lastEvolved); err != nil {
+			return nil, fmt.Errorf("scan stuck species: %w", err)
+		}
+
+		var antibodies, fossils []GenomeEntry
+		_ = parseJSON(antibodiesJSON, &antibodies)
+		_ = parseJSON(fossilsJSON, &fossils)
+
+		if len(fossils) == 0 && len(antibodies) >= minAntibodies {
+			r.Issue = "Stuck species — high antibodies but no fossils"
+			r.AntibodyCount = len(antibodies)
+			r.FossilCount = 0
+			if lastEvolved != nil {
+				if t, err := time.Parse("2006-01-02 15:04:05", *lastEvolved); err == nil {
+					r.LastEvolved = &t
+				}
+			}
+			results = append(results, r)
+		}
+	}
+	return results, rows.Err()
+}
+
+// CreateEmptyGenome bootstraps a genome for a species that doesn't have one.
+func (s *Store) CreateEmptyGenome(species string) error {
+	_, err := s.db.Exec(`
+		INSERT INTO genomes (species, parent_species, patterns, antibodies, fossils, provider_genes, generation, successes, failures, total_cost_usd, hibernating, last_evolved)
+		VALUES (?, '', '[]', '[]', '[]', '[]', 0, 0, 0, 0, 0, datetime('now'))
+		ON CONFLICT(species) DO NOTHING
+	`, species)
+	if err != nil {
+		return fmt.Errorf("create empty genome: %w", err)
+	}
+	return nil
+}
+
 // RecordPaleontologyRun saves a summary of a paleontologist analysis run.
 func (s *Store) RecordPaleontologyRun(result PaleontologyRunResult) error {
 	_, err := s.db.Exec(`

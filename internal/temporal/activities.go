@@ -1273,8 +1273,8 @@ func (a *Activities) ScanProteinCandidatesActivity(ctx context.Context, req Pale
 	return nominated, nil
 }
 
-// AuditSpeciesHealthActivity checks genomes for anomalies: stuck species,
-// stale hibernators, newborn species without data.
+// AuditSpeciesHealthActivity checks genomes for anomalies and takes action:
+// escalating stuck species/hibernators and bootstrapping orphans.
 // Returns the number of species audited.
 func (a *Activities) AuditSpeciesHealthActivity(ctx context.Context, req PaleontologistRequest) (int, error) {
 	logger := activity.GetLogger(ctx)
@@ -1282,7 +1282,7 @@ func (a *Activities) AuditSpeciesHealthActivity(ctx context.Context, req Paleont
 
 	audited := 0
 
-	// Check for stale hibernators (hibernating > 24h)
+	// 1. Check for stale hibernators (hibernating > 24h)
 	hibernators, err := a.Store.GetStaleHibernators(24 * time.Hour)
 	if err != nil {
 		logger.Warn(PaleontologistPrefix+" Failed to get stale hibernators", "error", err)
@@ -1292,17 +1292,42 @@ func (a *Activities) AuditSpeciesHealthActivity(ctx context.Context, req Paleont
 			logger.Info(PaleontologistPrefix+" Stale hibernator detected",
 				"Species", h.Species, "Generation", h.Generation,
 				"Issue", h.Issue, "Antibodies", h.AntibodyCount, "LastEvolved", h.LastEvolved)
+			
+			if a.Sender != nil {
+				msg := fmt.Sprintf("⚠️ **Stale Hibernator Detected**\nSpecies `%s` has been hibernating for >24h. It may need higher-level LLM intervention or manual review.", h.Species)
+				_ = a.Sender.SendMessage(ctx, a.DefaultRoom, msg)
+			}
 		}
 	}
 
-	// Check for species without genomes (new task types)
+	// 2. Check for stuck species (high antibodies, 0 fossils)
+	stuck, err := a.Store.GetStuckSpecies(10) // 10 antibodies threshold
+	if err != nil {
+		logger.Warn(PaleontologistPrefix+" Failed to get stuck species", "error", err)
+	} else {
+		for _, s := range stuck {
+			audited++
+			logger.Info(PaleontologistPrefix+" Stuck species detected",
+				"Species", s.Species, "Antibodies", s.AntibodyCount)
+			
+			if a.Sender != nil {
+				msg := fmt.Sprintf("⚠️ **Stuck Species Detected**\nSpecies `%s` has %d antibodies but 0 fossils. The agent keeps failing but cannot consolidate the learnings. Please review the failures.", s.Species, s.AntibodyCount)
+				_ = a.Sender.SendMessage(ctx, a.DefaultRoom, msg)
+			}
+		}
+	}
+
+	// 3. Check for species without genomes (orphans)
 	orphans, err := a.Store.GetSpeciesWithoutGenome()
 	if err != nil {
 		logger.Warn(PaleontologistPrefix+" Failed to get orphan species", "error", err)
 	} else {
 		for _, species := range orphans {
 			audited++
-			logger.Info(PaleontologistPrefix+" Species without genome detected — may need initial genome setup", "Species", species)
+			logger.Info(PaleontologistPrefix+" Bootstrapping empty genome for orphan species", "Species", species)
+			if err := a.Store.CreateEmptyGenome(species); err != nil {
+				logger.Warn(PaleontologistPrefix+" Failed to bootstrap genome", "species", species, "error", err)
+			}
 		}
 	}
 

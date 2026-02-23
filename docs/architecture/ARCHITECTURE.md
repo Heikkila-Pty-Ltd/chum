@@ -138,13 +138,24 @@ This is the **Algorithmic Crystallization** loop — the system converts stochas
 
 ```mermaid
 graph LR
-    A["Agent makes mistake"] --> B["Learner extracts lesson"]
-    B --> C["Stored in FTS5"]
-    C --> D["Semgrep rule generated"]
-    D --> E["Next run: caught free"]
-    E --> F["Never hits DoD again"]
-    F -.->|over time| G["Self-growing immune system"]
+	A["Agent makes mistake"] --> B["Learner extracts lesson"]
+	B --> C["Stored in FTS5"]
+	C --> D["Semgrep rule generated"]
+	D --> E["Next run: caught free"]
+	E --> F["Never hits DoD again"]
+	F -.->|over time| G["Self-growing immune system"]
 ```
+
+### Unsupervised Automation Pipeline (Future Target)
+
+The Continuous Learner's next evolution involves vector embedding `LearnerRequest` payloads (specifically the Diff Summary and Execution Terminal Output). This enables the system to discover macro-patterns across time and space, fundamentally shifting from reactive rule generation to proactive automation:
+
+1. **Clustering:** Query a vector database (e.g., pgvector, Qdrant) asynchronously to cluster recent task execution logs by semantic similarity.
+2. **Analysis:** For any cluster with >N similar tasks, feed the diffs/logs to a high-capacity model (e.g., `gemini-3.1-pro`).
+3. **Extraction:** The model identifies the common boilerplate or repetitive actions and synthesizes a generalized bash script or Temporal workflow (a "protein").
+4. **Filing:** Auto-create a `protein_candidate` morsel in the backlog, proposing the new automation.
+
+This unsupervised loop watches the herd, clusters repetitive human/agent behavior, and actively paves the cowpaths.
 
 ---
 

@@ -1659,16 +1659,17 @@ func (a *Activities) AnalyzeFailureRateTrendsActivity(ctx context.Context, req P
 	if err != nil {
 		logger.Warn(PaleontologistPrefix+" Failed to calculate health score", "error", err)
 		healthScore = &store.SystemHealthScore{
-			Score:      50,
-			AlertLevel: "yellow",
-			ClockTime:  "Unknown",
+			Score:          50,
+			AlertLevel:     "yellow",
+			MeteorStatus:   "Unknown",
+			MeteorDistance: "🌍...........☄️",
 		}
 	}
 
-	logger.Info(PaleontologistPrefix+" System health score",
+	logger.Info(PaleontologistPrefix+" Meteor tracking",
 		"Score", healthScore.Score,
 		"AlertLevel", healthScore.AlertLevel,
-		"Clock", healthScore.ClockTime,
+		"MeteorStatus", healthScore.MeteorStatus,
 		"DegradationStreak", healthScore.DegradationStreak,
 		"ImprovementStreak", healthScore.ImprovementStreak)
 
@@ -1682,33 +1683,40 @@ func (a *Activities) AnalyzeFailureRateTrendsActivity(ctx context.Context, req P
 		var emoji, header string
 		switch healthScore.AlertLevel {
 		case "green":
-			emoji = "✅"
-			header = "**SYSTEM HEALTHY**"
+			emoji = "🌍"
+			header = "**ECOSYSTEM THRIVING**"
 		case "yellow":
-			emoji = "⚠️"
-			header = "**WARNING: Degradation Detected**"
+			emoji = "☄️"
+			header = "**METEOR DETECTED - Approaching**"
 		case "orange":
-			emoji = "🔶"
-			header = "**CRITICAL: Multiple Degrading Periods**"
+			emoji = "⚠️"
+			header = "**METEOR INCOMING - Impact Risk**"
 		case "red":
-			emoji = "🚨"
-			header = "**EMERGENCY: System Failing**"
+			if healthScore.Score < 15 {
+				emoji = "💥"
+				header = "**☠️ EXTINCTION EVENT IN PROGRESS**"
+			} else {
+				emoji = "🚨"
+				header = "**METEOR NEAR IMPACT - Critical**"
+			}
 		}
 
 		msg := fmt.Sprintf(
-			"%s %s — Doomsday Clock Report\n\n"+
-				"🕐 **Clock Time:** %s\n"+
-				"📊 **Health Score:** %d/100 (%s)\n"+
-				"📉 **Degradation Streak:** %d consecutive periods\n"+
-				"📈 **Improvement Streak:** %d consecutive periods\n\n"+
-				"**Current Failure Rate:** %.1f%% (%d failed / %d total)\n"+
-				"**Previous Failure Rate:** %.1f%% (%d failed / %d total)\n"+
-				"**Change:** %+.1f%% points (%s)\n\n"+
-				"**Recommendation for Hex:**\n%s\n\n"+
-				"**Window:** Last %dh vs previous %dh\n"+
-				"**Next Check:** 30 minutes",
+			"%s %s — Meteor Tracking Report\n\n"+
+				"☄️ **Meteor Status:** %s\n"+
+				"📏 **Distance:** `%s`\n"+
+				"📊 **Ecosystem Health:** %d/100 (%s)\n"+
+				"📉 **Degradation Streak:** %d consecutive impact warnings\n"+
+				"📈 **Recovery Streak:** %d consecutive improvements\n\n"+
+				"**Current Species Mortality Rate:** %.1f%% (%d extinct / %d organisms)\n"+
+				"**Previous Mortality Rate:** %.1f%% (%d extinct / %d organisms)\n"+
+				"**Atmospheric Change:** %+.1f%% points (%s)\n\n"+
+				"**Paleontologist Assessment for Hex:**\n%s\n\n"+
+				"**Analysis Window:** Last %dh vs previous %dh\n"+
+				"**Next Scan:** 30 minutes",
 			emoji, header,
-			healthScore.ClockTime,
+			healthScore.MeteorStatus,
+			healthScore.MeteorDistance,
 			healthScore.Score, healthScore.AlertLevel,
 			healthScore.DegradationStreak,
 			healthScore.ImprovementStreak,
@@ -1727,8 +1735,9 @@ func (a *Activities) AnalyzeFailureRateTrendsActivity(ctx context.Context, req P
 		if sendErr := a.Sender.SendMessage(ctx, targetRoom, msg); sendErr != nil {
 			logger.Warn(PaleontologistPrefix+" Failed to send doomsday clock report to Hex", "error", sendErr)
 		} else {
-			logger.Info(PaleontologistPrefix+" Doomsday clock report sent to Hex",
+			logger.Info(PaleontologistPrefix+" Meteor tracking report sent to Hex",
 				"AlertLevel", healthScore.AlertLevel,
+				"MeteorStatus", healthScore.MeteorStatus,
 				"Score", healthScore.Score)
 		}
 	}

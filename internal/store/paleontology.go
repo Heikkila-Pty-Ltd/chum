@@ -96,13 +96,14 @@ type FailureRateDelta struct {
 	Trend              string // "improving", "degrading", "stable"
 }
 
-// SystemHealthScore represents the doomsday clock state.
+// SystemHealthScore represents the meteor/extinction event risk state.
 type SystemHealthScore struct {
-	Score              int       // 0-100 (0 = midnight, 100 = healthy)
+	Score              int       // 0-100 (0 = impact, 100 = distant)
 	DegradationStreak  int       // consecutive degrading periods
 	ImprovementStreak  int       // consecutive improving periods
 	LastTrendChange    time.Time // when trend last changed
-	ClockTime          string    // "11:58 PM", "11:59 PM", "MIDNIGHT"
+	MeteorStatus       string    // "Distant", "Approaching", "Incoming", "IMPACT"
+	MeteorDistance     string    // visual representation
 	AlertLevel         string    // "green", "yellow", "orange", "red"
 	Recommendation     string    // what Hex should consider
 }
@@ -602,9 +603,10 @@ func (s *Store) GetSystemHealthScore() (*SystemHealthScore, error) {
 	}
 
 	score := &SystemHealthScore{
-		Score:      100,
-		AlertLevel: "green",
-		ClockTime:  "12:00 AM (Healthy)",
+		Score:          100,
+		AlertLevel:     "green",
+		MeteorStatus:   "Distant",
+		MeteorDistance: "🌍........................................☄️",
 	}
 
 	if len(events) == 0 {
@@ -644,28 +646,33 @@ func (s *Store) GetSystemHealthScore() (*SystemHealthScore, error) {
 		score.Score = 100 // improving = back to healthy
 	}
 
-	// Set doomsday clock time and alert level
+	// Set meteor status and alert level
 	switch {
 	case score.Score >= 85:
 		score.AlertLevel = "green"
-		score.ClockTime = "12:00 AM (Healthy)"
-		score.Recommendation = "System healthy - continue normal operations"
+		score.MeteorStatus = "Distant"
+		score.MeteorDistance = "🌍........................................☄️"
+		score.Recommendation = "Ecosystem thriving - evolution continues normally"
 	case score.Score >= 70:
 		score.AlertLevel = "yellow"
-		score.ClockTime = "11:45 PM (Warning)"
-		score.Recommendation = "Monitor closely - check for pattern changes"
+		score.MeteorStatus = "Approaching"
+		score.MeteorDistance = "🌍............................☄️"
+		score.Recommendation = "Meteor detected - monitor atmospheric conditions closely"
 	case score.Score >= 40:
 		score.AlertLevel = "orange"
-		score.ClockTime = "11:55 PM (Critical)"
-		score.Recommendation = "Consider pausing low-priority work - investigate root cause"
+		score.MeteorStatus = "Incoming"
+		score.MeteorDistance = "🌍..............☄️"
+		score.Recommendation = "⚠️ Meteor incoming - species should prepare for impact. Consider sheltering low-priority organisms."
 	case score.Score >= 15:
 		score.AlertLevel = "red"
-		score.ClockTime = "11:59 PM (Emergency)"
-		score.Recommendation = "⚠️ URGENT: Pause all non-critical dispatches - systemic failure detected"
+		score.MeteorStatus = "Near Impact"
+		score.MeteorDistance = "🌍....☄️"
+		score.Recommendation = "🚨 IMMINENT IMPACT: Extinction risk critical - pause new spawns, investigate atmospheric anomaly"
 	default:
 		score.AlertLevel = "red"
-		score.ClockTime = "🔴 MIDNIGHT (System Failing)"
-		score.Recommendation = "🚨 STOP THE LINE: Pause dispatching until root cause identified and fixed"
+		score.MeteorStatus = "💥 EXTINCTION EVENT"
+		score.MeteorDistance = "🌍💥"
+		score.Recommendation = "☠️ EXTINCTION EVENT IN PROGRESS: Stop spawning organisms until ecosystem stabilizes"
 	}
 
 	return score, nil

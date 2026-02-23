@@ -13,26 +13,35 @@ echo "🦴 CHUM Failure Rate Report"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-# Doomsday clock status
-echo "🕐 Doomsday Clock Status"
+# Meteor tracking status
+echo "☄️  Meteor Tracking (Extinction Risk Assessment)"
 degrading=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM (SELECT event_type FROM health_events WHERE event_type = 'failure_rate_degrading' ORDER BY created_at DESC LIMIT 3) WHERE event_type = 'failure_rate_degrading'")
 improving=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM (SELECT event_type FROM health_events WHERE event_type = 'failure_rate_improving' ORDER BY created_at DESC LIMIT 3) WHERE event_type = 'failure_rate_improving'")
 
 if [ "$improving" -ge 1 ]; then
-    echo "   ✅ GREEN - System Healthy (12:00 AM)"
-    echo "   Status: Improving trend detected"
+    echo "   🌍 GREEN - Meteor Distant"
+    echo "   Distance: 🌍........................................☄️"
+    echo "   Status: Ecosystem thriving - evolution continues"
 elif [ "$degrading" -eq 0 ]; then
-    echo "   ✅ GREEN - Baseline (12:00 AM)"
-    echo "   Status: No significant trends"
+    echo "   🌍 GREEN - Meteor Distant (Baseline)"
+    echo "   Distance: 🌍........................................☄️"
+    echo "   Status: No atmospheric anomalies detected"
 elif [ "$degrading" -eq 1 ]; then
-    echo "   ⚠️  YELLOW - Warning (11:45 PM)"
-    echo "   Status: 1 degrading period - monitor closely"
+    echo "   ⚠️  YELLOW - Meteor Approaching"
+    echo "   Distance: 🌍............................☄️"
+    echo "   Status: 1 impact warning - monitor atmospheric conditions"
 elif [ "$degrading" -eq 2 ]; then
-    echo "   🔶 ORANGE - Critical (11:55 PM)"
-    echo "   Status: 2 consecutive degrading periods - consider pausing"
+    echo "   🔶 ORANGE - Meteor Incoming"
+    echo "   Distance: 🌍..............☄️"
+    echo "   Status: 2 consecutive warnings - prepare for impact"
+elif [ "$degrading" -eq 3 ]; then
+    echo "   🚨 RED - Near Impact"
+    echo "   Distance: 🌍....☄️"
+    echo "   Status: 3 consecutive warnings - extinction risk critical"
 else
-    echo "   🚨 RED - Emergency (11:59 PM)"
-    echo "   Status: $degrading consecutive degrading periods - INVESTIGATE NOW"
+    echo "   💥 RED - EXTINCTION EVENT"
+    echo "   Distance: 🌍💥"
+    echo "   Status: $degrading consecutive impacts - ECOSYSTEM FAILING"
 fi
 echo ""
 

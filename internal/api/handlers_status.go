@@ -134,14 +134,14 @@ func (s *Server) handleRecommendations(w http.ResponseWriter, r *http.Request) {
 		}
 		for _, l := range lessons {
 			results = append(results, map[string]any{
-				"id":        l.ID,
-				"bead_id":   l.BeadID,
-				"project":   l.Project,
-				"category":  l.Category,
-				"summary":   l.Summary,
-				"detail":    l.Detail,
-				"files":     l.FilePaths,
-				"labels":    l.Labels,
+				"id":         l.ID,
+				"bead_id":    l.BeadID,
+				"project":    l.Project,
+				"category":   l.Category,
+				"summary":    l.Summary,
+				"detail":     l.Detail,
+				"files":      l.FilePaths,
+				"labels":     l.Labels,
 				"created_at": l.CreatedAt.Format(time.RFC3339),
 			})
 		}

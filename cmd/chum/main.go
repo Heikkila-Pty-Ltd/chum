@@ -234,7 +234,6 @@ func main() {
 		}
 	}()
 
-
 	// Start API server
 	apiSrv, err := api.NewServer(cfg, st, logger.With("component", "api"))
 	if err != nil {

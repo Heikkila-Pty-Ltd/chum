@@ -13,5 +13,5 @@ const (
 	SAPriority     = "ChumPriority"     // Int — task priority (0-4)
 	SAAgent        = "ChumAgent"        // Keyword — assigned agent name (claude/codex/gemini)
 	SACurrentStage = "ChumCurrentStage" // Keyword — current workflow stage
-	SATaskTitle    = "ChumTaskTitle"     // Text — task title for search
+	SATaskTitle    = "ChumTaskTitle"    // Text — task title for search
 )

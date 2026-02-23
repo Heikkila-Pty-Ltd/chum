@@ -191,6 +191,7 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 	// ===== PHASE 3-6: EXECUTE → REVIEW → DOD LOOP =====
 	handoffCount := 0
 	var lastDoDChecks []CheckResult
+	var lastExecOutput string
 
 	for attempt := 0; attempt < maxDoDRetries; attempt++ {
 		logger.Info(SharkPrefix+" Execution attempt", "Attempt", attempt+1, "Agent", currentAgent)
@@ -209,6 +210,7 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 			allFailures = append(allFailures, fmt.Sprintf("Attempt %d execute error: %s", attempt+1, err.Error()))
 			continue
 		}
+		lastExecOutput = execResult.Output
 		totalTokens.Add(execResult.Tokens)
 		activityTokens = append(activityTokens, ActivityTokenUsage{
 			ActivityName: "execute", Agent: execResult.Agent, Tokens: execResult.Tokens,
@@ -335,6 +337,34 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 		if dodResult.Passed {
 			recordStep(fmt.Sprintf("dod[%d]", attempt+1), dodStart, "ok")
 
+			// --- WEB DOD (Stingray Web) ---
+			// If configured, verify deployed URLs with HTTP smoke, Lighthouse, and link crawl.
+			if req.WebDoD != nil && len(req.WebDoD.URLs) > 0 {
+				upsertStage("web_dod")
+				webDodStart := workflow.Now(ctx)
+				logger.Info(webVerifyPrefix+" Running Web DoD checks", "URLs", len(req.WebDoD.URLs))
+
+				webDodCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
+					StartToCloseTimeout: 3 * time.Minute,
+					RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 1},
+				})
+				var webResult WebVerifyResult
+				if err := workflow.ExecuteActivity(webDodCtx, a.WebVerifyActivity, *req.WebDoD).Get(ctx, &webResult); err != nil {
+					logger.Warn(webVerifyPrefix+" Web DoD activity failed (non-fatal)", "error", err)
+					recordStep(fmt.Sprintf("web_dod[%d]", attempt+1), webDodStart, "skipped")
+				} else if !webResult.Passed {
+					recordStep(fmt.Sprintf("web_dod[%d]", attempt+1), webDodStart, "failed")
+					webFailMsg := strings.Join(webResult.Failures, "; ")
+					allFailures = append(allFailures, fmt.Sprintf("Attempt %d Web DoD failed: %s", attempt+1, webFailMsg))
+					plan.PreviousErrors = append(plan.PreviousErrors, fmt.Sprintf("Web DoD failures: %s", webFailMsg))
+					logger.Warn(webVerifyPrefix+" Web DoD failed", "Failures", webFailMsg)
+					continue
+				} else {
+					recordStep(fmt.Sprintf("web_dod[%d]", attempt+1), webDodStart, "ok")
+					logger.Info(webVerifyPrefix + " Web DoD PASSED")
+				}
+			}
+
 			// ===== SUCCESS — RECORD OUTCOME =====
 			upsertStage("completed")
 			logger.Info(SharkPrefix+" DoD PASSED — recording outcome",
@@ -348,7 +378,11 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 				handoffCount, true, "", startTime, totalTokens, activityTokens, stepMetrics, dodResult.Checks)
 
 			// ===== CHUM LOOP — spawn async learner + groomer =====
-			spawnCHUMWorkflows(ctx, logger, req, plan)
+			var dodOutput strings.Builder
+			for _, c := range dodResult.Checks {
+				dodOutput.WriteString(fmt.Sprintf("$ %s (exit %d)\n%s\n", c.Command, c.ExitCode, c.Output))
+			}
+			spawnCHUMWorkflows(ctx, logger, req, plan, execResult.Output, dodOutput.String())
 
 			return nil
 		}
@@ -393,6 +427,13 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 	recordOutcome(ctx, recordOpts, a, req, "escalated", 1,
 		handoffCount, false, strings.Join(allFailures, "\n"), startTime, totalTokens, activityTokens, stepMetrics, lastDoDChecks)
 
+	// Run async CHUM workflows to extract lessons from the failure
+	var dodOutput strings.Builder
+	for _, c := range lastDoDChecks {
+		dodOutput.WriteString(fmt.Sprintf("$ %s (exit %d)\n%s\n", c.Command, c.ExitCode, c.Output))
+	}
+	spawnCHUMWorkflows(ctx, logger, req, plan, lastExecOutput, dodOutput.String())
+
 	return fmt.Errorf("task escalated after %d attempts: %s", maxDoDRetries, strings.Join(allFailures, "; "))
 }
 
@@ -430,21 +471,23 @@ func recordOutcome(ctx workflow.Context, opts workflow.ActivityOptions, a *Activ
 // spawnCHUMWorkflows fires off the ContinuousLearner and TacticalGroom as
 // detached child workflows. They run completely async — the parent returns
 // immediately and the children survive even after it completes.
-func spawnCHUMWorkflows(ctx workflow.Context, logger log.Logger, req TaskRequest, plan StructuredPlan) {
+func spawnCHUMWorkflows(ctx workflow.Context, logger log.Logger, req TaskRequest, plan StructuredPlan, execOutput string, dodCheckOutput string) {
 	chumOpts := workflow.ChildWorkflowOptions{
 		ParentClosePolicy: enumspb.PARENT_CLOSE_POLICY_ABANDON,
 	}
 
 	// --- Spawn ContinuousLearnerWorkflow ---
 	learnerReq := LearnerRequest{
-		TaskID:         req.TaskID,
-		Project:        req.Project,
-		WorkDir:        req.WorkDir,
-		Agent:          req.Agent,
-		DoDPassed:      true,
-		FilesChanged:   plan.FilesToModify,
-		PreviousErrors: plan.PreviousErrors,
-		Tier:           "fast",
+		TaskID:          req.TaskID,
+		Project:         req.Project,
+		WorkDir:         req.WorkDir,
+		Agent:           req.Agent,
+		DoDPassed:       true,
+		FilesChanged:    plan.FilesToModify,
+		PreviousErrors:  plan.PreviousErrors,
+		ExecutionOutput: truncate(execOutput, 8000),
+		DoDCheckOutput:  truncate(dodCheckOutput, 4000),
+		Tier:            "fast",
 	}
 	learnerOpts := chumOpts
 	learnerOpts.WorkflowID = fmt.Sprintf("learner-%s-%d", req.TaskID, workflow.Now(ctx).Unix())

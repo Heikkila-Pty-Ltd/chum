@@ -155,9 +155,9 @@ func TestCommit_BeadIDs(t *testing.T) {
 		Author:  "test@example.com",
 		Date:    time.Now(),
 	}
-	
+
 	commit.BeadIDs = ExtractBeadIDs(commit.Message)
-	
+
 	expected := []string{"chum-xyz", "chum-abc.1"}
 	if !reflect.DeepEqual(commit.BeadIDs, expected) {
 		t.Errorf("Commit.BeadIDs = %v, expected %v", commit.BeadIDs, expected)
@@ -169,11 +169,11 @@ func TestParseCommitLine(t *testing.T) {
 	// This would be used to test the commit parsing logic
 	// For real testing, we'd need to set up a git repo with test commits
 	parts := []string{"abc123def456", "feat(chum-xyz): implement feature", "John Doe", "2024-01-15 10:30:00 -0500"}
-	
+
 	if len(parts) != 4 {
 		t.Errorf("Expected 4 parts in commit line, got %d", len(parts))
 	}
-	
+
 	beadIDs := ExtractBeadIDs(parts[1])
 	expected := []string{"chum-xyz"}
 	if !reflect.DeepEqual(beadIDs, expected) {

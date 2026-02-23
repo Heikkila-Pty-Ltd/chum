@@ -45,6 +45,26 @@ matrix_room = "!adJhqAxLcYqQuYraGf:vmi3041112.contaboserver.net"
 require_estimate = true
 require_acceptance = true
 
+[projects.golf-directory]
+enabled = true
+beads_dir = "~/projects/golf-directory/.morsels"
+workspace = "~/projects/golf-directory"
+
+[projects.golf-directory.dod]
+checks = ["npm run build"]
+
+[projects.golf-directory.dod.web]
+enabled = true
+urls = ["https://golf-directory.vercel.app"]
+expect_status = 200
+expect_contains = ["Asia's Premier Golf Concierge"]
+lighthouse_enabled = true
+lighthouse_min_perf = 50
+lighthouse_min_seo = 80
+lighthouse_min_a11y = 70
+crawl_broken_links = true
+timeout_seconds = 30
+
 [rate_limits]
 window_5h_cap = 150
 weekly_cap = 2000

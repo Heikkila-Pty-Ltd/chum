@@ -108,7 +108,7 @@ func CrabDecompositionWorkflow(ctx workflow.Context, req CrabDecompositionReques
 		clarifications.HumanAnswers = humanAnswers
 		clarifications.NeedsHumanInput = false
 
-		logger.Info(CrabPrefix+" Human clarification received")
+		logger.Info(CrabPrefix + " Human clarification received")
 	}
 
 	// ===== PHASE 3: DECOMPOSE =====
@@ -175,7 +175,7 @@ func CrabDecompositionWorkflow(ctx workflow.Context, req CrabDecompositionReques
 	}
 	recordStep("review", reviewStart, "ok")
 
-	logger.Info(CrabPrefix+" Plan APPROVED — emitting to DAG")
+	logger.Info(CrabPrefix + " Plan APPROVED — emitting to DAG")
 
 	// ===== PHASE 7: EMIT =====
 	emitStart := workflow.Now(ctx)

@@ -96,6 +96,7 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 	w.RegisterActivity(acts.CodeReviewActivity)
 	w.RegisterActivity(acts.DoDVerifyActivity)
 	w.RegisterActivity(acts.GatherMetricsActivity)
+	w.RegisterActivity(acts.WebVerifyActivity)
 	w.RegisterActivity(acts.ResetWorkspaceActivity)
 	w.RegisterActivity(acts.RecordOutcomeActivity)
 	w.RegisterActivity(acts.EscalateActivity)
@@ -134,4 +135,3 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 	logger.Info("temporal worker started", "task_queue", DefaultTaskQueue)
 	return w.Run(worker.InterruptCh())
 }
-

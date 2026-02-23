@@ -9,11 +9,11 @@ import (
 
 // RetryPolicy controls how a dispatch should be retried.
 type RetryPolicy struct {
-	MaxRetries     int
-	InitialDelay   time.Duration
-	BackoffFactor  float64
-	MaxDelay       time.Duration
-	EscalateAfter  int
+	MaxRetries    int
+	InitialDelay  time.Duration
+	BackoffFactor float64
+	MaxDelay      time.Duration
+	EscalateAfter int
 }
 
 // DefaultPolicy returns a sane default retry policy for stuck dispatch recovery.

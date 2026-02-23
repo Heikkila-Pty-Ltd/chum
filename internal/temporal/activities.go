@@ -24,6 +24,7 @@ type Activities struct {
 	Tiers config.Tiers
 	DAG   *graph.DAG
 }
+
 // StructuredPlanActivity generates a structured plan from a task prompt.
 // The plan is gated — it must pass Validate() to enter the coding engine.
 func (a *Activities) StructuredPlanActivity(ctx context.Context, req TaskRequest) (*StructuredPlan, error) {
@@ -327,7 +328,7 @@ func (a *Activities) RecordOutcomeActivity(ctx context.Context, outcome OutcomeR
 	logger.Info(OrcaPrefix+" Recording outcome", "TaskID", outcome.TaskID, "Status", outcome.Status)
 
 	if a.Store == nil {
-		logger.Warn(OrcaPrefix+" No store configured, skipping outcome recording")
+		logger.Warn(OrcaPrefix + " No store configured, skipping outcome recording")
 		return nil
 	}
 

@@ -65,7 +65,7 @@ func TestResolveTierAgent_EmptyAgentList(t *testing.T) {
 
 func TestParseJSONOutput_ValidClaudeJSON(t *testing.T) {
 	input := claudeJSONOutput{
-		Result: "Here is the implementation...",
+		Result:  "Here is the implementation...",
 		CostUSD: 0.042,
 	}
 	input.Usage.InputTokens = 1500

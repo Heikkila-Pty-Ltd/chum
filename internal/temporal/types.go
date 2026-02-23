@@ -4,17 +4,18 @@ import "time"
 
 // TaskRequest is submitted via the API to start a workflow.
 type TaskRequest struct {
-	TaskID            string        `json:"task_id"`
-	Project           string        `json:"project"`
-	Title             string        `json:"title"`              // task title (for search attributes)
-	Priority          int           `json:"priority"`           // task priority 0-4 (for search attributes)
-	Prompt            string        `json:"prompt"`
-	Agent             string        `json:"agent"`              // primary coding agent (claude, codex)
-	Reviewer          string        `json:"reviewer"`           // review agent — auto-assigned if empty
-	WorkDir           string        `json:"work_dir"`
-	Provider          string        `json:"provider"`
-	DoDChecks         []string      `json:"dod_checks"`         // e.g. ["go build ./cmd/chum", "go test ./..."]
-	SlowStepThreshold time.Duration `json:"slow_step_threshold"` // steps exceeding this are flagged slow
+	TaskID            string            `json:"task_id"`
+	Project           string            `json:"project"`
+	Title             string            `json:"title"`    // task title (for search attributes)
+	Priority          int               `json:"priority"` // task priority 0-4 (for search attributes)
+	Prompt            string            `json:"prompt"`
+	Agent             string            `json:"agent"`    // primary coding agent (claude, codex)
+	Reviewer          string            `json:"reviewer"` // review agent — auto-assigned if empty
+	WorkDir           string            `json:"work_dir"`
+	Provider          string            `json:"provider"`
+	DoDChecks         []string          `json:"dod_checks"`          // e.g. ["go build ./cmd/chum", "go test ./..."]
+	SlowStepThreshold time.Duration     `json:"slow_step_threshold"` // steps exceeding this are flagged slow
+	WebDoD            *WebVerifyRequest `json:"web_dod,omitempty"`   // Stingray Web verification config
 }
 
 // DefaultReviewer returns the cross-model reviewer for a given primary agent.
@@ -38,14 +39,14 @@ const DoDAgent = "codex" // codex-mini when available
 // Tasks are gated — if the plan doesn't have acceptance criteria,
 // it doesn't enter the coding engine.
 type StructuredPlan struct {
-	Summary            string     `json:"summary"`
-	Steps              []PlanStep `json:"steps"`
-	FilesToModify      []string   `json:"files_to_modify"`
-	AcceptanceCriteria []string   `json:"acceptance_criteria"`
-	EstimatedComplexity string   `json:"estimated_complexity"` // low, medium, high
-	RiskAssessment     string     `json:"risk_assessment"`
-	PreviousErrors     []string   `json:"previous_errors,omitempty"`
-	TokenUsage         TokenUsage `json:"token_usage,omitempty"`
+	Summary             string     `json:"summary"`
+	Steps               []PlanStep `json:"steps"`
+	FilesToModify       []string   `json:"files_to_modify"`
+	AcceptanceCriteria  []string   `json:"acceptance_criteria"`
+	EstimatedComplexity string     `json:"estimated_complexity"` // low, medium, high
+	RiskAssessment      string     `json:"risk_assessment"`
+	PreviousErrors      []string   `json:"previous_errors,omitempty"`
+	TokenUsage          TokenUsage `json:"token_usage,omitempty"`
 }
 
 // PlanStep is a single step in the structured plan.
@@ -121,18 +122,18 @@ type ReviewResult struct {
 
 // DoDResult is returned by the DoD verification activity.
 type DoDResult struct {
-	Passed        bool     `json:"passed"`
-	Checks        []CheckResult `json:"checks"`
-	Failures      []string `json:"failures"`
+	Passed   bool          `json:"passed"`
+	Checks   []CheckResult `json:"checks"`
+	Failures []string      `json:"failures"`
 }
 
 // CheckResult is the result of a single DoD check command.
 type CheckResult struct {
-	Command  string  `json:"command"`
-	ExitCode int     `json:"exit_code"`
-	Output   string  `json:"output"`
-	Passed   bool    `json:"passed"`
-	DurationMs int64 `json:"duration_ms"`
+	Command    string `json:"command"`
+	ExitCode   int    `json:"exit_code"`
+	Output     string `json:"output"`
+	Passed     bool   `json:"passed"`
+	DurationMs int64  `json:"duration_ms"`
 }
 
 // StepMetric records the name, duration, and outcome of a single pipeline step.
@@ -145,23 +146,23 @@ type StepMetric struct {
 
 // OutcomeRecord is passed to the store recording activity.
 type OutcomeRecord struct {
-	DispatchID     int64                 `json:"dispatch_id"`
-	TaskID         string                `json:"task_id"`
-	Project        string                `json:"project"`
-	Agent          string                `json:"agent"`
-	Reviewer       string                `json:"reviewer"`
-	Provider       string                `json:"provider"`
-	Status         string                `json:"status"` // completed, failed, escalated
-	ExitCode       int                   `json:"exit_code"`
-	DurationS      float64               `json:"duration_s"`
-	DoDPassed      bool                  `json:"dod_passed"`
-	DoDFailures    string                `json:"dod_failures"`
-	Handoffs       int                   `json:"handoffs"` // how many cross-model review cycles
-	FilesChanged   int                   `json:"files_changed"`
-	TotalTokens    TokenUsage            `json:"total_tokens"`
-	ActivityTokens []ActivityTokenUsage   `json:"activity_tokens,omitempty"`
-	StepMetrics    []StepMetric           `json:"step_metrics,omitempty"`
-	CheckResults   []CheckResult          `json:"check_results,omitempty"` // last DoD check output for diagnostics
+	DispatchID     int64                `json:"dispatch_id"`
+	TaskID         string               `json:"task_id"`
+	Project        string               `json:"project"`
+	Agent          string               `json:"agent"`
+	Reviewer       string               `json:"reviewer"`
+	Provider       string               `json:"provider"`
+	Status         string               `json:"status"` // completed, failed, escalated
+	ExitCode       int                  `json:"exit_code"`
+	DurationS      float64              `json:"duration_s"`
+	DoDPassed      bool                 `json:"dod_passed"`
+	DoDFailures    string               `json:"dod_failures"`
+	Handoffs       int                  `json:"handoffs"` // how many cross-model review cycles
+	FilesChanged   int                  `json:"files_changed"`
+	TotalTokens    TokenUsage           `json:"total_tokens"`
+	ActivityTokens []ActivityTokenUsage `json:"activity_tokens,omitempty"`
+	StepMetrics    []StepMetric         `json:"step_metrics,omitempty"`
+	CheckResults   []CheckResult        `json:"check_results,omitempty"` // last DoD check output for diagnostics
 }
 
 // EscalationRequest is sent to the chief when DoD fails after retries.
@@ -180,10 +181,10 @@ type EscalationRequest struct {
 
 // PlanningRequest starts a planning session.
 type PlanningRequest struct {
-	Project string `json:"project"`
-	Agent   string `json:"agent"`  // chief agent for execution (defaults to claude)
-	Tier    string `json:"tier"`   // LLM tier for planning activities: "fast" or "premium"
-	WorkDir string `json:"work_dir"`
+	Project           string        `json:"project"`
+	Agent             string        `json:"agent"` // chief agent for execution (defaults to claude)
+	Tier              string        `json:"tier"`  // LLM tier for planning activities: "fast" or "premium"
+	WorkDir           string        `json:"work_dir"`
 	SlowStepThreshold time.Duration `json:"slow_step_threshold"` // steps exceeding this are flagged slow
 }
 
@@ -206,12 +207,12 @@ type BacklogPresentation struct {
 // PlanningQuestion is a single clarifying question, asked one at a time.
 // Each question depends on answers to previous questions.
 type PlanningQuestion struct {
-	Number         int      `json:"number"`          // 1-indexed
-	Total          int      `json:"total"`           // total questions
-	Question       string   `json:"question"`        // the question
-	Options        []string `json:"options"`         // A, B, C choices
-	Recommendation string   `json:"recommendation"`  // "We recommend A because..."
-	Context        string   `json:"context"`         // what previous answer influenced this
+	Number         int      `json:"number"`         // 1-indexed
+	Total          int      `json:"total"`          // total questions
+	Question       string   `json:"question"`       // the question
+	Options        []string `json:"options"`        // A, B, C choices
+	Recommendation string   `json:"recommendation"` // "We recommend A because..."
+	Context        string   `json:"context"`        // what previous answer influenced this
 }
 
 // PlanSummary is the final summary before greenlight.
@@ -229,12 +230,12 @@ type PlanSummary struct {
 type PlanningState struct {
 	SessionID       string               `json:"session_id"`
 	Phase           string               `json:"phase"` // backlog, selecting, questioning, summarizing, ready, executing
-	Backlog         *BacklogPresentation  `json:"backlog,omitempty"`
-	SelectedItem    *BacklogItem          `json:"selected_item,omitempty"`
-	CurrentQuestion *PlanningQuestion     `json:"current_question,omitempty"`
-	Answers         map[string]string     `json:"answers,omitempty"`         // question# → answer
-	Summary         *PlanSummary          `json:"summary,omitempty"`
-	TaskRequest     *TaskRequest          `json:"task_request,omitempty"`    // produced after greenlight
+	Backlog         *BacklogPresentation `json:"backlog,omitempty"`
+	SelectedItem    *BacklogItem         `json:"selected_item,omitempty"`
+	CurrentQuestion *PlanningQuestion    `json:"current_question,omitempty"`
+	Answers         map[string]string    `json:"answers,omitempty"` // question# → answer
+	Summary         *PlanSummary         `json:"summary,omitempty"`
+	TaskRequest     *TaskRequest         `json:"task_request,omitempty"` // produced after greenlight
 }
 
 // --- CHUM (Continuous Hyper-Kanban Utility Module) Types ---
@@ -243,16 +244,18 @@ type PlanningState struct {
 
 // LearnerRequest is passed to ContinuousLearnerWorkflow after a bead completes.
 type LearnerRequest struct {
-	TaskID         string   `json:"task_id"`
-	Project        string   `json:"project"`
-	WorkDir        string   `json:"work_dir"`
-	Agent          string   `json:"agent"`           // which agent completed the bead
-	DoDPassed      bool     `json:"dod_passed"`
-	DoDFailures    string   `json:"dod_failures"`
-	FilesChanged   []string `json:"files_changed,omitempty"`
-	DiffSummary    string   `json:"diff_summary,omitempty"`    // truncated unified diff
-	PreviousErrors []string `json:"previous_errors,omitempty"` // review rejections + DoD failures from the loop
-	Tier           string   `json:"tier"`                      // LLM tier: "fast" or "premium"
+	TaskID          string   `json:"task_id"`
+	Project         string   `json:"project"`
+	WorkDir         string   `json:"work_dir"`
+	Agent           string   `json:"agent"` // which agent completed the bead
+	DoDPassed       bool     `json:"dod_passed"`
+	DoDFailures     string   `json:"dod_failures"`
+	FilesChanged    []string `json:"files_changed,omitempty"`
+	DiffSummary     string   `json:"diff_summary,omitempty"`     // truncated unified diff
+	PreviousErrors  []string `json:"previous_errors,omitempty"`  // review rejections + DoD failures from the loop
+	ExecutionOutput string   `json:"execution_output,omitempty"` // raw CLI terminal output from the coding agent
+	DoDCheckOutput  string   `json:"dod_check_output,omitempty"` // raw DoD check output (build/test)
+	Tier            string   `json:"tier"`                       // LLM tier: "fast" or "premium"
 }
 
 // Lesson is a single extracted lesson from a completed bead.
@@ -260,12 +263,12 @@ type Lesson struct {
 	ID            int64    `json:"id,omitempty"`
 	TaskID        string   `json:"task_id"`
 	Project       string   `json:"project"`
-	Category      string   `json:"category"`                    // pattern, antipattern, rule, insight
-	Summary       string   `json:"summary"`                     // one-line
-	Detail        string   `json:"detail"`                      // full explanation
-	FilePaths     []string `json:"file_paths"`                  // affected files
-	Labels        []string `json:"labels"`                      // searchable tags
-	SemgrepRuleID string   `json:"semgrep_rule_id,omitempty"`   // if a rule was generated
+	Category      string   `json:"category"`                  // pattern, antipattern, rule, insight
+	Summary       string   `json:"summary"`                   // one-line
+	Detail        string   `json:"detail"`                    // full explanation
+	FilePaths     []string `json:"file_paths"`                // affected files
+	Labels        []string `json:"labels"`                    // searchable tags
+	SemgrepRuleID string   `json:"semgrep_rule_id,omitempty"` // if a rule was generated
 	CreatedAt     string   `json:"created_at,omitempty"`
 }
 
@@ -296,20 +299,20 @@ type TacticalGroomRequest struct {
 // BeadMutation is a single mutation the groombot wants to apply to the backlog.
 // The Action field determines which other fields are meaningful.
 type BeadMutation struct {
-	TaskID      string   `json:"task_id"`
-	Action      string   `json:"action"`                  // update_priority, add_dependency, update_notes, create, close
-	Priority    *int     `json:"priority,omitempty"`
-	Notes       string   `json:"notes,omitempty"`
-	DependsOnID string   `json:"depends_on_id,omitempty"`
-	Title       string   `json:"title,omitempty"`         // for create
-	Description string   `json:"description,omitempty"`   // for create
-	Acceptance  string   `json:"acceptance_criteria,omitempty"` // for create
-	Design      string   `json:"design,omitempty"`         // for create
-	EstimateMinutes int      `json:"estimate_minutes,omitempty"` // for create
-	Labels      []string `json:"labels,omitempty"`
-	Reason      string   `json:"reason,omitempty"`        // for close
-	StrategicSource string `json:"strategic_source,omitempty"`
-	Deferred    bool     `json:"deferred,omitempty"`       // for strategic decomposition-only suggestions
+	TaskID          string   `json:"task_id"`
+	Action          string   `json:"action"` // update_priority, add_dependency, update_notes, create, close
+	Priority        *int     `json:"priority,omitempty"`
+	Notes           string   `json:"notes,omitempty"`
+	DependsOnID     string   `json:"depends_on_id,omitempty"`
+	Title           string   `json:"title,omitempty"`               // for create
+	Description     string   `json:"description,omitempty"`         // for create
+	Acceptance      string   `json:"acceptance_criteria,omitempty"` // for create
+	Design          string   `json:"design,omitempty"`              // for create
+	EstimateMinutes int      `json:"estimate_minutes,omitempty"`    // for create
+	Labels          []string `json:"labels,omitempty"`
+	Reason          string   `json:"reason,omitempty"` // for close
+	StrategicSource string   `json:"strategic_source,omitempty"`
+	Deferred        bool     `json:"deferred,omitempty"` // for strategic decomposition-only suggestions
 }
 
 const (
@@ -386,17 +389,18 @@ type MorningBriefing struct {
 // DispatchCandidate is a ready bead with its project context, returned by
 // ScanCandidatesActivity and dispatched as a child workflow.
 type DispatchCandidate struct {
-	TaskID          string   `json:"task_id"`
-	Title           string   `json:"title"`
-	Project         string   `json:"project"`
-	Priority        int      `json:"priority"`
-	WorkDir         string   `json:"work_dir"`
-	Prompt          string   `json:"prompt"`
-	Provider        string   `json:"provider"`
-	DoDChecks       []string `json:"dod_checks"`
-	SlowStepThreshold time.Duration `json:"slow_step_threshold"`
-	EstimateMinutes int      `json:"estimate_minutes"`
-	PreviousErrors  []string `json:"previous_errors,omitempty"` // DoD failures from prior dispatches
+	TaskID            string            `json:"task_id"`
+	Title             string            `json:"title"`
+	Project           string            `json:"project"`
+	Priority          int               `json:"priority"`
+	WorkDir           string            `json:"work_dir"`
+	Prompt            string            `json:"prompt"`
+	Provider          string            `json:"provider"`
+	DoDChecks         []string          `json:"dod_checks"`
+	SlowStepThreshold time.Duration     `json:"slow_step_threshold"`
+	EstimateMinutes   int               `json:"estimate_minutes"`
+	PreviousErrors    []string          `json:"previous_errors,omitempty"` // DoD failures from prior dispatches
+	WebDoD            *WebVerifyRequest `json:"web_dod,omitempty"`         // Stingray Web verification config
 }
 
 // ScanCandidatesResult is returned by ScanCandidatesActivity.
@@ -417,8 +421,8 @@ type CrabDecompositionRequest struct {
 	Project       string `json:"project"`
 	WorkDir       string `json:"work_dir"`
 	PlanMarkdown  string `json:"plan_markdown"`
-	Tier          string `json:"tier"`                        // LLM tier: "fast", "balanced", or "premium"
-	ParentWhaleID string `json:"parent_whale_id,omitempty"`   // optional parent whale to nest under
+	Tier          string `json:"tier"`                      // LLM tier: "fast", "balanced", or "premium"
+	ParentWhaleID string `json:"parent_whale_id,omitempty"` // optional parent whale to nest under
 }
 
 // ParsedPlan is the output of deterministic markdown parsing.
@@ -487,7 +491,7 @@ type SizedMorsel struct {
 	FileHints          []string `json:"file_hints,omitempty"`
 	DependsOnIndices   []int    `json:"depends_on_indices,omitempty"`
 	WhaleIndex         int      `json:"whale_index"`
-	RiskLevel          string   `json:"risk_level"`       // "low", "medium", "high"
+	RiskLevel          string   `json:"risk_level"` // "low", "medium", "high"
 	SizingRationale    string   `json:"sizing_rationale"`
 }
 

@@ -62,6 +62,7 @@ type QualityScore struct {
 	LinesChanged int
 	Duration     float64
 }
+
 // RecordHealthEvent records a health event.
 func (s *Store) RecordHealthEvent(eventType, details string) error {
 	return s.RecordHealthEventWithDispatch(eventType, details, 0, "")
@@ -156,6 +157,7 @@ func (s *Store) GetRecentHealthEvents(hours int) ([]HealthEvent, error) {
 	}
 	return events, rows.Err()
 }
+
 // CaptureOutput captures and stores agent output from a completed dispatch.
 // Output is truncated to 500KB max. The tail contains the last 100 lines.
 func (s *Store) CaptureOutput(dispatchID int64, output string) error {
@@ -219,6 +221,7 @@ func (s *Store) GetOutputTail(dispatchID int64) (string, error) {
 	}
 	return outputTail, nil
 }
+
 // UpsertQualityScore stores or replaces quality scoring for a dispatch.
 func (s *Store) UpsertQualityScore(score QualityScore) error {
 	if score.DispatchID <= 0 {
@@ -449,6 +452,7 @@ func (s *Store) GetProviderLabelStats(window time.Duration) (map[string]map[stri
 
 	return stats, nil
 }
+
 // --- Token Usage ---
 
 // TokenUsage is a compact token usage payload for per-activity persistence.
@@ -561,13 +565,13 @@ func (s *Store) GetTokenUsageByDispatch(dispatchID int64) ([]TokenUsageRecord, e
 
 // TokenUsageSummary holds aggregate token stats for a grouping key.
 type TokenUsageSummary struct {
-	Key                   string  // grouping key (project, agent, or activity_name)
-	TotalInputTokens      int
-	TotalOutputTokens     int
-	TotalCacheReadTokens   int
+	Key                      string // grouping key (project, agent, or activity_name)
+	TotalInputTokens         int
+	TotalOutputTokens        int
+	TotalCacheReadTokens     int
 	TotalCacheCreationTokens int
-	TotalCostUSD          float64
-	RecordCount           int
+	TotalCostUSD             float64
+	RecordCount              int
 }
 
 // GetTokenUsageSummary returns aggregate token usage grouped by the specified column.
@@ -665,4 +669,3 @@ func (s *Store) GetStepMetricsByDispatch(dispatchID int64) ([]StepMetricRecord, 
 	}
 	return records, rows.Err()
 }
-

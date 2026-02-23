@@ -6,7 +6,6 @@ import (
 	"time"
 )
 
-
 // StageHistoryEntry tracks per-stage lifecycle for a bead workflow.
 type StageHistoryEntry struct {
 	Stage       string     `json:"stage"`
@@ -29,6 +28,7 @@ type BeadStage struct {
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 }
+
 // GetBeadStage retrieves the stage state for a specific bead in a project.
 func (s *Store) GetBeadStage(project, beadID string) (*BeadStage, error) {
 	var stage BeadStage

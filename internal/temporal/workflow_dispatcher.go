@@ -88,6 +88,7 @@ func DispatcherWorkflow(ctx workflow.Context, _ struct{}) error {
 			Provider:          c.Provider,
 			DoDChecks:         c.DoDChecks,
 			SlowStepThreshold: slowStep,
+			WebDoD:            c.WebDoD,
 		}
 
 		// Fire-and-forget — we don't wait for the child to complete.
@@ -282,10 +283,25 @@ func (da *DispatchActivities) ScanCandidatesActivity(ctx context.Context) (*Scan
 			continue
 		}
 
-		// Resolve DoD checks from project config.
+		// Resolve DoD checks and web DoD config from project.
 		var dodChecks []string
+		var webDoD *WebVerifyRequest
 		if proj, ok := cfg.Projects[c.project]; ok {
 			dodChecks = proj.DoD.Checks
+			if proj.DoD.Web.Enabled {
+				webDoD = &WebVerifyRequest{
+					Project:           c.project,
+					URLs:              proj.DoD.Web.URLs,
+					ExpectStatus:      proj.DoD.Web.ExpectStatus,
+					ExpectContains:    proj.DoD.Web.ExpectContains,
+					LighthouseEnabled: proj.DoD.Web.LighthouseEnabled,
+					LighthouseMinPerf: proj.DoD.Web.LighthouseMinPerf,
+					LighthouseMinSEO:  proj.DoD.Web.LighthouseMinSEO,
+					LighthouseMinA11y: proj.DoD.Web.LighthouseMinA11y,
+					CrawlBrokenLinks:  proj.DoD.Web.CrawlBrokenLinks,
+					TimeoutSeconds:    proj.DoD.Web.TimeoutSeconds,
+				}
+			}
 		}
 		slowStepThreshold := cfg.General.SlowStepThreshold.Duration
 		if slowStepThreshold <= 0 {
@@ -304,6 +320,7 @@ func (da *DispatchActivities) ScanCandidatesActivity(ctx context.Context) (*Scan
 			SlowStepThreshold: slowStepThreshold,
 			EstimateMinutes:   c.task.EstimateMinutes,
 			PreviousErrors:    lastDoDFailures(da.Store, c.task.ID),
+			WebDoD:            webDoD,
 		})
 		projectRunning[c.project]++
 	}
@@ -369,7 +386,6 @@ type openWorkflowExecution struct {
 	runID      string
 	startTime  time.Time
 }
-
 
 // isStrategicDeferredTask checks whether the task has the strategic deferred label.
 func isStrategicDeferredTask(t graph.Task) bool {

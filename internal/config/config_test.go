@@ -1829,7 +1829,7 @@ func TestRetryPolicyForMergesGeneralTierAndProjectOverrides(t *testing.T) {
 		Projects: map[string]Project{
 			"proj": {
 				RetryPolicy: RetryPolicy{
-					MaxDelay: Duration{Duration: 20 * time.Minute},
+					MaxDelay:      Duration{Duration: 20 * time.Minute},
 					EscalateAfter: 5,
 				},
 			},

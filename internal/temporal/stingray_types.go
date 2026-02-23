@@ -138,7 +138,7 @@ type StingrayMetrics struct {
 	GoVet         CommandResult              `json:"go_vet"`
 	GolangCILint  GolangCILintResult         `json:"golangci_lint"`
 	Coverage      CoverageResult             `json:"coverage"`
-	OutdatedDeps  OutdatedDependenciesResult  `json:"outdated_deps"`
+	OutdatedDeps  OutdatedDependenciesResult `json:"outdated_deps"`
 	ToDos         TODOScanResult             `json:"todos"`
 	DepGraph      DepGraphResult             `json:"dep_graph"`
 	FileMetrics   []RawFileMetric            `json:"file_metrics"`

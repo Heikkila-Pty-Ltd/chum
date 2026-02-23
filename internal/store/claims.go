@@ -17,6 +17,7 @@ type ClaimLease struct {
 	ClaimedAt   time.Time
 	HeartbeatAt time.Time
 }
+
 // UpsertClaimLease records or refreshes a claim lease for a bead ownership lock.
 func (s *Store) UpsertClaimLease(beadID, project, beadsDir, agentID string) error {
 	beadID = strings.TrimSpace(beadID)

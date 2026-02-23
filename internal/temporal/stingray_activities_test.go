@@ -252,8 +252,8 @@ func TestParseGolangCILintOutput(t *testing.T) {
 			wantCount: 0,
 		},
 		{
-			name: "single issue",
-			input: `{"Issues": [{"FromLinter": "govet", "Text": "shadow: declaration of err", "Pos": {"Filename": "main.go", "Line": 42}}]}`,
+			name:       "single issue",
+			input:      `{"Issues": [{"FromLinter": "govet", "Text": "shadow: declaration of err", "Pos": {"Filename": "main.go", "Line": 42}}]}`,
 			wantCount:  1,
 			wantLinter: "govet",
 		},

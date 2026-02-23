@@ -146,7 +146,7 @@ func TestAllocationDecision(t *testing.T) {
 	// Test listing allocations
 	start := now.Add(-1 * time.Hour)
 	end := now.Add(1 * time.Hour)
-	
+
 	allocations, err := store.ListAllocationDecisions(start, end)
 	if err != nil {
 		t.Fatalf("failed to list allocations: %v", err)

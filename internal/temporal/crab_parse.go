@@ -80,7 +80,7 @@ func ParseMarkdownPlan(markdown string) (*ParsedPlan, error) {
 				plan.OutOfScope = append(plan.OutOfScope, bullet)
 			}
 
-		// Unknown sections are silently ignored.
+			// Unknown sections are silently ignored.
 		}
 	}
 
@@ -110,10 +110,10 @@ func extractTitle(line string) string {
 // parseScopeItem attempts to parse a scope checkbox line.
 // Supported formats:
 //
-//	- [ ] description   (uncompleted)
-//	- [x] description   (completed, case-insensitive)
-//	* [ ] description   (asterisk variant, uncompleted)
-//	* [x] description   (asterisk variant, completed)
+//   - [ ] description   (uncompleted)
+//   - [x] description   (completed, case-insensitive)
+//   - [ ] description   (asterisk variant, uncompleted)
+//   - [x] description   (asterisk variant, completed)
 func parseScopeItem(line string, index int) (ScopeItem, bool) {
 	// Normalize leading bullet: accept both "- " and "* "
 	var rest string

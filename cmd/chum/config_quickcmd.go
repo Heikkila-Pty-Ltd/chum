@@ -9,11 +9,11 @@ import (
 )
 
 var (
-	tableHeaderRe       = regexp.MustCompile(`^\s*\[([^\]]+)\]\s*$`)
-	modelAssignRe       = regexp.MustCompile(`^(\s*model\s*=\s*")([^"]*)(".*)$`)
+	tableHeaderRe        = regexp.MustCompile(`^\s*\[([^\]]+)\]\s*$`)
+	modelAssignRe        = regexp.MustCompile(`^(\s*model\s*=\s*")([^"]*)(".*)$`)
 	tickIntervalAssignRe = regexp.MustCompile(`^(\s*tick_interval\s*=\s*")([^"]*)(".*)$`)
-	tierAssignRe        = regexp.MustCompile(`^(\s*)(fast|balanced|premium)(\s*=\s*)\[(.*)\](\s*)$`)
-	quotedStringRe      = regexp.MustCompile(`"([^"]+)"`)
+	tierAssignRe         = regexp.MustCompile(`^(\s*)(fast|balanced|premium)(\s*=\s*)\[(.*)\](\s*)$`)
+	quotedStringRe       = regexp.MustCompile(`"([^"]+)"`)
 )
 
 func disableAnthropicInConfigFile(path, fallbackModel string) (bool, error) {

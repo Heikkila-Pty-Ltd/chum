@@ -8,19 +8,21 @@ labels:
   - ai
 estimate_minutes: 180
 acceptance_criteria: |
-  - System vector-embeds LearnerRequest payloads (Diff and Execution Terminal Output) into a vector store (e.g. pgvector or Qdrant).
-  - A new asynchronous workflow/activity periodically clusters these embeddings to find semantic similarity.
-  - When a cluster of similar tasks is found, it uses gemini-3.1-pro to synthesize the repetitive shell commands/code.
-  - It automatically generates a `protein_candidate` backlog morsel detailing a proposed script or Temporal workflow.
+  - System vector-embeds LearnerRequest payloads into `sqlite-vec` (kept in single-binary).
+  - Raw terminal logs are first sanitized by a fast LLM into a `Semantic Action Summary` and `Sanitized Error Trace`.
+  - Clustering is event-driven (e.g., every N tasks), not cron-based.
+  - When a cluster of similar action summaries reaches a "signal point", `gemini-3.1-pro` synthesizes a deterministic bash or TS script.
+  - System automatically generates a `protein_candidate` backlog morsel with the script.
+  - Clusters of identical `Sanitized Error Traces` feed directly into system Antibodies/Priming Instructions.
 design: |
   **Context:** The current learner extracts lessons per-bead, missing macro-patterns across time. To build an unsupervised automation pipeline, we must embed and cluster the agent's work history.
   
   **Implementation Steps:**
-  1. Add vector embedding to `ContinuousLearnerWorkflow`. Extract chunks from `LearnerRequest.ExecutionOutput` and `DiffSummary`. 
-  2. Setup pgvector/Qdrant in the storage tier for storing embeddings alongside task metadata.
-  3. Create an asynchronous job (e.g., in `StrategicGroomWorkflow` or a new cron) that clusters the embeddings (K-means or DB-SCAN).
-  4. Build a new activity that passes the items in high-density clusters to Gemini 3.1 Pro with the "extract common boilerplate into script" prompt.
-  5. The model outputs a generated bash script / Temporal workflow candidate.
+  1. Add `sqlite-vec` to CHUM.
+  2. Implement a `SanitizeLogsActivity` pass that strips raw logs of timestamps/line numbers to generate geometric summaries.
+  3. Emit and store vector embeddings of these summaries into SQLite.
+  4. Implement an event-driven cluster check (DBSCAN) every X tasks.
+  5. Dense clusters of actions trigger a generation of a deterministic script (not a loose markdown workflow).
   6. Call `a.DAG.CreateTask()` to file it as a `protein_candidate` morsel.
 ---
 

@@ -52,8 +52,8 @@ func cliCommand(agent, workDir string) *exec.Cmd {
 		// Gemini appends stdin to the -p value, so the actual prompt arrives via stdin.
 		cmd = exec.Command("gemini", "-p", "", "--yolo", "-o", "json")
 	case "gemini-pro":
-		// Gemini 3.1 Pro with high thinking budget for strategic analysis.
-		cmd = exec.Command("gemini", "-p", "", "--yolo", "-o", "json", "--model", "gemini-3.1-pro")
+		// Gemini 2.5 Pro with high thinking budget for strategic analysis.
+		cmd = exec.Command("gemini", "-p", "", "--yolo", "-o", "json", "--model", "gemini-2.5-pro")
 	default: // claude — JSON output gives us token usage
 		// claude --print reads from stdin when no positional prompt is given.
 		cmd = exec.Command("claude", "--print", "--output-format", "json", "--dangerously-skip-permissions")

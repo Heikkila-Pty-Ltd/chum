@@ -292,18 +292,19 @@ func Open(dbPath string) (*Store, error) {
 		return nil, fmt.Errorf("store: create schema: %w", err)
 	}
 
+	s := &Store{db: db}
+
+	// Ensure evolutionary genome table exists BEFORE migrations
+	// (migrate() adds columns like 'hibernating' to genomes)
+	if err := s.ensureGenomesTable(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("store: genomes table: %w", err)
+	}
+
 	// Run migrations for existing databases
 	if err := migrate(db); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("store: migrate: %w", err)
-	}
-
-	s := &Store{db: db}
-
-	// Ensure evolutionary genome table exists
-	if err := s.ensureGenomesTable(); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("store: genomes table: %w", err)
 	}
 
 	// Seed initial proteins (deterministic workflow sequences)

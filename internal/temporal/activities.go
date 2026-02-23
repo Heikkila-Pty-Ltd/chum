@@ -29,7 +29,8 @@ type Activities struct {
 	Tiers       config.Tiers
 	DAG         *graph.DAG
 	Sender      matrix.Sender // Matrix notification sender (nil = disabled)
-	DefaultRoom string        // Matrix room ID for notifications
+	DefaultRoom string        // Matrix room ID for standard notifications
+	AdminRoom   string        // Matrix room ID for critical escalations (DM)
 }
 
 // WorktreeDir returns the worktree directory path for a task/explosion pair.
@@ -1294,8 +1295,12 @@ func (a *Activities) AuditSpeciesHealthActivity(ctx context.Context, req Paleont
 				"Issue", h.Issue, "Antibodies", h.AntibodyCount, "LastEvolved", h.LastEvolved)
 			
 			if a.Sender != nil {
+				targetRoom := a.AdminRoom
+				if targetRoom == "" {
+					targetRoom = a.DefaultRoom
+				}
 				msg := fmt.Sprintf("⚠️ **Stale Hibernator Detected**\nSpecies `%s` has been hibernating for >24h. It may need higher-level LLM intervention or manual review.", h.Species)
-				_ = a.Sender.SendMessage(ctx, a.DefaultRoom, msg)
+				_ = a.Sender.SendMessage(ctx, targetRoom, msg)
 			}
 		}
 	}
@@ -1311,8 +1316,12 @@ func (a *Activities) AuditSpeciesHealthActivity(ctx context.Context, req Paleont
 				"Species", s.Species, "Antibodies", s.AntibodyCount)
 			
 			if a.Sender != nil {
+				targetRoom := a.AdminRoom
+				if targetRoom == "" {
+					targetRoom = a.DefaultRoom
+				}
 				msg := fmt.Sprintf("⚠️ **Stuck Species Detected**\nSpecies `%s` has %d antibodies but 0 fossils. The agent keeps failing but cannot consolidate the learnings. Please review the failures.", s.Species, s.AntibodyCount)
-				_ = a.Sender.SendMessage(ctx, a.DefaultRoom, msg)
+				_ = a.Sender.SendMessage(ctx, targetRoom, msg)
 			}
 		}
 	}

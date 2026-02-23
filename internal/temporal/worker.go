@@ -62,6 +62,7 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 		DAG:         dag,
 		Sender:      sender,
 		DefaultRoom: cfg.Reporter.DefaultRoom,
+		AdminRoom:   cfg.Reporter.AdminRoom,
 	}
 	dispatchActs := &DispatchActivities{
 		CfgMgr: cfgMgr,

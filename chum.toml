@@ -117,6 +117,7 @@ channel = "matrix"
 agent_id = "main"
 matrix_bot_account = "spritzbot"
 default_room = "!adJhqAxLcYqQuYraGf:vmi3041112.contaboserver.net"
+admin_room = "" # Fill in with DM room ID for critical health escalations
 daily_digest_time = "09:00"
 weekly_retro_day = "Monday"
 

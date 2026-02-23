@@ -85,11 +85,11 @@ DOD PASSED: %v
 Extract 1-3 lessons. Each lesson must be:
 - Specific and actionable (not generic advice)
 - Tied to concrete file paths or patterns
-- Categorized: "pattern" (good practice), "antipattern" (mistake to avoid), "rule" (enforceable via static analysis), "insight" (observation)
+- Categorized: "pattern" (good practice), "antipattern" (mistake to avoid), "rule" (enforceable via static analysis), "insight" (observation), "protein_candidate" (repetitive task that should be scripted/automated)
 
 Respond with ONLY a JSON array:
 [{
-  "category": "pattern|antipattern|rule|insight",
+  "category": "pattern|antipattern|rule|insight|protein_candidate",
   "summary": "one-line summary",
   "detail": "full explanation with specific code/file references",
   "file_paths": ["affected/file1.go"],
@@ -419,12 +419,13 @@ func (a *Activities) SynthesizeCLAUDEmdActivity(ctx context.Context, req Learner
 	md.WriteString(fmt.Sprintf("> **%d lessons** from **%d observations** across this project.\n\n", len(sorted), len(allLessons)))
 
 	// Group by category with priority ordering
-	categoryOrder := []string{"rule", "antipattern", "pattern", "insight"}
+	categoryOrder := []string{"protein_candidate", "rule", "antipattern", "pattern", "insight"}
 	categoryHeaders := map[string]string{
-		"rule":        "## Rules (Enforced)\n\nThese MUST be followed. Violations will cause DoD failure.\n\n",
-		"antipattern": "## Anti-patterns (Avoid)\n\nThese patterns have caused failures before.\n\n",
-		"pattern":     "## Good Patterns (Follow)\n\nThese approaches have been verified to work.\n\n",
-		"insight":     "## Insights\n\nObservations from project history.\n\n",
+		"protein_candidate": "## Protein Candidates (Automate These)\n\nThese are repetitive tasks that should be turned into reusable scripts/workflows.\n\n",
+		"rule":              "## Rules (Enforced)\n\nThese MUST be followed. Violations will cause DoD failure.\n\n",
+		"antipattern":       "## Anti-patterns (Avoid)\n\nThese patterns have caused failures before.\n\n",
+		"pattern":           "## Good Patterns (Follow)\n\nThese approaches have been verified to work.\n\n",
+		"insight":           "## Insights\n\nObservations from project history.\n\n",
 	}
 
 	for _, cat := range categoryOrder {

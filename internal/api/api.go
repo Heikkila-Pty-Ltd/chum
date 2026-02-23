@@ -13,6 +13,7 @@ import (
 	"go.temporal.io/sdk/client"
 
 	"github.com/antigravity-dev/chum/internal/config"
+	"github.com/antigravity-dev/chum/internal/graph"
 	"github.com/antigravity-dev/chum/internal/store"
 )
 
@@ -20,6 +21,7 @@ import (
 type Server struct {
 	cfg            *config.Config
 	store          *store.Store
+	dag            *graph.DAG
 	logger         *slog.Logger
 	startTime      time.Time
 	httpServer     *http.Server
@@ -27,7 +29,7 @@ type Server struct {
 }
 
 // NewServer creates a new API server.
-func NewServer(cfg *config.Config, s *store.Store, logger *slog.Logger) (*Server, error) {
+func NewServer(cfg *config.Config, s *store.Store, dag *graph.DAG, logger *slog.Logger) (*Server, error) {
 	authMiddleware, err := NewAuthMiddleware(&cfg.API.Security, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize auth middleware: %w", err)
@@ -36,6 +38,7 @@ func NewServer(cfg *config.Config, s *store.Store, logger *slog.Logger) (*Server
 	return &Server{
 		cfg:            cfg,
 		store:          s,
+		dag:            dag,
 		logger:         logger,
 		startTime:      time.Now(),
 		authMiddleware: authMiddleware,
@@ -75,6 +78,10 @@ func (s *Server) Start(ctx context.Context) error {
 	// Crab decomposition endpoints
 	mux.HandleFunc("/crab/decompose", s.authMiddleware.RequireAuth(s.handleCrabDecompose))
 	mux.HandleFunc("/crab/", s.authMiddleware.RequireAuth(s.routeCrab))
+
+	// Task CRUD endpoints (DAG)
+	mux.HandleFunc("/tasks", s.authMiddleware.RequireAuth(s.routeTasks))
+	mux.HandleFunc("/tasks/", s.authMiddleware.RequireAuth(s.routeTasks))
 
 	s.httpServer = &http.Server{
 		Addr:        s.cfg.API.Bind,

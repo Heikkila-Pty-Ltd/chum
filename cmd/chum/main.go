@@ -474,7 +474,7 @@ func main() {
 	}()
 
 	// Start API server
-	apiSrv, err := api.NewServer(cfg, st, logger.With("component", "api"))
+	apiSrv, err := api.NewServer(cfg, st, dag, logger.With("component", "api"))
 	if err != nil {
 		logger.Error("failed to create api server", "error", err)
 		os.Exit(1)

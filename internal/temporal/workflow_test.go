@@ -157,8 +157,10 @@ func TestCHUMNotSpawnedOnFailure(t *testing.T) {
 	require.True(t, env.IsWorkflowCompleted())
 	require.Error(t, env.GetWorkflowError())
 	require.True(t, outcomeSet)
-	require.Equal(t, 0, outcome.TotalTokens.InputTokens)
-	require.Equal(t, 0, outcome.TotalTokens.OutputTokens)
+	// On escalation, the last attempt's execute+review tokens are accumulated:
+	// execute: 1000 input + 500 output, review: 400 input + 200 output
+	require.Equal(t, 1400, outcome.TotalTokens.InputTokens)
+	require.Equal(t, 700, outcome.TotalTokens.OutputTokens)
 	require.Equal(t, 0, outcome.TotalTokens.CacheReadTokens)
 	require.Greater(t, outcome.TotalTokens.CostUSD, 0.0)
 	require.Len(t, outcome.ActivityTokens, 2)

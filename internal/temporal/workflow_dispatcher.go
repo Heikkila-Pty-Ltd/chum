@@ -79,6 +79,8 @@ func DispatcherWorkflow(ctx workflow.Context, _ struct{}) error {
 		req := TaskRequest{
 			TaskID:            c.TaskID,
 			Project:           c.Project,
+			Title:             c.Title,
+			Priority:          c.Priority,
 			Prompt:            c.Prompt,
 			Agent:             agent,
 			WorkDir:           c.WorkDir,
@@ -292,6 +294,7 @@ func (da *DispatchActivities) ScanCandidatesActivity(ctx context.Context) (*Scan
 			TaskID:            c.task.ID,
 			Title:             c.task.Title,
 			Project:           c.project,
+			Priority:          c.task.Priority,
 			WorkDir:           c.workDir,
 			Prompt:            buildPrompt(c.task),
 			Provider:          resolveProvider(cfg),

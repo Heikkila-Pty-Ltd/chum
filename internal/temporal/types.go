@@ -6,6 +6,8 @@ import "time"
 type TaskRequest struct {
 	TaskID            string        `json:"task_id"`
 	Project           string        `json:"project"`
+	Title             string        `json:"title"`              // task title (for search attributes)
+	Priority          int           `json:"priority"`           // task priority 0-4 (for search attributes)
 	Prompt            string        `json:"prompt"`
 	Agent             string        `json:"agent"`              // primary coding agent (claude, codex)
 	Reviewer          string        `json:"reviewer"`           // review agent — auto-assigned if empty
@@ -386,6 +388,7 @@ type DispatchCandidate struct {
 	TaskID          string   `json:"task_id"`
 	Title           string   `json:"title"`
 	Project         string   `json:"project"`
+	Priority        int      `json:"priority"`
 	WorkDir         string   `json:"work_dir"`
 	Prompt          string   `json:"prompt"`
 	Provider        string   `json:"provider"`

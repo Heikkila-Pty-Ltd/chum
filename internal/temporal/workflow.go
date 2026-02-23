@@ -33,6 +33,22 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 	startTime := workflow.Now(ctx)
 	logger := workflow.GetLogger(ctx)
 
+	// --- Search attributes for Temporal UI visibility ---
+	upsertStage := func(stage string) {
+		_ = workflow.UpsertTypedSearchAttributes(ctx,
+			temporal.NewSearchAttributeKeyKeyword(SACurrentStage).ValueSet(stage),
+		)
+	}
+	if err := workflow.UpsertTypedSearchAttributes(ctx,
+		temporal.NewSearchAttributeKeyKeyword(SAProject).ValueSet(req.Project),
+		temporal.NewSearchAttributeKeyInt64(SAPriority).ValueSet(int64(req.Priority)),
+		temporal.NewSearchAttributeKeyKeyword(SAAgent).ValueSet(req.Agent),
+		temporal.NewSearchAttributeKeyKeyword(SACurrentStage).ValueSet("plan"),
+		temporal.NewSearchAttributeKeyString(SATaskTitle).ValueSet(req.Title),
+	); err != nil {
+		logger.Warn(SharkPrefix+" Failed to set search attributes", "error", err)
+	}
+
 	slowThreshold := defaultSlowStepThreshold
 	if req.SlowStepThreshold > 0 {
 		slowThreshold = req.SlowStepThreshold
@@ -155,6 +171,7 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 		resetAttemptTokens()
 
 		// --- EXECUTE ---
+		upsertStage("execute")
 		execStart := workflow.Now(ctx)
 		execCtx := workflow.WithActivityOptions(ctx, execOpts)
 		var execResult ExecutionResult
@@ -170,6 +187,7 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 		recordStep(fmt.Sprintf("execute[%d]", attempt+1), execStart, "ok")
 
 		// --- CROSS-MODEL REVIEW LOOP ---
+		upsertStage("review")
 		reviewStart := workflow.Now(ctx)
 		reviewPassed := false
 		reviewStatus := "failed"
@@ -250,6 +268,7 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 		// --- SEMGREP PRE-FILTER ---
 		// Run custom .semgrep/ rules first. Free and fast — catches known
 		// antipatterns before we pay for compile/test/lint.
+		upsertStage("semgrep")
 		semgrepStart := workflow.Now(ctx)
 		semgrepOpts := workflow.ActivityOptions{
 			StartToCloseTimeout: 1 * time.Minute,
@@ -273,6 +292,7 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 		}
 
 		// --- DOD VERIFICATION ---
+		upsertStage("dod")
 		dodStart := workflow.Now(ctx)
 		logger.Info(SharkPrefix + " Running DoD checks")
 		dodCtx := workflow.WithActivityOptions(ctx, dodOpts)
@@ -287,6 +307,7 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 			recordStep(fmt.Sprintf("dod[%d]", attempt+1), dodStart, "ok")
 
 			// ===== SUCCESS — RECORD OUTCOME =====
+			upsertStage("completed")
 			logger.Info(SharkPrefix+" DoD PASSED — recording outcome",
 				"TotalInputTokens", totalTokens.InputTokens,
 				"TotalOutputTokens", totalTokens.OutputTokens,
@@ -313,6 +334,7 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) error {
 	}
 
 	// ===== ESCALATE — all retries exhausted =====
+	upsertStage("escalated")
 	escalateStart := workflow.Now(ctx)
 	logger.Error(SharkPrefix + " All attempts exhausted, escalating to chief")
 

@@ -1,8 +1,13 @@
 package temporal
 
 import (
+	"context"
 	"log/slog"
+	"strings"
+	"time"
 
+	enumspb "go.temporal.io/api/enums/v1"
+	"go.temporal.io/api/operatorservice/v1"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/worker"
 
@@ -10,6 +15,35 @@ import (
 	"github.com/antigravity-dev/chum/internal/graph"
 	"github.com/antigravity-dev/chum/internal/store"
 )
+
+// RegisterSearchAttributes idempotently registers custom search attributes
+// with the Temporal server. Safe to call on every startup — if attributes
+// already exist, the error is silently ignored.
+func RegisterSearchAttributes(ctx context.Context, c client.Client, logger *slog.Logger) {
+	attrs := map[string]enumspb.IndexedValueType{
+		SAProject:      enumspb.INDEXED_VALUE_TYPE_KEYWORD,
+		SAPriority:     enumspb.INDEXED_VALUE_TYPE_INT,
+		SAAgent:        enumspb.INDEXED_VALUE_TYPE_KEYWORD,
+		SACurrentStage: enumspb.INDEXED_VALUE_TYPE_KEYWORD,
+		SATaskTitle:    enumspb.INDEXED_VALUE_TYPE_TEXT,
+	}
+
+	_, err := c.OperatorService().AddSearchAttributes(ctx, &operatorservice.AddSearchAttributesRequest{
+		SearchAttributes: attrs,
+		Namespace:        "default",
+	})
+	if err != nil {
+		// "already exists" is expected on restarts — not an error.
+		if strings.Contains(err.Error(), "already exists") {
+			logger.Debug("search attributes already registered")
+			return
+		}
+		logger.Warn("failed to register search attributes (non-fatal)", "error", err)
+		return
+	}
+	logger.Info("custom search attributes registered with Temporal",
+		"attributes", []string{SAProject, SAPriority, SAAgent, SACurrentStage, SATaskTitle})
+}
 
 // StartWorker connects to Temporal and starts the chum task queue worker.
 // The store, tiers, dag, and cfgMgr are injected so activities can record
@@ -28,6 +62,11 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 		return err
 	}
 	defer c.Close()
+
+	// Register custom search attributes (idempotent).
+	regCtx, regCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer regCancel()
+	RegisterSearchAttributes(regCtx, c, logger)
 
 	w := worker.New(c, DefaultTaskQueue, worker.Options{})
 
@@ -91,3 +130,4 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 	logger.Info("temporal worker started", "task_queue", DefaultTaskQueue)
 	return w.Run(worker.InterruptCh())
 }
+

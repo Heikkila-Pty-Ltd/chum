@@ -285,60 +285,91 @@ func (da *DispatchActivities) ScanCandidatesActivity(ctx context.Context) (*Scan
 		return candidates[i].task.EstimateMinutes < candidates[j].task.EstimateMinutes
 	})
 
-	// --- Build dispatch candidates (up to slots) ---
-	result := make([]DispatchCandidate, 0, slots)
+	// --- Per-project round-robin dispatch ---
+	// Partition candidates into per-project buckets (already sorted by priority).
+	// Round-robin across projects to guarantee at least 1 shark per project.
+	projectBuckets := make(map[string][]int) // project -> indices into candidates
+	projectOrder := make([]string, 0)        // deterministic iteration order
 	for i := range candidates {
 		c := &candidates[i]
-		if len(result) >= slots {
-			break
-		}
 		if _, alreadyRunning := runningSet[c.task.ID]; alreadyRunning {
 			continue
 		}
-		if projectRunning[c.project] >= maxPerProject {
-			continue
+		if _, seen := projectBuckets[c.project]; !seen {
+			projectOrder = append(projectOrder, c.project)
 		}
+		projectBuckets[c.project] = append(projectBuckets[c.project], i)
+	}
+	sort.Strings(projectOrder) // deterministic ordering
 
-		// Resolve DoD checks and web DoD config from project.
-		var dodChecks []string
-		var webDoD *WebVerifyRequest
-		if proj, ok := cfg.Projects[c.project]; ok {
-			dodChecks = proj.DoD.Checks
-			if proj.DoD.Web.Enabled {
-				webDoD = &WebVerifyRequest{
-					Project:           c.project,
-					URLs:              proj.DoD.Web.URLs,
-					ExpectStatus:      proj.DoD.Web.ExpectStatus,
-					ExpectContains:    proj.DoD.Web.ExpectContains,
-					LighthouseEnabled: proj.DoD.Web.LighthouseEnabled,
-					LighthouseMinPerf: proj.DoD.Web.LighthouseMinPerf,
-					LighthouseMinSEO:  proj.DoD.Web.LighthouseMinSEO,
-					LighthouseMinA11y: proj.DoD.Web.LighthouseMinA11y,
-					CrawlBrokenLinks:  proj.DoD.Web.CrawlBrokenLinks,
-					TimeoutSeconds:    proj.DoD.Web.TimeoutSeconds,
+	result := make([]DispatchCandidate, 0, slots)
+	bucketIdx := make(map[string]int) // tracks position within each project's bucket
+
+	for len(result) < slots {
+		added := false
+		for _, proj := range projectOrder {
+			if len(result) >= slots {
+				break
+			}
+			if projectRunning[proj] >= maxPerProject {
+				continue
+			}
+			bucket := projectBuckets[proj]
+			idx := bucketIdx[proj]
+
+			// Find next valid candidate in this project's bucket
+			for idx < len(bucket) {
+				c := &candidates[bucket[idx]]
+				idx++
+				bucketIdx[proj] = idx
+
+				// Resolve DoD checks and web DoD config from project.
+				var dodChecks []string
+				var webDoD *WebVerifyRequest
+				if projCfg, ok := cfg.Projects[c.project]; ok {
+					dodChecks = projCfg.DoD.Checks
+					if projCfg.DoD.Web.Enabled {
+						webDoD = &WebVerifyRequest{
+							Project:           c.project,
+							URLs:              projCfg.DoD.Web.URLs,
+							ExpectStatus:      projCfg.DoD.Web.ExpectStatus,
+							ExpectContains:    projCfg.DoD.Web.ExpectContains,
+							LighthouseEnabled: projCfg.DoD.Web.LighthouseEnabled,
+							LighthouseMinPerf: projCfg.DoD.Web.LighthouseMinPerf,
+							LighthouseMinSEO:  projCfg.DoD.Web.LighthouseMinSEO,
+							LighthouseMinA11y: projCfg.DoD.Web.LighthouseMinA11y,
+							CrawlBrokenLinks:  projCfg.DoD.Web.CrawlBrokenLinks,
+							TimeoutSeconds:    projCfg.DoD.Web.TimeoutSeconds,
+						}
+					}
 				}
+				slowStepThreshold := cfg.General.SlowStepThreshold.Duration
+				if slowStepThreshold <= 0 {
+					slowStepThreshold = defaultSlowStepThreshold
+				}
+
+				result = append(result, DispatchCandidate{
+					TaskID:            c.task.ID,
+					Title:             c.task.Title,
+					Project:           c.project,
+					Priority:          c.task.Priority,
+					WorkDir:           c.workDir,
+					Prompt:            buildPrompt(c.task),
+					Provider:          resolveProvider(cfg),
+					DoDChecks:         dodChecks,
+					SlowStepThreshold: slowStepThreshold,
+					EstimateMinutes:   c.task.EstimateMinutes,
+					PreviousErrors:    lastDoDFailures(da.Store, c.task.ID),
+					WebDoD:            webDoD,
+				})
+				projectRunning[c.project]++
+				added = true
+				break // move to next project (round-robin)
 			}
 		}
-		slowStepThreshold := cfg.General.SlowStepThreshold.Duration
-		if slowStepThreshold <= 0 {
-			slowStepThreshold = defaultSlowStepThreshold
+		if !added {
+			break // all projects exhausted
 		}
-
-		result = append(result, DispatchCandidate{
-			TaskID:            c.task.ID,
-			Title:             c.task.Title,
-			Project:           c.project,
-			Priority:          c.task.Priority,
-			WorkDir:           c.workDir,
-			Prompt:            buildPrompt(c.task),
-			Provider:          resolveProvider(cfg),
-			DoDChecks:         dodChecks,
-			SlowStepThreshold: slowStepThreshold,
-			EstimateMinutes:   c.task.EstimateMinutes,
-			PreviousErrors:    lastDoDFailures(da.Store, c.task.ID),
-			WebDoD:            webDoD,
-		})
-		projectRunning[c.project]++
 	}
 
 	// --- Circuit breaker trip check ---

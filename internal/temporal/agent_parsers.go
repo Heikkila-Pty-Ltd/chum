@@ -111,12 +111,14 @@ func parseCodexOutput(raw string) CLIResult {
 }
 
 // parseGeminiOutput extracts token usage from gemini JSON output.
-// Gemini -o json emits a single JSON object with stats.models.*.tokens.
+// Gemini -o json emits a single JSON object with session_id, response, and stats.
+// The "response" field contains the actual LLM text output.
 func parseGeminiOutput(raw string) CLIResult {
 	result := CLIResult{Output: raw}
 
 	var geminiOut struct {
-		Stats struct {
+		Response string `json:"response"`
+		Stats    struct {
 			Models map[string]struct {
 				Tokens struct {
 					Input      int64 `json:"input"`
@@ -131,6 +133,13 @@ func parseGeminiOutput(raw string) CLIResult {
 
 	if err := json.Unmarshal([]byte(raw), &geminiOut); err != nil {
 		return result
+	}
+
+	// Use the "response" field as the actual output — this is the LLM's text,
+	// not the JSON envelope. This prevents extractJSON from grabbing the
+	// envelope's outer { instead of the LLM's intended JSON.
+	if geminiOut.Response != "" {
+		result.Output = geminiOut.Response
 	}
 
 	// Sum across all models (gemini may use multiple models per session)

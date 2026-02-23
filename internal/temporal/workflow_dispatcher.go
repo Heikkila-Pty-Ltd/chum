@@ -17,6 +17,7 @@ import (
 
 	"github.com/antigravity-dev/chum/internal/config"
 	"github.com/antigravity-dev/chum/internal/graph"
+	"github.com/antigravity-dev/chum/internal/store"
 )
 
 // DispatcherWorkflow scans for ready tasks and dispatches ChumAgentWorkflow
@@ -152,6 +153,7 @@ type DispatchActivities struct {
 	CfgMgr config.ConfigManager
 	TC     client.Client
 	DAG    *graph.DAG
+	Store  *store.Store
 }
 
 // ScanCandidatesActivity does all the I/O-heavy work of discovering ready tasks.
@@ -301,6 +303,7 @@ func (da *DispatchActivities) ScanCandidatesActivity(ctx context.Context) (*Scan
 			DoDChecks:         dodChecks,
 			SlowStepThreshold: slowStepThreshold,
 			EstimateMinutes:   c.task.EstimateMinutes,
+			PreviousErrors:    lastDoDFailures(da.Store, c.task.ID),
 		})
 		projectRunning[c.project]++
 	}
@@ -410,4 +413,25 @@ func resolveProvider(cfg *config.Config) string {
 		return name
 	}
 	return ""
+}
+
+// lastDoDFailures returns learner-distilled lessons from prior failed dispatches
+// for a task. This gives re-dispatched workflows memory of what went wrong.
+func lastDoDFailures(s *store.Store, taskID string) []string {
+	if s == nil {
+		return nil
+	}
+
+	lessons, err := s.GetLessonsByBead(taskID)
+	if err != nil || len(lessons) == 0 {
+		return nil
+	}
+
+	var errs []string
+	for _, l := range lessons {
+		if l.Category == "antipattern" || l.Category == "rule" {
+			errs = append(errs, fmt.Sprintf("[%s] %s", l.Category, l.Summary))
+		}
+	}
+	return errs
 }

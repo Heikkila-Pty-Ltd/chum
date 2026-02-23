@@ -75,6 +75,7 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 		CfgMgr: cfgMgr,
 		TC:     c,
 		DAG:    dag,
+		Store:  st,
 	}
 
 	// --- Core Workflows ---

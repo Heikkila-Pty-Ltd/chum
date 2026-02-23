@@ -396,6 +396,7 @@ type DispatchCandidate struct {
 	DoDChecks       []string `json:"dod_checks"`
 	SlowStepThreshold time.Duration `json:"slow_step_threshold"`
 	EstimateMinutes int      `json:"estimate_minutes"`
+	PreviousErrors  []string `json:"previous_errors,omitempty"` // DoD failures from prior dispatches
 }
 
 // ScanCandidatesResult is returned by ScanCandidatesActivity.

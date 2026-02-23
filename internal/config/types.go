@@ -111,11 +111,29 @@ type RetryPolicy struct {
 
 // DoDConfig defines the Definition of Done configuration for a project
 type DoDConfig struct {
-	Checks            []string `toml:"checks"`             // commands to run (e.g. "go test ./...", "go vet ./...")
-	CoverageMin       int      `toml:"coverage_min"`       // optional: fail if coverage < N%
-	RequireEstimate   bool     `toml:"require_estimate"`   // bead must have estimate before closing
-	RequireAcceptance bool     `toml:"require_acceptance"` // bead must have acceptance criteria
+	Checks            []string     `toml:"checks"`             // commands to run (e.g. "go test ./...", "go vet ./...")
+	CoverageMin       int          `toml:"coverage_min"`       // optional: fail if coverage < N%
+	RequireEstimate   bool         `toml:"require_estimate"`   // bead must have estimate before closing
+	RequireAcceptance bool         `toml:"require_acceptance"` // bead must have acceptance criteria
+	Web               WebDoDConfig `toml:"web"`                // web verification config (Stingray Web)
 }
+
+// WebDoDConfig configures web-based DoD verification (Stingray Web).
+// When enabled, deployed URLs are verified with HTTP smoke tests,
+// Lighthouse audits, and broken link crawling.
+type WebDoDConfig struct {
+	Enabled           bool     `toml:"enabled"`
+	URLs              []string `toml:"urls"`               // e.g. ["https://golf-directory.vercel.app"]
+	ExpectStatus      int      `toml:"expect_status"`      // expected HTTP status (default 200)
+	ExpectContains    []string `toml:"expect_contains"`    // strings that must appear in response body
+	LighthouseEnabled bool     `toml:"lighthouse_enabled"` // run Lighthouse audit
+	LighthouseMinPerf int      `toml:"lighthouse_min_perf"` // minimum performance score (0-100)
+	LighthouseMinSEO  int      `toml:"lighthouse_min_seo"`  // minimum SEO score (0-100)
+	LighthouseMinA11y int      `toml:"lighthouse_min_a11y"` // minimum accessibility score (0-100)
+	CrawlBrokenLinks  bool     `toml:"crawl_broken_links"`  // check all internal links resolve
+	TimeoutSeconds    int      `toml:"timeout_seconds"`     // HTTP timeout per request (default 30)
+}
+
 
 // RateLimits configures rolling-window and weekly dispatch caps.
 type RateLimits struct {

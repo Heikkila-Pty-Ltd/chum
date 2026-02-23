@@ -1,6 +1,6 @@
 ---
 title: "Implement Unsupervised Automation Pipeline"
-status: backlog
+status: ready
 priority: 3
 type: feature
 labels:
@@ -8,22 +8,32 @@ labels:
   - ai
 estimate_minutes: 180
 acceptance_criteria: |
-  - System vector-embeds LearnerRequest payloads into `sqlite-vec` (kept in single-binary).
-  - Raw terminal logs are first sanitized by a fast LLM into a `Semantic Action Summary` and `Sanitized Error Trace`.
-  - Clustering is event-driven (e.g., every N tasks), not cron-based.
-  - When a cluster of similar action summaries reaches a "signal point", `gemini-3.1-pro` synthesizes a deterministic bash or TS script.
-  - System automatically generates a `protein_candidate` backlog morsel with the script.
-  - Clusters of identical `Sanitized Error Traces` feed directly into system Antibodies/Priming Instructions.
+  - System vector-embeds task summaries into BLOBs in `task_embeddings` table (pure Go, no CGO).
+  - Raw terminal logs are sanitized by a fast LLM into Semantic Action Summary + Sanitized Error Geometry.
+  - Clustering is event-driven (every N completions, configurable via `chum.toml`).
+  - DBSCAN params (epsilon, minPts) configurable under `[learner.clustering]`.
+  - Action clusters → protein scripts (`.sh`/`.ts` in `scripts/`).
+  - Error clusters → antibodies/priming instructions.
+  - Protein scripts auto-filed as `protein_candidate` morsels → dispatched through Shark → DoD → self-merge.
+  - Humans review during grooming only; CHUM self-tests and self-merges.
 design: |
-  **Context:** The current learner extracts lessons per-bead, missing macro-patterns across time. To build an unsupervised automation pipeline, we must embed and cluster the agent's work history.
+  **Phase 1: Data Pre-processing & Embedding**
+  - Add `SanitizeLogsActivity` (fast LLM → Action Summary + Error Geometry).
+  - Create `task_embeddings` table (float32 BLOBs, 768-dim).
+  - `EmbedActivity` calls Google `text-embedding-004` API (same OAuth as gemini-pro).
   
-  **Implementation Steps:**
-  1. Add `sqlite-vec` to CHUM.
-  2. Implement a `SanitizeLogsActivity` pass that strips raw logs of timestamps/line numbers to generate geometric summaries.
-  3. Emit and store vector embeddings of these summaries into SQLite.
-  4. Implement an event-driven cluster check (DBSCAN) every X tasks.
-  5. Dense clusters of actions trigger a generation of a deterministic script (not a loose markdown workflow).
-  6. Call `a.DAG.CreateTask()` to file it as a `protein_candidate` morsel.
+  **Phase 2: Signal Point & Clustering**
+  - Pure-Go cosine similarity + DBSCAN (no sqlite-vec, no CGO).
+  - Completion counter in `RecordOutcomeActivity` triggers cluster check every N tasks.
+  - Dense clusters emit `ProteinSynthesisSignal` or `AntibodySynthesisSignal`.
+  
+  **Phase 3: Protein Synthesis & Self-Test**
+  - `SynthesizeProteinActivity` uses `gemini-3.1-pro` to generate deterministic scripts.
+  - Auto-file morsel → Shark pipeline → DoD gate → merge or escalate.
+depends_on: []
 ---
 
-This morsel tracks the implementation of the Unsupervised Automation Pipeline as documented in ARCHITECTURE.md. It actively paves the cowpaths by identifying when agents do the same thing repeatedly and scripting it.
+# Unsupervised Automation Pipeline
+
+Watches the herd, clusters repetitive human/agent behavior, and paves the cowpaths
+into deterministic scripts. Fully autonomous self-test loop via Shark.

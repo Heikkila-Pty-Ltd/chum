@@ -7,8 +7,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	"go.temporal.io/sdk/activity"
 
@@ -450,8 +453,60 @@ func (a *Activities) EscalateActivity(ctx context.Context, escalation Escalation
 		}
 	}
 
-	// In V0, escalation is logged + stored. The human sees it via /health endpoint.
-	// Future: trigger chief/scrum-master ceremony, Matrix notification, etc.
+	// --- Matrix notification ---
+	msg := fmt.Sprintf("🚨 **ESCALATION** — `%s` (%s)\n\nFailed after **%d attempts**, %d handoffs.\n\n**Failures:**\n%s",
+		escalation.TaskID, escalation.Project,
+		escalation.AttemptCount, escalation.HandoffCount,
+		strings.Join(escalation.Failures, "\n"))
+
+	if err := sendMatrixNotification(msg); err != nil {
+		logger.Warn(OrcaPrefix+" Matrix notification failed (non-fatal)", "error", err)
+	} else {
+		logger.Info(OrcaPrefix + " Escalation sent to Matrix admin room")
+	}
+
+	return nil
+}
+
+// sendMatrixNotification sends a formatted message to the Matrix admin room.
+// Requires MATRIX_ACCESS_TOKEN and MATRIX_ADMIN_ROOM env vars.
+// Non-fatal: callers should log errors but never fail the workflow.
+func sendMatrixNotification(message string) error {
+	token := os.Getenv("MATRIX_ACCESS_TOKEN")
+	roomID := os.Getenv("MATRIX_ADMIN_ROOM")
+	homeserver := os.Getenv("MATRIX_HOMESERVER")
+	if token == "" || roomID == "" {
+		return fmt.Errorf("MATRIX_ACCESS_TOKEN or MATRIX_ADMIN_ROOM not set")
+	}
+	if homeserver == "" {
+		homeserver = "https://vmi3041112.contaboserver.net"
+	}
+
+	// Matrix PUT /_matrix/client/v3/rooms/{roomId}/send/m.room.message/{txnId}
+	txnID := fmt.Sprintf("chum-%d", time.Now().UnixNano())
+	url := fmt.Sprintf("%s/_matrix/client/v3/rooms/%s/send/m.room.message/%s",
+		homeserver, roomID, txnID)
+
+	body := fmt.Sprintf(`{"msgtype":"m.text","body":%q,"format":"org.matrix.custom.html","formatted_body":%q}`,
+		message, message)
+
+	req, err := http.NewRequest("PUT", url, strings.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("matrix returned %d", resp.StatusCode)
+	}
 	return nil
 }
 

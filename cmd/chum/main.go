@@ -8,6 +8,8 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -245,6 +247,36 @@ func runAdminMode(args []string, logger *slog.Logger) error {
 	return nil
 }
 
+// acquirePIDFile checks for an existing CHUM process and writes a new PID file.
+// Prevents multiple CHUM instances (e.g. from different worktrees) from competing
+// for the same port and database.
+func acquirePIDFile(pidPath, exe string, logger *slog.Logger) error {
+	data, err := os.ReadFile(pidPath)
+	if err == nil {
+		// PID file exists — check if process is still alive.
+		lines := strings.SplitN(string(data), "\n", 2)
+		if pid, parseErr := strconv.Atoi(strings.TrimSpace(lines[0])); parseErr == nil {
+			// Check if process exists by sending signal 0.
+			if process, findErr := os.FindProcess(pid); findErr == nil {
+				if signalErr := process.Signal(syscall.Signal(0)); signalErr == nil {
+					// Process is alive — read its binary path from PID file.
+					otherBinary := "unknown"
+					if len(lines) > 1 {
+						otherBinary = strings.TrimSpace(lines[1])
+					}
+					return fmt.Errorf("pid %d is still running (binary: %s, this binary: %s)", pid, otherBinary, exe)
+				}
+			}
+		}
+		// Stale PID file — process is dead, safe to overwrite.
+		logger.Info("removing stale pid file", "pidfile", pidPath)
+	}
+
+	// Write new PID file: line 1 = PID, line 2 = binary path.
+	content := fmt.Sprintf("%d\n%s\n", os.Getpid(), exe)
+	return os.WriteFile(pidPath, []byte(content), 0644)
+}
+
 func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(logger)
@@ -265,7 +297,8 @@ func main() {
 	fallbackModel := flag.String("fallback-model", defaultFallbackModel, "fallback chief model used with -disable-anthropic")
 	flag.Parse()
 
-	logger.Info("chum starting", "config", *configPath)
+	exe, _ := os.Executable()
+	logger.Info("chum starting", "config", *configPath, "binary", exe, "pid", os.Getpid())
 
 	if *disableAnthropic {
 		changed, err := disableAnthropicInConfigFile(*configPath, *fallbackModel)
@@ -308,6 +341,14 @@ func main() {
 		os.Exit(1)
 	}
 	defer st.Close()
+
+	// Acquire PID file to prevent duplicate CHUM instances (e.g. from worktrees).
+	pidPath := filepath.Join(filepath.Dir(dbPath), "chum.pid")
+	if err := acquirePIDFile(pidPath, exe, logger); err != nil {
+		logger.Error("another chum instance is running", "error", err, "pidfile", pidPath)
+		os.Exit(1)
+	}
+	defer os.Remove(pidPath)
 
 	dag := graph.NewDAG(st.DB())
 	if schemaErr := dag.EnsureSchema(context.Background()); schemaErr != nil {

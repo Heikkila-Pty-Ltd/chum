@@ -60,6 +60,11 @@ help: ## Display this help message
 
 build: $(SRC_FILES) ## Build chum binary
 	$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BINARY_NAME) ./cmd/chum/
+	@# Compile tests too — 'go build' skips _test.go files, so signature
+	@# breaks in tests are invisible until DoD. This adds ~2s but prevents
+	@# the entire pipeline from blocking on a broken test fixture.
+	$(GO) test -run=^$$ -count=1 ./... >/dev/null 2>&1 || \
+		(echo "⚠️  Tests failed to compile — check _test.go files" && exit 1)
 
 build-all: ## Build all binaries (chum + tools)
 	$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BINARY_NAME) ./cmd/chum/

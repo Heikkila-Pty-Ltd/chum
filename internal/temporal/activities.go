@@ -31,6 +31,15 @@ type Activities struct {
 	DefaultRoom string        // Matrix room ID for notifications
 }
 
+// WorktreeDir returns the worktree directory path for a task/explosion pair.
+// Uses os.TempDir() so paths are portable across systems with different $TMPDIR.
+func WorktreeDir(taskID, explosionID string) string {
+	if explosionID != "" {
+		return filepath.Join(os.TempDir(), fmt.Sprintf("chum-wt-%s-%s", taskID, explosionID))
+	}
+	return filepath.Join(os.TempDir(), fmt.Sprintf("chum-wt-%s", taskID))
+}
+
 // StructuredPlanActivity generates a structured plan from a task prompt.
 // The plan is gated — it must pass Validate() to enter the coding engine.
 func (a *Activities) StructuredPlanActivity(ctx context.Context, req TaskRequest) (*StructuredPlan, error) {
@@ -602,11 +611,11 @@ func truncate(s string, maxLen int) string {
 func (a *Activities) SetupWorktreeActivity(ctx context.Context, baseDir, taskID, explosionID string) (string, error) {
 	logger := activity.GetLogger(ctx)
 
-	// Worktree path: /tmp/chum-wt-{taskID}[-{explosionID}] (unique per organism)
-	wtDir := fmt.Sprintf("/tmp/chum-wt-%s", taskID)
+	// Worktree path: $TMPDIR/chum-wt-{taskID}[-{explosionID}] (unique per organism)
+	wtDir := WorktreeDir(taskID, "")
 	branch := fmt.Sprintf("chum/%s", taskID)
 	if explosionID != "" {
-		wtDir = fmt.Sprintf("/tmp/chum-wt-%s-%s", taskID, explosionID)
+		wtDir = WorktreeDir(taskID, explosionID)
 		branch = fmt.Sprintf("chum/%s-%s", taskID, explosionID)
 	}
 

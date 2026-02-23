@@ -194,44 +194,7 @@ func (r *RateLimiter) pickAndReserveFromCandidates(
 	return nil, "", 0, nil, nil
 }
 
-// PickProvider selects a provider from the given tier, respecting rate limits.
-// Returns nil if no provider is available (caller should handle tier downgrade).
-// DEPRECATED: Use PickAndReserveProvider instead.
-func (r *RateLimiter) PickProvider(tier string, providers map[string]config.Provider, tiers config.Tiers) *config.Provider {
-	r.mu.Lock()
-	defer r.mu.Unlock()
 
-	var tierProviders []string
-	switch tier {
-	case "fast":
-		tierProviders = tiers.Fast
-	case "balanced":
-		tierProviders = tiers.Balanced
-	case "premium":
-		tierProviders = tiers.Premium
-	default:
-		tierProviders = tiers.Balanced
-	}
-
-	for _, name := range tierProviders {
-		p, ok := providers[name]
-		if !ok {
-			continue
-		}
-
-		if !p.Authed {
-			return &p
-		}
-
-		if canDispatch, _ := r.canDispatchAuthedLocked(); !canDispatch {
-			continue
-		}
-
-		return &p
-	}
-
-	return nil
-}
 
 // DowngradeTier returns the next lower tier, or "" if already at lowest.
 func DowngradeTier(tier string) string {

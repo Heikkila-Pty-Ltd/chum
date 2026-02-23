@@ -101,45 +101,63 @@ func TestHeadroomWarning(t *testing.T) {
 	}
 }
 
-func TestPickProvider_FastTier(t *testing.T) {
+func TestPickAndReserveProvider_FastTier(t *testing.T) {
 	s := tempStore(t)
 	rl := NewRateLimiter(s, config.RateLimits{Window5hCap: 0, WeeklyCap: 0, WeeklyHeadroomPct: 80})
 
 	// Even with zero caps (authed blocked), fast tier should work (free providers)
-	p := rl.PickProvider("fast", testProviders(), testTiers())
+	p, _, cleanup, err := rl.PickAndReserveProvider("fast", testProviders(), testTiers(), "agent", "morsel")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if p == nil {
 		t.Fatal("should return a free-tier provider")
 	}
 	if p.Authed {
 		t.Error("fast tier should return free provider")
 	}
+	if cleanup != nil {
+		cleanup()
+	}
 }
 
-func TestPickProvider_AuthedBlocked(t *testing.T) {
+func TestPickAndReserveProvider_AuthedBlocked(t *testing.T) {
 	s := tempStore(t)
 	// Set caps to 0 to block all authed
 	rl := NewRateLimiter(s, config.RateLimits{Window5hCap: 0, WeeklyCap: 0, WeeklyHeadroomPct: 80})
 
-	p := rl.PickProvider("balanced", testProviders(), testTiers())
+	p, _, cleanup, err := rl.PickAndReserveProvider("balanced", testProviders(), testTiers(), "agent", "morsel")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if p != nil {
 		t.Error("should return nil when authed is blocked")
 	}
+	if cleanup != nil {
+		cleanup()
+	}
 }
 
-func TestPickProvider_AuthedAllowed(t *testing.T) {
+func TestPickAndReserveProvider_AuthedAllowed(t *testing.T) {
 	s := tempStore(t)
 	rl := NewRateLimiter(s, config.RateLimits{Window5hCap: 20, WeeklyCap: 200, WeeklyHeadroomPct: 80})
 
-	p := rl.PickProvider("balanced", testProviders(), testTiers())
+	p, _, cleanup, err := rl.PickAndReserveProvider("balanced", testProviders(), testTiers(), "agent", "morsel")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if p == nil {
 		t.Fatal("should return an authed provider")
 	}
 	if !p.Authed {
 		t.Error("balanced tier should return authed provider")
 	}
+	if cleanup != nil {
+		cleanup()
+	}
 }
 
-func TestPickProvider_ParallelDispatchAttempts(t *testing.T) {
+func TestPickAndReserveProvider_ParallelDispatchAttempts(t *testing.T) {
 	s := tempStore(t)
 	rl := NewRateLimiter(s, config.RateLimits{Window5hCap: 2, WeeklyCap: 2, WeeklyHeadroomPct: 80})
 
@@ -155,18 +173,13 @@ func TestPickProvider_ParallelDispatchAttempts(t *testing.T) {
 		go func() {
 			defer wg.Done()
 
-			p := rl.PickProvider("balanced", testProviders(), testTiers())
-			if p == nil {
+			p, _, cleanup, err := rl.PickAndReserveProvider("balanced", testProviders(), testTiers(), "agent", fmt.Sprintf("morsel-%d", i))
+			if err != nil || p == nil {
 				results <- result{allowed: false}
 				return
 			}
-
-			_, err := rl.RecordAuthedDispatch(p.Model, "agent", fmt.Sprintf("morsel-%d", i))
-			if err != nil {
-				results <- result{allowed: false}
-				return
-			}
-
+			// Don't release — we want to see if two can pass
+			_ = cleanup
 			results <- result{allowed: true}
 		}()
 	}

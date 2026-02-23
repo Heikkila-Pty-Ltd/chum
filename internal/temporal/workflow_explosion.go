@@ -121,7 +121,7 @@ func CambrianExplosionWorkflow(ctx workflow.Context, req TaskRequest, providers 
 
 	// Since ChumAgentWorkflow skipped merging/pushing, we have to push the winner's branch!
 	// Re-construct the winner's worktree branch format
-	wtDir := fmt.Sprintf("/tmp/chum-wt-%s-%s", req.TaskID, winner.ExplosionID)
+	wtDir := WorktreeDir(req.TaskID, winner.ExplosionID)
 	if err := workflow.ExecuteActivity(recordCtx, a.PushWorktreeActivity, wtDir).Get(ctx, nil); err != nil {
 		logger.Warn(SharkPrefix+" Failed to push winner worktree", "error", err)
 	}
@@ -132,7 +132,7 @@ func CambrianExplosionWorkflow(ctx workflow.Context, req TaskRequest, providers 
 
 	// Clean up all worktrees created during the explosion
 	for _, res := range results {
-		resDir := fmt.Sprintf("/tmp/chum-wt-%s-%s", req.TaskID, res.ExplosionID)
+		resDir := WorktreeDir(req.TaskID, res.ExplosionID)
 		workflow.ExecuteActivity(recordCtx, a.CleanupWorktreeActivity, req.WorkDir, resDir).Get(ctx, nil)
 	}
 

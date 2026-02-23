@@ -669,3 +669,25 @@ func (s *Store) GetStepMetricsByDispatch(dispatchID int64) ([]StepMetricRecord, 
 	}
 	return records, rows.Err()
 }
+
+// GetRecentDispatchHealth returns the number of failures and total completed
+// dispatches for a project within the given time window. Used by the circuit
+// breaker to decide whether to halt dispatch for a thrashing project.
+func (s *Store) GetRecentDispatchHealth(project string, window time.Duration) (failures, total int, err error) {
+	cutoff := time.Now().Add(-window).UTC().Format(time.DateTime)
+	err = s.db.QueryRow(`
+		SELECT
+			COALESCE(SUM(CASE WHEN status IN ('failed', 'escalated') THEN 1 ELSE 0 END), 0),
+			COUNT(*)
+		FROM dispatches
+		WHERE project = ?
+		  AND dispatched_at > ?
+		  AND status IN ('completed', 'failed', 'escalated')`,
+		project, cutoff,
+	).Scan(&failures, &total)
+	if err != nil {
+		return 0, 0, fmt.Errorf("store: get recent dispatch health: %w", err)
+	}
+	return failures, total, nil
+}
+

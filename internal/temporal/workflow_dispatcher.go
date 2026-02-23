@@ -11,6 +11,7 @@ import (
 
 	enumspb "go.temporal.io/api/enums/v1"
 	"go.temporal.io/api/workflowservice/v1"
+	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
@@ -219,6 +220,21 @@ func (da *DispatchActivities) ScanCandidatesActivity(ctx context.Context) (*Scan
 			continue
 		}
 
+		// --- Circuit breaker pre-check ---
+		// If a circuit_breaker safety block is active for this project, skip it entirely.
+		if da.Store != nil {
+			if block, _ := da.Store.GetBlock(name, "circuit_breaker"); block != nil {
+				if time.Now().Before(block.BlockedUntil) {
+					activity.GetLogger(ctx).Warn(SharkPrefix+" Circuit breaker ACTIVE — skipping project",
+						"Project", name,
+						"BlockedUntil", block.BlockedUntil.Format(time.RFC3339),
+						"Reason", block.Reason,
+					)
+					continue
+				}
+			}
+		}
+
 		all, listErr := da.DAG.ListTasks(ctx, name)
 		if listErr != nil {
 			continue
@@ -323,6 +339,64 @@ func (da *DispatchActivities) ScanCandidatesActivity(ctx context.Context) (*Scan
 			WebDoD:            webDoD,
 		})
 		projectRunning[c.project]++
+	}
+
+	// --- Circuit breaker trip check ---
+	// After building candidates, check if any project should be circuit-broken.
+	cc := cfg.Dispatch.CostControl
+	if cc.PauseOnChurn && da.Store != nil && cc.ChurnPauseFailure > 0 {
+		window := cc.ChurnPauseWindow.Duration
+		if window <= 0 {
+			window = time.Hour
+		}
+		cooldown := cc.StageCooldown.Duration
+		if cooldown <= 0 {
+			cooldown = time.Hour
+		}
+
+		// Collect unique projects from candidates
+		projectsInResult := make(map[string]bool)
+		for _, dc := range result {
+			projectsInResult[dc.Project] = true
+		}
+
+		for proj := range projectsInResult {
+			failures, total, err := da.Store.GetRecentDispatchHealth(proj, window)
+			if err != nil {
+				activity.GetLogger(ctx).Warn(SharkPrefix+" Circuit breaker health check failed", "Project", proj, "error", err)
+				continue
+			}
+
+			if failures >= cc.ChurnPauseFailure || (cc.ChurnPauseTotal > 0 && total >= cc.ChurnPauseTotal && failures > 0) {
+				blockedUntil := time.Now().Add(cooldown)
+				reason := fmt.Sprintf("Circuit breaker tripped: %d/%d dispatches failed in last %s", failures, total, window)
+
+				if err := da.Store.SetBlockWithMetadata(proj, "circuit_breaker", blockedUntil, reason, map[string]interface{}{
+					"failures": failures,
+					"total":    total,
+					"window":   window.String(),
+				}); err != nil {
+					activity.GetLogger(ctx).Warn(SharkPrefix+" Failed to set circuit breaker block", "Project", proj, "error", err)
+				} else {
+					activity.GetLogger(ctx).Warn(SharkPrefix+" ⚡ Circuit breaker TRIPPED",
+						"Project", proj,
+						"Failures", failures,
+						"Total", total,
+						"Window", window.String(),
+						"CooldownUntil", blockedUntil.Format(time.RFC3339),
+					)
+				}
+
+				// Remove this project's candidates from the result
+				filtered := result[:0]
+				for _, dc := range result {
+					if dc.Project != proj {
+						filtered = append(filtered, dc)
+					}
+				}
+				result = filtered
+			}
+		}
 	}
 
 	return &ScanCandidatesResult{

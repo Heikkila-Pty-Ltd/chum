@@ -136,6 +136,11 @@ stage_cooldown = "1h"
 complexity_escalation_minutes = 180
 risky_review_labels = ["risk:high", "security", "migration", "breaking-change", "database"]
 force_spark_at_weekly_usage_pct = 65
+# Circuit breaker: halt dispatch for a project that is thrashing.
+pause_on_churn = true
+churn_pause_window = "1h"
+churn_pause_failure_threshold = 5
+churn_pause_total_threshold = 10
 
 [dispatch.timeouts]
 fast = "15m"

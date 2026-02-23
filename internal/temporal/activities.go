@@ -457,13 +457,58 @@ func (a *Activities) EscalateActivity(ctx context.Context, escalation Escalation
 
 // --- helpers ---
 
+// sanitizeJSON cleans common LLM JSON corruption patterns.
+// This is an antibody: LLMs frequently emit JSON with escaped backslashes,
+// trailing commas, BOM markers, or control characters that break json.Unmarshal.
+func sanitizeJSON(s string) string {
+	// Strip UTF-8 BOM
+	s = strings.TrimPrefix(s, "\xef\xbb\xbf")
+
+	// Remove control characters (except \n, \r, \t which are valid in JSON strings)
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		if r < 0x20 && r != '\n' && r != '\r' && r != '\t' {
+			continue
+		}
+		b.WriteRune(r)
+	}
+	s = b.String()
+
+	// Fix trailing commas before } or ] (e.g., {"a": 1,} → {"a": 1})
+	for _, pair := range [][2]string{{",}", "}"}, {",]", "]"}} {
+		for strings.Contains(s, pair[0]) {
+			s = strings.ReplaceAll(s, pair[0], pair[1])
+		}
+	}
+	// Also handle trailing comma with whitespace: , \n}
+	for _, closer := range []string{"}", "]"} {
+		for {
+			idx := strings.Index(s, ",")
+			if idx < 0 {
+				break
+			}
+			// Look ahead past whitespace for the closer
+			rest := strings.TrimLeft(s[idx+1:], " \t\n\r")
+			if strings.HasPrefix(rest, closer) {
+				s = s[:idx] + " " + rest
+			} else {
+				break
+			}
+		}
+	}
+
+	return s
+}
+
 // extractJSON finds the first JSON object in text (handles markdown code fences).
+// Applies sanitizeJSON to clean common LLM output corruption.
 func extractJSON(text string) string {
 	// Try to find JSON between code fences first
 	if idx := strings.Index(text, "```json"); idx >= 0 {
 		start := idx + 7
 		if end := strings.Index(text[start:], "```"); end >= 0 {
-			return strings.TrimSpace(text[start : start+end])
+			return sanitizeJSON(strings.TrimSpace(text[start : start+end]))
 		}
 	}
 	if idx := strings.Index(text, "```"); idx >= 0 {
@@ -475,7 +520,7 @@ func extractJSON(text string) string {
 		if end := strings.Index(text[start:], "```"); end >= 0 {
 			candidate := strings.TrimSpace(text[start : start+end])
 			if candidate != "" && candidate[0] == '{' {
-				return candidate
+				return sanitizeJSON(candidate)
 			}
 		}
 	}
@@ -494,7 +539,7 @@ func extractJSON(text string) string {
 		case '}':
 			depth--
 			if depth == 0 {
-				return text[start : i+1]
+				return sanitizeJSON(text[start : i+1])
 			}
 		}
 	}

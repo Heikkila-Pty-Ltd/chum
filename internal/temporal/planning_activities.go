@@ -201,12 +201,13 @@ Be specific. The implementation team needs to know EXACTLY what to build.`,
 }
 
 // extractJSONArray finds the first JSON array in text.
+// Applies sanitizeJSON to clean common LLM output corruption.
 func extractJSONArray(text string) string {
 	// Try code fences first
 	if idx := strings.Index(text, "```json"); idx >= 0 {
 		start := idx + 7
 		if end := strings.Index(text[start:], "```"); end >= 0 {
-			return strings.TrimSpace(text[start : start+end])
+			return sanitizeJSON(strings.TrimSpace(text[start : start+end]))
 		}
 	}
 
@@ -223,7 +224,7 @@ func extractJSONArray(text string) string {
 		case ']':
 			depth--
 			if depth == 0 {
-				return text[start : i+1]
+				return sanitizeJSON(text[start : i+1])
 			}
 		}
 	}

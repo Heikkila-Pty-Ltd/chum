@@ -286,64 +286,6 @@ rules:
 	return rules, nil
 }
 
-// RunSemgrepScanActivity runs semgrep with custom .semgrep/ rules as a DoD pre-filter.
-// Gracefully degrades: semgrep not installed or no rules = pass.
-func (a *Activities) RunSemgrepScanActivity(ctx context.Context, workDir string) (*SemgrepScanResult, error) {
-	logger := activity.GetLogger(ctx)
-
-	// Check if semgrep is installed
-	if _, lookErr := exec.LookPath("semgrep"); lookErr != nil {
-		logger.Info(OctopusPrefix + " Semgrep not installed, skipping pre-filter")
-		return &SemgrepScanResult{Passed: true}, nil //nolint:nilerr // graceful degradation when semgrep not installed
-	}
-
-	// Check if .semgrep/ directory exists and has rules
-	semgrepDir := filepath.Join(workDir, ".semgrep")
-	entries, readDirErr := os.ReadDir(semgrepDir)
-	if readDirErr != nil || len(entries) == 0 {
-		logger.Info(OctopusPrefix + " No custom semgrep rules found, skipping")
-		return &SemgrepScanResult{Passed: true}, nil //nolint:nilerr // graceful degradation when no rules exist
-	}
-
-	cmd := exec.CommandContext(ctx, "semgrep", "scan",
-		"--json",
-		"--config="+semgrepDir,
-		"--error",
-		".",
-	)
-	cmd.Dir = workDir
-
-	output, err := cmd.CombinedOutput()
-	outStr := string(output)
-
-	if err == nil {
-		return &SemgrepScanResult{Passed: true, Output: truncate(outStr, 2000)}, nil
-	}
-
-	// Parse findings count from JSON output
-	var semgrepOutput struct {
-		Results []json.RawMessage `json:"results"`
-		Errors  []struct {
-			Message string `json:"message"`
-		} `json:"errors"`
-	}
-	findings := 0
-	var scanErrors []string
-	if jsonErr := json.Unmarshal(output, &semgrepOutput); jsonErr == nil {
-		findings = len(semgrepOutput.Results)
-		for _, e := range semgrepOutput.Errors {
-			scanErrors = append(scanErrors, e.Message)
-		}
-	}
-
-	logger.Warn(OctopusPrefix+" Semgrep found issues", "Findings", findings)
-	return &SemgrepScanResult{
-		Passed:   false,
-		Findings: findings,
-		Errors:   scanErrors,
-		Output:   truncate(outStr, 2000),
-	}, nil
-}
 
 // SynthesizeCLAUDEmdActivity reads ALL accumulated lessons from the knowledge base,
 // deduplicates and groups by category, and writes a CLAUDE.md file to the project root.

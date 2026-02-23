@@ -19,7 +19,7 @@ var a *Activities
 
 // stubActivities mocks all activities used by ChumAgentWorkflow for a clean
 
-// success path: plan → approve → execute → review(approved) → semgrep(pass) → dod(pass) → record.
+// success path: plan → approve → execute → review(approved) → ubs(pass) → dod(pass) → record.
 func stubActivities(env *testsuite.TestWorkflowEnvironment) {
 
 	env.OnActivity(a.StructuredPlanActivity, mock.Anything, mock.Anything).Return(&StructuredPlan{
@@ -40,7 +40,7 @@ func stubActivities(env *testsuite.TestWorkflowEnvironment) {
 		Tokens: TokenUsage{InputTokens: 500, OutputTokens: 300, CacheReadTokens: 50, CostUSD: 0.01},
 	}, nil)
 
-	env.OnActivity(a.RunSemgrepScanActivity, mock.Anything, mock.Anything).Return(&SemgrepScanResult{
+	env.OnActivity(a.RunUBSScanActivity, mock.Anything, mock.Anything).Return(&UBSScanResult{
 		Passed: true,
 	}, nil)
 
@@ -122,7 +122,7 @@ func TestCHUMNotSpawnedOnFailure(t *testing.T) {
 		Tokens: TokenUsage{InputTokens: 400, OutputTokens: 200, CostUSD: 0.008},
 	}, nil)
 
-	env.OnActivity(a.RunSemgrepScanActivity, mock.Anything, mock.Anything).Return(&SemgrepScanResult{
+	env.OnActivity(a.RunUBSScanActivity, mock.Anything, mock.Anything).Return(&UBSScanResult{
 		Passed: true,
 	}, nil)
 
@@ -350,7 +350,7 @@ func TestChumAgentWorkflowPausesForDrainUntilResume(t *testing.T) {
 		ReviewerAgent: "codex",
 		Tokens:        TokenUsage{InputTokens: 8, OutputTokens: 4, CostUSD: 0.002},
 	}, nil)
-	env.OnActivity(a.RunSemgrepScanActivity, mock.Anything, mock.Anything).Return(&SemgrepScanResult{
+	env.OnActivity(a.RunUBSScanActivity, mock.Anything, mock.Anything).Return(&UBSScanResult{
 		Passed: true,
 	}, nil)
 	env.OnActivity(a.DoDVerifyActivity, mock.Anything, mock.Anything).Return(&DoDResult{
@@ -387,7 +387,7 @@ func TestChumAgentWorkflowPausesForDrainUntilResume(t *testing.T) {
 }
 
 // TestContinuousLearnerWorkflowPipeline verifies the learner extracts lessons,
-// stores them, and generates semgrep rules.
+// stores them, and generates rules.
 func TestContinuousLearnerWorkflowPipeline(t *testing.T) {
 	s := testsuite.WorkflowTestSuite{}
 	env := s.NewTestWorkflowEnvironment()
@@ -719,8 +719,8 @@ func TestStepDurationLogging(t *testing.T) {
 		stepNames[m.Name] = m
 	}
 
-	// All phases must be present: plan, execute[1], review[1], semgrep[1], dod[1]
-	for _, expected := range []string{"plan", "execute[1]", "review[1]", "semgrep[1]", "dod[1]"} {
+	// All phases must be present: plan, execute[1], review[1], ubs[1], dod[1]
+	for _, expected := range []string{"plan", "execute[1]", "review[1]", "ubs[1]", "dod[1]"} {
 		m, ok := stepNames[expected]
 		require.True(t, ok, "missing step metric for %q", expected)
 		require.NotEmpty(t, m.Status, "step %q must have a status", expected)
@@ -750,7 +750,7 @@ func TestStepDurationLoggingWhenReviewActivityFails(t *testing.T) {
 		ExitCode: 0, Output: "done", Agent: "claude",
 	}, nil)
 	env.OnActivity((*Activities)(nil).CodeReviewActivity, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, errors.New("review infra down"))
-	env.OnActivity((*Activities)(nil).RunSemgrepScanActivity, mock.Anything, mock.Anything).Return(&SemgrepScanResult{
+	env.OnActivity((*Activities)(nil).RunUBSScanActivity, mock.Anything, mock.Anything).Return(&UBSScanResult{
 		Passed: true,
 	}, nil)
 	env.OnActivity((*Activities)(nil).DoDVerifyActivity, mock.Anything, mock.Anything).Return(&DoDResult{
@@ -810,13 +810,20 @@ func TestStepDurationLoggingEscalation(t *testing.T) {
 	env.OnActivity(a.CodeReviewActivity, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&ReviewResult{
 		Approved: true, ReviewerAgent: "codex",
 	}, nil)
-	env.OnActivity(a.RunSemgrepScanActivity, mock.Anything, mock.Anything).Return(&SemgrepScanResult{
+	env.OnActivity(a.RunUBSScanActivity, mock.Anything, mock.Anything).Return(&UBSScanResult{
 		Passed: true,
 	}, nil)
 	env.OnActivity(a.DoDVerifyActivity, mock.Anything, mock.Anything).Return(&DoDResult{
 		Passed: false, Failures: []string{"tests failed"},
 	}, nil)
 	env.OnActivity(a.EscalateActivity, mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity(a.RecordFailureActivity, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnActivity(a.AutoFixLintActivity, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnActivity(a.GetBugPrimingActivity, mock.Anything, mock.Anything, mock.Anything).Return("", nil).Maybe()
+	env.OnActivity(a.GetProteinInstructionsActivity, mock.Anything, mock.Anything).Return("", nil).Maybe()
+	env.OnActivity(a.EvolveGenomeActivity, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnActivity(a.HibernateGenomeActivity, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnActivity(a.GetGenomeForPromptActivity, mock.Anything, mock.Anything).Return("", nil).Maybe()
 
 	env.OnWorkflow(ContinuousLearnerWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
 	env.OnWorkflow(TacticalGroomWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
@@ -854,7 +861,7 @@ func TestStepDurationLoggingEscalation(t *testing.T) {
 	for i := 1; i <= 3; i++ {
 		require.Equal(t, 1, stepNames[fmt.Sprintf("execute[%d]", i)], "execute[%d]", i)
 		require.Equal(t, 1, stepNames[fmt.Sprintf("review[%d]", i)], "review[%d]", i)
-		require.Equal(t, 1, stepNames[fmt.Sprintf("semgrep[%d]", i)], "semgrep[%d]", i)
+		require.Equal(t, 1, stepNames[fmt.Sprintf("ubs[%d]", i)], "ubs[%d]", i)
 		require.Equal(t, 1, stepNames[fmt.Sprintf("dod[%d]", i)], "dod[%d]", i)
 	}
 

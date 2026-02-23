@@ -291,13 +291,7 @@ type SemgrepRule struct {
 	Category string `json:"category"`  // error-handling, security, performance, etc.
 }
 
-// SemgrepScanResult is the parsed output of a semgrep scan.
-type SemgrepScanResult struct {
-	Passed   bool     `json:"passed"`
-	Findings int      `json:"findings"`
-	Errors   []string `json:"errors,omitempty"`
-	Output   string   `json:"output"`
-}
+
 
 // TacticalGroomRequest is passed to TacticalGroomWorkflow after a task completes.
 type TacticalGroomRequest struct {

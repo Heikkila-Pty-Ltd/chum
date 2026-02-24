@@ -111,6 +111,7 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 
 	updateSearchAttributes(chumWorkflowStatusPlan)
 	var allFailures []string
+	infraRetries := make(map[string]bool) // tracks transient infra failures that got a free retry
 	defer func() {
 		// If the workflow is failing, record the "scent" in the task store.
 		// Future sharks will use this to skip previous mistakes.
@@ -634,16 +635,41 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 			recordStep(fmt.Sprintf("dod[%d]", attempt+1), dodStart, "failed")
 			failureMsg := strings.Join(dodResult.Failures, "; ")
 
-			// JUDGEMENT LAYER: infrastructure failures don't burn attempts.
-			// If the failure is environmental (golangci-lint parallel lock,
-			// semgrep config error, disk full, etc), the shark didn't cause it.
+			// JUDGEMENT LAYER: infrastructure failures are NOT the shark's fault.
+			// Transient (parallel lock, git lock) → one free retry.
+			// Persistent (disk full, tool missing) → rescue/escalate immediately.
 			if isInfrastructureFailure(strings.ToLower(failureMsg)) {
 				reason := extractInfraReason(strings.ToLower(failureMsg))
-				logger.Warn(SharkPrefix+" DoD failed due to INFRASTRUCTURE (not burning attempt)",
-					"Attempt", attempt+1, "Reason", reason)
-				notify("dod_infra", map[string]string{"reason": reason, "attempt": fmt.Sprintf("%d", attempt+1)})
-				attempt--
-				continue
+				logger.Warn(SharkPrefix+" DoD failed due to INFRASTRUCTURE",
+					"Attempt", attempt+1, "Reason", reason,
+					"Transient", isTransientInfraFailure(strings.ToLower(failureMsg)))
+
+				if isTransientInfraFailure(strings.ToLower(failureMsg)) {
+					// Transient: one free retry (don't burn attempt), but only once.
+					// If we've already had an infra retry, escalate.
+					infraKey := fmt.Sprintf("infra_retry_%s", reason)
+					if _, seen := infraRetries[infraKey]; !seen {
+						infraRetries[infraKey] = true
+						notify("dod_infra", map[string]string{
+							"reason": reason, "attempt": fmt.Sprintf("%d", attempt+1),
+							"action": "retrying (transient)",
+						})
+						attempt-- // don't burn the attempt
+						continue
+					}
+				}
+
+				// Persistent, or transient that already retried → RESCUE.
+				// Don't burn more tokens on something the shark can't fix.
+				notify("rescue", map[string]string{
+					"reason": fmt.Sprintf("Infrastructure failure: %s", reason),
+					"task":   req.TaskID,
+				})
+				allFailures = append(allFailures,
+					fmt.Sprintf("INFRASTRUCTURE RESCUE (attempt %d): %s", attempt+1, reason))
+				logger.Error(SharkPrefix+" Infrastructure rescue — aborting retries",
+					"TaskID", req.TaskID, "Reason", reason)
+				break // exit retry loop — escalate to human
 			}
 
 			allFailures = append(allFailures, fmt.Sprintf("Attempt %d DoD failed: %s", attempt+1, failureMsg))

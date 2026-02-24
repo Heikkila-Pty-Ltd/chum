@@ -117,6 +117,24 @@ func isInfrastructureFailure(lower string) bool {
 	return false
 }
 
+// isTransientInfraFailure returns true if the infra failure is likely temporary
+// and worth one retry (e.g., lock contention). Returns false for persistent
+// issues (disk full, missing tools) that need human intervention.
+func isTransientInfraFailure(lower string) bool {
+	transientPatterns := []string{
+		"parallel golangci-lint is running",
+		"git lock",
+		"index.lock",
+		"unable to create",
+	}
+	for _, p := range transientPatterns {
+		if strings.Contains(lower, p) {
+			return true
+		}
+	}
+	return false
+}
+
 // extractInfraReason returns a human-readable reason for the infrastructure failure.
 func extractInfraReason(lower string) string {
 	switch {

@@ -82,6 +82,7 @@ type PollerConfig struct {
 	Canceler       commandCanceler
 	CommandSenders []string
 	DAG            *graph.DAG
+	Turtle         *TurtleChatHandler // interactive turtle bot handler (nil = disabled)
 }
 
 // Poller polls Matrix rooms and routes inbound messages to project scrum agents.
@@ -116,7 +117,7 @@ func NewPoller(cfg PollerConfig, client Client, dispatcher dispatch.DispatcherIn
 	if cfg.Projects == nil {
 		cfg.Projects = make(map[string]config.Project)
 	}
-	return &Poller{
+	p := &Poller{
 		cfg:            cfg,
 		client:         client,
 		dispatcher:     dispatcher,
@@ -129,6 +130,16 @@ func NewPoller(cfg PollerConfig, client Client, dispatcher dispatch.DispatcherIn
 		commandSenders: normalizeCommandSenders(cfg.CommandSenders),
 		cursors:        make(map[string]string),
 	}
+
+	// Add turtle room to poll loop if configured
+	if cfg.Turtle != nil && cfg.Turtle.Room != "" {
+		if _, exists := p.cfg.RoomToProject[cfg.Turtle.Room]; !exists {
+			p.cfg.RoomToProject[cfg.Turtle.Room] = "__turtle__"
+		}
+		logger.Info("turtle chat enabled", "room", cfg.Turtle.Room)
+	}
+
+	return p
 }
 
 func cloneProjects(src map[string]config.Project) map[string]config.Project {
@@ -278,6 +289,11 @@ func (p *Poller) PollOnce(ctx context.Context) error {
 }
 
 func (p *Poller) routeMessage(ctx context.Context, msg InboundMessage) error {
+	// Turtle chat gets its own handler — not the scrum agent
+	if p.cfg.Turtle != nil && p.cfg.Turtle.IsTurtleRoom(msg.Room) {
+		return p.cfg.Turtle.Handle(ctx, msg)
+	}
+
 	command, isCommand, parseErr := parseScrumCommand(msg.Body)
 	if isCommand {
 		if err := p.handleScrumCommand(ctx, msg, command, parseErr); err != nil {
@@ -331,11 +347,16 @@ You are the project scrum agent. Reply with a concise acknowledgement and the ne
 }
 
 func (p *Poller) isOwnMessage(sender string) bool {
+	// Skip messages from our own bots (spritzbot + turtle bots)
 	bot := strings.TrimSpace(p.cfg.BotUser)
-	if bot == "" {
-		return false
+	if bot != "" && strings.EqualFold(strings.TrimSpace(sender), bot) {
+		return true
 	}
-	return strings.EqualFold(strings.TrimSpace(sender), bot)
+	// Also skip messages from the 3 turtle bots
+	if p.cfg.Turtle != nil && p.cfg.Turtle.IsTurtleBot(sender) {
+		return true
+	}
+	return false
 }
 
 func (p *Poller) sendScrumResponse(ctx context.Context, msg InboundMessage, response string) error {

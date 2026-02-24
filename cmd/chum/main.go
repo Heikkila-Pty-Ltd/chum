@@ -23,6 +23,7 @@ import (
 	"github.com/antigravity-dev/chum/internal/api"
 	"github.com/antigravity-dev/chum/internal/config"
 	"github.com/antigravity-dev/chum/internal/graph"
+	"github.com/antigravity-dev/chum/internal/matrix"
 	"github.com/antigravity-dev/chum/internal/store"
 	"github.com/antigravity-dev/chum/internal/temporal"
 )
@@ -569,6 +570,19 @@ func main() {
 	logger.Info("chum running",
 		"bind", cfg.API.Bind,
 	)
+
+	// Start turtle chat poller if configured
+	if turtleRoom := strings.TrimSpace(cfg.Reporter.TurtleRoom); turtleRoom != "" {
+		go func() {
+			turtleHandler := &matrix.TurtleChatHandler{
+				Room:    turtleRoom,
+				WorkDir: filepath.Dir(*configPath),
+				Logger:  logger.With("component", "turtle-chat"),
+			}
+			turtleHandler.RunPoller(ctx)
+		}()
+		logger.Info("turtle chat poller started", "room", cfg.Reporter.TurtleRoom)
+	}
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM)

@@ -154,6 +154,16 @@ func applyDefaults(cfg *Config, md toml.MetaData) {
 		cfg.Dispatch.CostControl.TokenWasteWindow.Duration = 24 * time.Hour
 	}
 
+	// Higher-learning defaults: fewer retries, faster escalation
+	if cfg.Dispatch.CostControl.HigherLearning.Enabled {
+		if cfg.Dispatch.CostControl.HigherLearning.MaxRetries == 0 {
+			cfg.Dispatch.CostControl.HigherLearning.MaxRetries = 1
+		}
+		if cfg.Dispatch.CostControl.HigherLearning.MaxHandoffs == 0 {
+			cfg.Dispatch.CostControl.HigherLearning.MaxHandoffs = 1
+		}
+	}
+
 	// Dispatch log retention
 	if cfg.Dispatch.LogRetentionDays == 0 {
 		cfg.Dispatch.LogRetentionDays = 30

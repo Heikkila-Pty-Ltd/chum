@@ -34,7 +34,11 @@ func tierForIndex(idx int) string {
 
 // retriesForTier returns the max retry attempts per tier level.
 // Cheap models get more retries; expensive models fewer.
-func retriesForTier(tier string) int {
+// If override > 0, it takes precedence (e.g. higher-learning mode).
+func retriesForTier(tier string, override int) int {
+	if override > 0 {
+		return override
+	}
 	switch strings.ToLower(tier) {
 	case "fast", "":
 		return 3
@@ -344,7 +348,7 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 			continue
 		}
 
-		maxRetries := retriesForTier(tier.Tier)
+		maxRetries := retriesForTier(tier.Tier, req.MaxRetriesOverride)
 
 		// Override agent to use this tier's CLI+model
 		currentAgent = tier.CLI
@@ -435,7 +439,11 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 			reviewStart := workflow.Now(ctx)
 			reviewPassed := false
 			reviewStatus := "failed"
-			for handoff := 0; handoff < maxHandoffs; handoff++ {
+			effectiveMaxHandoffs := maxHandoffs
+			if req.MaxHandoffsOverride > 0 {
+				effectiveMaxHandoffs = req.MaxHandoffsOverride
+			}
+			for handoff := 0; handoff < effectiveMaxHandoffs; handoff++ {
 				reviewCtx := workflow.WithActivityOptions(ctx, reviewOpts)
 				var review ReviewResult
 

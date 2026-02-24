@@ -16,8 +16,10 @@ type TaskRequest struct {
 	Priority          int              `json:"priority"`            // scheduling priority expected as an int in range [0,4], where 0 is highest
 	DoDChecks         []string         `json:"dod_checks"`          // e.g. ["go build ./cmd/chum", "go test ./..."]
 	SlowStepThreshold time.Duration    `json:"slow_step_threshold"` // steps exceeding this are flagged slow
-	EscalationChain   []EscalationTier `json:"escalation_chain"`    // ordered tiers for fail-upward retry
-	PreviousErrors    []string         `json:"previous_errors,omitempty"`
+	EscalationChain     []EscalationTier `json:"escalation_chain"`              // ordered tiers for fail-upward retry
+	MaxRetriesOverride  int              `json:"max_retries_override,omitempty"`  // if >0, overrides retriesForTier for ALL tiers
+	MaxHandoffsOverride int              `json:"max_handoffs_override,omitempty"` // if >0, overrides maxHandoffs constant
+	PreviousErrors      []string         `json:"previous_errors,omitempty"`
 	ExplosionID       string           `json:"explosion_id,omitempty"` // If set, workflow runs in isolated sandbox mode (Cambrian Explosion)
 }
 
@@ -439,13 +441,15 @@ type DispatchCandidate struct {
 
 // ScanCandidatesResult is returned by ScanCandidatesActivity.
 type ScanCandidatesResult struct {
-	Candidates      []DispatchCandidate `json:"candidates"`
-	Running         int                 `json:"running"` // currently running workflow count
-	MaxTotal        int                 `json:"max_total"`
-	Throttled       bool                `json:"throttled"`        // true if dispatch was blocked by token budget
-	ThrottleReason  string              `json:"throttle_reason"`  // human-readable reason for throttling
-	AvailableAgents []string            `json:"available_agents"` // enabled CLI agent names from config
-	EscalationTiers []EscalationTier    `json:"escalation_tiers"` // pre-computed escalation chain from config
+	Candidates          []DispatchCandidate `json:"candidates"`
+	Running             int                 `json:"running"` // currently running workflow count
+	MaxTotal            int                 `json:"max_total"`
+	Throttled           bool                `json:"throttled"`           // true if dispatch was blocked by token budget
+	ThrottleReason      string              `json:"throttle_reason"`     // human-readable reason for throttling
+	AvailableAgents     []string            `json:"available_agents"`    // enabled CLI agent names from config
+	EscalationTiers     []EscalationTier    `json:"escalation_tiers"`    // pre-computed escalation chain from config
+	MaxRetriesOverride  int                 `json:"max_retries_override,omitempty"` // higher-learning: per-tier retry cap (0 = use default)
+	MaxHandoffsOverride int                 `json:"max_handoffs_override,omitempty"` // higher-learning: handoff cap (0 = use default)
 }
 
 // --- Crab Decomposition Types ---

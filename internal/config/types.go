@@ -282,6 +282,17 @@ type DispatchCostControl struct {
 
 	PauseOnTokenWastage bool     `toml:"pause_on_token_waste"`
 	TokenWasteWindow    Duration `toml:"token_waste_window"`
+
+	// Higher-learning mode: fewer retries, faster escalation, maximum learning signal.
+	HigherLearning HigherLearning `toml:"higher_learning"`
+}
+
+// HigherLearning configures reduced-retry mode for overnight/unattended runs.
+// Fewer retries per tier → faster escalation → more diverse failure data per token.
+type HigherLearning struct {
+	Enabled     bool `toml:"enabled"`
+	MaxRetries  int  `toml:"max_retries"`  // per-tier retry cap (default 1 when enabled)
+	MaxHandoffs int  `toml:"max_handoffs"` // cross-model review handoff cap (default 1 when enabled)
 }
 
 // Chief configures the Chief Scrum Master coordination agent.

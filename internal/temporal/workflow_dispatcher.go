@@ -104,18 +104,20 @@ func DispatcherWorkflow(ctx workflow.Context, _ struct{}) error {
 		agent := availableAgents[i%len(availableAgents)]
 
 		req := TaskRequest{
-			TaskID:            c.TaskID,
-			Project:           c.Project,
-			TaskTitle:         c.TaskTitle,
-			Prompt:            c.Prompt,
-			Agent:             agent,
-			WorkDir:           c.WorkDir,
-			Provider:          c.Provider,
-			DoDChecks:         c.DoDChecks,
-			SlowStepThreshold: slowStep,
-			Priority:          clampTaskPriority(c.Priority),
-			EscalationChain:   result.EscalationTiers,
-			PreviousErrors:    c.PreviousErrors,
+			TaskID:              c.TaskID,
+			Project:             c.Project,
+			TaskTitle:           c.TaskTitle,
+			Prompt:              c.Prompt,
+			Agent:               agent,
+			WorkDir:             c.WorkDir,
+			Provider:            c.Provider,
+			DoDChecks:           c.DoDChecks,
+			SlowStepThreshold:   slowStep,
+			Priority:            clampTaskPriority(c.Priority),
+			EscalationChain:     result.EscalationTiers,
+			MaxRetriesOverride:  result.MaxRetriesOverride,
+			MaxHandoffsOverride: result.MaxHandoffsOverride,
+			PreviousErrors:      c.PreviousErrors,
 		}
 
 		// 3-lane dispatcher routing:
@@ -481,11 +483,13 @@ func (da *DispatchActivities) ScanCandidatesActivity(ctx context.Context) (*Scan
 	}
 
 	return &ScanCandidatesResult{
-		Candidates:      result,
-		Running:         running,
-		MaxTotal:        maxTotal,
-		AvailableAgents: enabledCLIAgents(cfg),
-		EscalationTiers: buildEscalationTiers(cfg),
+		Candidates:          result,
+		Running:             running,
+		MaxTotal:            maxTotal,
+		AvailableAgents:     enabledCLIAgents(cfg),
+		EscalationTiers:     buildEscalationTiers(cfg),
+		MaxRetriesOverride:  higherLearningMaxRetries(cfg),
+		MaxHandoffsOverride: higherLearningMaxHandoffs(cfg),
 	}, nil
 }
 
@@ -784,4 +788,22 @@ func resolveProvider(cfg *config.Config) string {
 		return name
 	}
 	return ""
+}
+
+// higherLearningMaxRetries returns the per-tier retry override when
+// higher-learning mode is enabled, or 0 (no override) when disabled.
+func higherLearningMaxRetries(cfg *config.Config) int {
+	if cfg != nil && cfg.Dispatch.CostControl.HigherLearning.Enabled {
+		return cfg.Dispatch.CostControl.HigherLearning.MaxRetries
+	}
+	return 0
+}
+
+// higherLearningMaxHandoffs returns the cross-model handoff override when
+// higher-learning mode is enabled, or 0 (no override) when disabled.
+func higherLearningMaxHandoffs(cfg *config.Config) int {
+	if cfg != nil && cfg.Dispatch.CostControl.HigherLearning.Enabled {
+		return cfg.Dispatch.CostControl.HigherLearning.MaxHandoffs
+	}
+	return 0
 }

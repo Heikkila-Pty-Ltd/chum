@@ -2,12 +2,12 @@
 
 [general]
 tick_interval = "1m"
-max_per_tick = 10
-max_concurrent_coders = 10
-max_concurrent_reviewers = 3
-max_concurrent_total = 15
+max_per_tick = 3
+max_concurrent_coders = 3
+max_concurrent_reviewers = 2
+max_concurrent_total = 4
 stuck_timeout = "30m"
-max_retries = 6
+max_retries = 3
 log_level = "info"
 slow_step_threshold = "2m"
 state_db = "~/.local/share/chum/chum.db"
@@ -47,20 +47,64 @@ require_acceptance = true
 # Claude output tokens — the scarce resource on auth plans.
 # 5h rolling window: pause dispatch when approaching ceiling.
 # Set to 0 to disable. Tune based on your Anthropic dashboard limits.
-window_5h_cap = 2000000
+window_5h_cap = 200000
 # Weekly cap (resets Friday 14:00 local).
-weekly_cap = 10000000
+weekly_cap = 800000
 # Reserve 50% of weekly for human use (CHUM uses 50%).
-weekly_headroom_pct = 50
+weekly_headroom_pct = 90
 
 # --- Codex (OpenAI) ---
 [providers.codex-spark]
 tier = "fast"
 authed = true
-model = ""
+model = "gpt-5.3-codex-spark"
 cli = "codex"
+enabled = true
 
-# --- Claude (Anthropic) — GATED: enabled = false ---
+[providers.codex-low]
+tier = "fast"
+authed = true
+model = "gpt-5.3-codex"
+cli = "codex-low"
+enabled = true
+
+[providers.codex-medium]
+tier = "balanced"
+authed = true
+model = "gpt-5.3-codex"
+cli = "codex-medium"
+enabled = true
+
+[providers.codex-high]
+tier = "premium"
+authed = true
+model = "gpt-5.3-codex"
+cli = "codex-high"
+enabled = true
+
+[providers.codex-extrahigh]
+tier = "premium"
+authed = true
+model = "gpt-5.3-codex"
+cli = "codex-extrahigh"
+enabled = true
+
+# Backward-compatible aliases
+[providers.codex-steady]
+tier = "balanced"
+authed = true
+model = "gpt-5.3-codex"
+cli = "codex-medium"
+enabled = false
+
+[providers.codex-deep]
+tier = "premium"
+authed = true
+model = "gpt-5.3-codex"
+cli = "codex-high"
+enabled = false
+
+# --- Claude (Anthropic) ---
 [providers.claude-haiku]
 tier = "fast"
 authed = true
@@ -83,18 +127,79 @@ cli = "claude"
 enabled = false
 
 # --- Gemini (Google) ---
-[providers.gemini-flash]
+# OAuth-personal backend
+[providers.gemini-2-5-flash]
 tier = "fast"
 authed = true
 model = "gemini-2.5-flash"
 cli = "gemini"
+enabled = true
+
+[providers.gemini-3-0-flash-preview]
+tier = "fast"
+authed = true
+model = "gemini-3.0-flash-preview"
+cli = "gemini"
+enabled = true
 
 [providers.gemini-pro]
 tier = "balanced"
 authed = true
 model = "gemini-2.5-pro"
 cli = "gemini"
+enabled = true
 
+[providers.gemini-3-1-low]
+tier = "balanced"
+authed = true
+model = "gemini-3.1-low"
+cli = "gemini"
+enabled = true
+
+[providers.gemini-3-1-high]
+tier = "premium"
+authed = true
+model = "gemini-3.1-high"
+cli = "gemini"
+enabled = true
+
+# AI Studio API-key backend
+[providers.gemini-aistudio-2-5-flash]
+tier = "fast"
+authed = true
+model = "gemini-2.5-flash"
+cli = "gemini-aistudio"
+enabled = false
+
+[providers.gemini-aistudio-3-0-flash-preview]
+tier = "fast"
+authed = true
+model = "gemini-3.0-flash-preview"
+cli = "gemini-aistudio"
+enabled = false
+
+[providers.gemini-aistudio-pro]
+tier = "balanced"
+authed = true
+model = "gemini-2.5-pro"
+cli = "gemini-aistudio"
+enabled = false
+
+[providers.gemini-aistudio-3-1-low]
+tier = "balanced"
+authed = true
+model = "gemini-3.1-low"
+cli = "gemini-aistudio"
+enabled = false
+
+[providers.gemini-aistudio-3-1-high]
+tier = "premium"
+authed = true
+model = "gemini-3.1-high"
+cli = "gemini-aistudio"
+enabled = false
+
+# --- OpenRouter (via deepseek wrapper) ---
 [providers.deepseek-r1]
 tier = "balanced"
 authed = true
@@ -102,12 +207,25 @@ model = "deepseek/deepseek-r1"
 cli = "deepseek"
 enabled = false
 
+[providers.deepseek-r1-free]
+tier = "fast"
+authed = true
+model = "deepseek/deepseek-r1-0528:free"
+cli = "deepseek"
+enabled = false
+
+[providers.qwen3-coder-free]
+tier = "fast"
+authed = true
+model = "qwen/qwen3-coder:free"
+cli = "deepseek"
+enabled = false
+
 [tiers]
-# Active agents: codex + gemini (claude gated off)
-# Favour gemini-pro (97% headroom) over flash (29% remaining).
-fast = ["codex-spark", "gemini-pro"]
-balanced = ["codex-spark", "gemini-pro"]
-premium = ["codex-spark", "gemini-pro"]
+# Prefer cheap/fast first, then stronger models; keep broad fallback coverage.
+fast = ["codex-spark", "codex-low", "gemini-2-5-flash", "gemini-3-0-flash-preview"]
+balanced = ["codex-medium", "gemini-pro", "gemini-3-1-low", "gemini-2-5-flash", "gemini-3-0-flash-preview"]
+premium = ["codex-high", "codex-extrahigh", "gemini-pro", "gemini-3-1-high", "gemini-3-1-low"]
 
 [health]
 check_interval = "2m"
@@ -140,6 +258,34 @@ args = ["exec", "--full-auto"]
 model_flag = "-m"
 approval_flags = []
 
+[dispatch.cli.codex-low]
+cmd = "codex"
+prompt_mode = "stdin"
+args = ["exec", "--full-auto", "-c", "model_reasoning_effort=low"]
+model_flag = "-m"
+approval_flags = []
+
+[dispatch.cli.codex-medium]
+cmd = "codex"
+prompt_mode = "stdin"
+args = ["exec", "--full-auto", "-c", "model_reasoning_effort=medium"]
+model_flag = "-m"
+approval_flags = []
+
+[dispatch.cli.codex-high]
+cmd = "codex"
+prompt_mode = "stdin"
+args = ["exec", "--full-auto", "-c", "model_reasoning_effort=high"]
+model_flag = "-m"
+approval_flags = []
+
+[dispatch.cli.codex-extrahigh]
+cmd = "codex"
+prompt_mode = "stdin"
+args = ["exec", "--full-auto", "-c", "model_reasoning_effort=xhigh"]
+model_flag = "-m"
+approval_flags = []
+
 [dispatch.cli.claude]
 cmd = "claude"
 prompt_mode = "stdin"
@@ -154,10 +300,17 @@ args = ["-p", "", "--yolo", "-o", "json"]
 model_flag = "--model"
 approval_flags = []
 
-[dispatch.cli.deepseek]
-cmd = "echo"
+[dispatch.cli.gemini-aistudio]
+cmd = "gemini-aistudio"
 prompt_mode = "stdin"
-args = ["deepseek-backlogged"]
+args = ["-p", "", "--yolo", "-o", "json"]
+model_flag = "--model"
+approval_flags = []
+
+[dispatch.cli.deepseek]
+cmd = "deepseek"
+prompt_mode = "stdin"
+args = ["--json"]
 model_flag = "-m"
 approval_flags = []
 
@@ -180,23 +333,36 @@ enabled = true
 spark_first = true
 retry_escalation_attempt = 2
 # Hard stop after repeated failures per stage to prevent endless loops overnight.
-per_morsel_stage_attempt_limit = 5
+per_morsel_stage_attempt_limit = 3
 stage_attempt_window = "6h"
-stage_cooldown = "1h"
+stage_cooldown = "2h"
 complexity_escalation_minutes = 180
 risky_review_labels = ["risk:high", "security", "migration", "breaking-change", "database"]
-force_spark_at_weekly_usage_pct = 65
+force_spark_at_weekly_usage_pct = 70
+daily_cost_cap_usd = 1.0
+per_morsel_cost_cap_usd = 0.10
+pause_on_churn = true
+churn_pause_window = "6h"
+churn_pause_failure_threshold = 3
+churn_pause_total_threshold = 6
+pause_on_token_waste = true
+token_waste_window = "6h"
+
+[dispatch.cost_control.higher_learning]
+enabled = true
+max_retries = 1    # one shot per tier — fail fast, learn fast
+max_handoffs = 1   # one cross-model review swap max
 
 [dispatch.timeouts]
 fast = "15m"
-balanced = "45m"
-premium = "120m"
+balanced = "30m"
+premium = "60m"
 
 [dispatch.git]
 branch_prefix = "chum/"
 branch_cleanup_days = 7
 merge_strategy = "squash"
-max_concurrent_per_project = 5
+max_concurrent_per_project = 2
 
 [chief]
 enabled = true

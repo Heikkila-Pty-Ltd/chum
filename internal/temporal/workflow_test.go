@@ -1177,3 +1177,24 @@ func (f *fakeWorkflowListClient) ListWorkflow(_ context.Context, req *workflowse
 	}
 	return &workflowservice.ListWorkflowExecutionsResponse{}, nil
 }
+
+// TestRetriesForTierWithOverride verifies that higher-learning mode overrides
+// the default per-tier retry counts.
+func TestRetriesForTierWithOverride(t *testing.T) {
+	// Default behavior (no override)
+	require.Equal(t, 3, retriesForTier("fast", 0))
+	require.Equal(t, 2, retriesForTier("balanced", 0))
+	require.Equal(t, 1, retriesForTier("premium", 0))
+	require.Equal(t, 3, retriesForTier("", 0))
+	require.Equal(t, 2, retriesForTier("unknown", 0))
+
+	// Higher-learning override: all tiers get 1 retry
+	require.Equal(t, 1, retriesForTier("fast", 1))
+	require.Equal(t, 1, retriesForTier("balanced", 1))
+	require.Equal(t, 1, retriesForTier("premium", 1))
+	require.Equal(t, 1, retriesForTier("", 1))
+
+	// Custom override: 2 retries
+	require.Equal(t, 2, retriesForTier("fast", 2))
+	require.Equal(t, 2, retriesForTier("premium", 2))
+}

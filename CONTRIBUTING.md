@@ -43,21 +43,18 @@ Please familiarize yourself with the [Project Structure](./PROJECT_STRUCTURE.md)
 
 ### 1. Create an Issue
 
-Before starting work, create or find a morsel in [`.morsels/`](./.morsels):
+Before starting work, create a task in the CHUM DAG via the API:
 
 ```bash
-# Create a morsel markdown file
-cat > .morsels/my-feature.md << 'EOF'
----
-title: "Add feature X to Y"
-status: ready
-priority: 2
-type: task
-estimate: 90
----
-## Description
-Goal and scope.
-EOF
+curl -s -X POST http://localhost:8900/tasks \
+  -H 'Content-Type: application/json' \
+  -d '{"title":"Add feature X to Y","project":"chum","priority":2}'
+```
+
+Or find existing tasks:
+
+```bash
+curl -s http://localhost:8900/tasks?project=chum&status=ready
 ```
 
 ### 2. Create a Branch

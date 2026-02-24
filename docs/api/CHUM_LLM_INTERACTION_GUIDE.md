@@ -81,10 +81,10 @@ Inspect:
 - `failure_category`, `failure_summary`
 - `output_tail`
 
-Then correlate with the morsel file:
+Then correlate with the task in the DAG:
 
 ```bash
-cat .morsels/<morsel_id>.md
+curl -s http://127.0.0.1:8900/tasks/<morsel_id>
 ```
 
 ## C) Retry a Failed Dispatch
@@ -157,10 +157,10 @@ curl -s http://127.0.0.1:8900/dispatches/<morsel_id>
 curl -s -X POST http://127.0.0.1:8900/dispatches/<dispatch_id>/retry
 curl -s -X POST http://127.0.0.1:8900/dispatches/<dispatch_id>/cancel
 
-# Morsels context
-ls .morsels/                         # List available morsels
-cat .morsels/<morsel_id>.md          # View morsel details
-curl -s http://127.0.0.1:8900/api/tasks  # List tasks via API
+# Task management (DAG)
+curl -s http://127.0.0.1:8900/tasks?project=chum&status=ready  # List ready tasks
+curl -s http://127.0.0.1:8900/tasks/<task_id>                  # View task details
+curl -s -X POST http://127.0.0.1:8900/tasks -H 'Content-Type: application/json' -d '{"title":"...","project":"chum"}'  # Create task
 ```
 
 ## Prompting Guidance for External LLM Controllers

@@ -1,105 +1,77 @@
 # Agent Instructions
 
-This project uses **CHUM** for automated task dispatch. Tasks (morsels) live in `.morsels/` as markdown files and are managed by the CHUM Temporal workflow engine. **Do NOT run `bd` commands** — the beads database has been replaced by CHUM's SQLite store.
+This project uses **CHUM** for automated task dispatch. Tasks (morsels) live in the SQLite DAG (`tasks` table) and are managed by the CHUM Temporal workflow engine. **Do NOT run `bd` commands** — the beads CLI has been removed.
 
 ## Branch and Worktree Onboarding
 
 Before coding in CHUM, enforce the branch workflow:
 
-1. Install the local hook:
-   - `./scripts/hooks/install.sh`
-2. Start from clean `master`, then create one of:
-   - `feature/*`, `chore/*`, `fix/*`, `refactor/*`
-3. Optionally create a worktree when running multiple tasks:
-   - `git worktree add -b feature/your-feature ../chum-feature`
-4. Run the worktree training checkpoint in:
-   - `docs/development/GIT_WORKTREE_WORKFLOW.md`
+1. Install the local hook: `./scripts/hooks/install.sh`
+2. Start from clean `master`, then create one of: `feature/*`, `chore/*`, `fix/*`, `refactor/*`
+3. Optionally create a worktree: `git worktree add -b feature/your-feature ../chum-feature`
+4. Run the worktree training checkpoint in `docs/development/GIT_WORKTREE_WORKFLOW.md`
 
-Team training checkpoint:
-
-- Confirm hook installation:
-  - `./scripts/hooks/install.sh`
-- Confirm branch guard behavior:
-  - Create and switch to `feature/*`, `chore/*`, `fix/*`, or `refactor/*` before first commit.
-- Confirm PR review enforcement:
-  - Open a draft PR and verify workflow check runs in CI.
-
-For all code changes, keep PRs on branches only (never direct `master` commits), and include reviewable commits before finishing a morsel.
+For all code changes, keep PRs on branches only (never direct `master` commits).
 
 ## Quick Reference
 
 ```bash
-# View available morsels
-ls .morsels/                          # List all morsel files
-cat .morsels/<morsel-id>.md           # View morsel details
+# CHUM status
+curl -s http://localhost:8900/health
+curl -s http://localhost:8900/status
 
-# CHUM API (if running)
-curl http://localhost:8900/health     # Check CHUM status
-curl http://localhost:8900/api/tasks  # List tasks
+# List available tasks
+curl -s http://localhost:8900/tasks?project=chum&status=ready
+
+# View a specific task
+curl -s http://localhost:8900/tasks/<task-id>
+
+# Create a new task (into the DAG)
+curl -s -X POST http://localhost:8900/tasks \
+  -H 'Content-Type: application/json' \
+  -d '{"title":"Implement X","project":"chum","priority":2,"type":"task","estimate_minutes":90,"description":"Goal and scope","acceptance_criteria":"Tests pass, DoD met"}'
 
 # Quality gates
 scripts/test-safe.sh ./internal/temporal/...  # Locked + timeout + JSON go test
 ```
 
-## Landing the Plane (Session Completion)
+## Task Lifecycle
 
-**When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
+Tasks flow through the CHUM DAG, not through markdown files:
 
-**MANDATORY WORKFLOW:**
+```
+POST /tasks (create) → tasks table (DAG) → groomer → dispatcher → agent → learner
+```
 
-1. **File issues for remaining work** - Create `.morsels/<id>.md` files for anything that needs follow-up
-2. **Run quality gates** (if code changed) - Tests, linters, builds
-  ```bash
-  # Use locked test wrapper to avoid cross-agent test contention
-  TEST_SAFE_LOCK_WAIT_SEC=600 scripts/test-safe.sh ./...
-  ```
-3. **Update morsel status** - Mark finished morsels as `done` in their `.md` files
-4. **PUSH TO REMOTE** - This is MANDATORY:
-   ```bash
-   git pull --rebase
-   git add .morsels/ <changed files>
-   git commit -m "..."
-   git push
-   git status  # MUST show "up to date with origin"
-   ```
-5. **Clean up** - Clear stashes, prune remote branches
-6. **Verify** - All changes committed AND pushed
-7. **Hand off** - Provide context for next session
+### Creating Tasks via API
 
-**CRITICAL RULES:**
-- Work is NOT complete until `git push` succeeds
-- NEVER stop before pushing - that leaves work stranded locally
-- NEVER say "ready to push when you are" - YOU must push
-- If push fails, resolve and retry until it succeeds
+```bash
+curl -s -X POST http://localhost:8900/tasks \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "title": "Implement feature X in module Y",
+    "project": "chum",
+    "priority": 2,
+    "type": "task",
+    "estimate_minutes": 90,
+    "description": "Goal, scope boundaries, touched files/components.",
+    "acceptance_criteria": "- Behavior is observable and testable\n- Tests pass\n- DoD: closure notes include verification evidence",
+    "depends_on": ["other-task-id"],
+    "labels": ["backend", "temporal"]
+  }'
+```
 
----
+**Required fields**: `title`, `project`  
+**Defaults**: `status=ready`, `type=task`
 
-## Morsels Workflow Integration
+### Viewing Tasks
 
-This project uses `.morsels/` directory for task tracking. Morsels are markdown files managed by CHUM's automated dispatch pipeline.
+```bash
+# All ready tasks for a project
+curl -s http://localhost:8900/tasks?project=chum&status=ready
 
-### Creating Morsels
-
-Create a `.morsels/<morsel-id>.md` file with this structure:
-
-```markdown
----
-title: "Implement X in Y"
-status: ready
-priority: 2
-type: task
-estimate: 90
----
-
-## Description
-
-Goal, scope boundaries, touched files/components, and dependency context.
-
-## Acceptance Criteria
-
-- Behavior/outcome is observable and testable
-- Add/update tests covering changed behavior; targeted test suite passes
-- DoD: closure notes include verification evidence
+# Specific task details
+curl -s http://localhost:8900/tasks/<task-id>
 ```
 
 ### Key Concepts
@@ -107,33 +79,7 @@ Goal, scope boundaries, touched files/components, and dependency context.
 - **Priority**: P0=critical, P1=high, P2=medium, P3=low, P4=backlog
 - **Types**: task, bug, feature, epic, question, docs
 - **Status**: `ready` → CHUM dispatches automatically. `done` → completed.
-
-### Test Contention Guardrail
-
-Use `scripts/test-safe.sh` instead of raw `go test` in shared workspaces.
-
-- Uses `flock` lock file: `.tmp/go-test.lock`
-- Uses bounded `go test -timeout` (default `10m`)
-- Emits `go test -json` for machine-readable logs
-- Optional env overrides:
-  - `TEST_SAFE_LOCK_WAIT_SEC` (default: `600`)
-  - `TEST_SAFE_GO_TEST_TIMEOUT=15m`
-  - `TEST_SAFE_JSON_OUT=.tmp/test-$(date +%s).jsonl`
-
-If lock contention blocks a run, wait for the owning process to finish, then retry:
-```bash
-TEST_SAFE_LOCK_WAIT_SEC=600 scripts/test-safe.sh ./internal/temporal ./internal/coordination
-```
-
-### Session Protocol
-
-```bash
-git status                    # Check what changed
-scripts/test-safe.sh ./...    # Run tests with lock/timeout/json output
-git add <files> .morsels/     # Stage code + morsel changes
-git commit -m "..."           # Commit
-git push                      # Push to remote
-```
+- **Dependencies**: Use `depends_on` array when creating tasks. CHUM will not dispatch until dependencies are met.
 
 ### Sizing Guidance (minutes)
 
@@ -150,10 +96,45 @@ git push                      # Push to remote
 - Estimate set
 - Dependencies declared
 
-### Best Practices
+## Landing the Plane (Session Completion)
 
-- Check `.morsels/` at session start to understand available work
-- Update morsel status as you work (`ready` → `in_progress` → `done`)
-- Create new `.morsels/<id>.md` files when you discover tasks
-- Use descriptive titles and set appropriate priority/type
-- Always `git push` before ending session
+**When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
+
+**MANDATORY WORKFLOW:**
+
+1. **File issues for remaining work** — Create tasks via `POST /tasks` for anything that needs follow-up
+2. **Run quality gates** (if code changed):
+   ```bash
+   TEST_SAFE_LOCK_WAIT_SEC=600 scripts/test-safe.sh ./...
+   ```
+3. **PUSH TO REMOTE** — This is MANDATORY:
+   ```bash
+   git pull --rebase
+   git add <changed files>
+   git commit -m "..."
+   git push
+   git status  # MUST show "up to date with origin"
+   ```
+4. **Verify** — All changes committed AND pushed
+5. **Hand off** — Provide context for next session
+
+**CRITICAL RULES:**
+- Work is NOT complete until `git push` succeeds
+- NEVER stop before pushing — that leaves work stranded locally
+- NEVER say "ready to push when you are" — YOU must push
+- If push fails, resolve and retry until it succeeds
+
+## Test Contention Guardrail
+
+Use `scripts/test-safe.sh` instead of raw `go test` in shared workspaces.
+
+- Uses `flock` lock file: `.tmp/go-test.lock`
+- Uses bounded `go test -timeout` (default `10m`)
+- Emits `go test -json` for machine-readable logs
+- Optional env overrides:
+  - `TEST_SAFE_LOCK_WAIT_SEC` (default: `600`)
+  - `TEST_SAFE_GO_TEST_TIMEOUT=15m`
+
+## Note on `.morsels/` Directory
+
+The `.morsels/` directory contains markdown files that serve as a **bootstrap/seeding** mechanism only. CHUM's groomer ingests these into the DAG on startup. For ongoing task management, always use the CHUM API (`POST /tasks`). Do not create `.morsels/` files as the primary way to track work.

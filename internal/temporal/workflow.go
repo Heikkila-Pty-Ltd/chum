@@ -839,6 +839,18 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 	recordOutcome(ctx, recordOpts, a, req, "escalated", 1,
 		handoffCount, false, strings.Join(allFailures, "\n"), startTime, totalTokens, activityTokens, stepMetrics)
 
+	// ===== FILE INVESTIGATION TASK — pipeline eats its own failures =====
+	investigateCtx := workflow.WithActivityOptions(ctx, recordOpts)
+	failureSummary := truncate(strings.Join(allFailures, "; "), 200)
+	_ = workflow.ExecuteActivity(investigateCtx, a.FileInvestigationTaskActivity, InvestigationRequest{
+		Category:    "escalation",
+		Title:       fmt.Sprintf("Investigate repeated failure: %s — %s", req.TaskID, truncate(plan.Summary, 60)),
+		Description: fmt.Sprintf("Task `%s` (project: %s) failed after %d attempts across all provider tiers.\n\nPlan: %s\n\nFailures:\n%s", req.TaskID, req.Project, escalationAttempt, plan.Summary, failureSummary),
+		Source:      workflow.GetInfo(ctx).WorkflowExecution.ID,
+		Project:     req.Project,
+		Severity:    "warning",
+	}).Get(ctx, nil)
+
 	// ===== SPAWN LEARNER ON FAILURE =====
 	// The octopus learns MORE from failures than successes.
 	// Failures carry antibodies: what went wrong, which files are risky,

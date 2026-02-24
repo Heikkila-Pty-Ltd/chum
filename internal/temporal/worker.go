@@ -157,6 +157,8 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 	w.RegisterActivity(acts.GenerateMorningBriefingActivity)
 	w.RegisterActivity(acts.ApplyStrategicMutationsActivity)
 	w.RegisterActivity(acts.RecordFailureActivity)
+	w.RegisterActivity(acts.FileInvestigationTaskActivity)
+	w.RegisterActivity(acts.SentinelScanActivity)
 
 	// --- Crab Decomposition ---
 	w.RegisterWorkflow(CrabDecompositionWorkflow)

@@ -39,6 +39,22 @@ func DispatcherWorkflow(ctx workflow.Context, _ struct{}) error {
 	var result ScanCandidatesResult
 	if err := workflow.ExecuteActivity(actCtx, da.ScanCandidatesActivity).Get(ctx, &result); err != nil {
 		logger.Error(SharkPrefix+" Dispatcher: scan failed", "error", err)
+
+		// File investigation task — the pipeline eats its own failures
+		var a *Activities
+		investigateCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
+			StartToCloseTimeout: 10 * time.Second,
+			RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 1},
+		})
+		_ = workflow.ExecuteActivity(investigateCtx, a.FileInvestigationTaskActivity, InvestigationRequest{
+			Category:    "dispatcher",
+			Title:       fmt.Sprintf("Dispatcher scan failure: %s", truncate(err.Error(), 80)),
+			Description: fmt.Sprintf("ScanCandidatesActivity failed:\n\n%s", err.Error()),
+			Source:      workflow.GetInfo(ctx).WorkflowExecution.ID,
+			Project:     "chum",
+			Severity:    "critical",
+		}).Get(ctx, nil)
+
 		return fmt.Errorf("scan candidates: %w", err)
 	}
 

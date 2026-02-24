@@ -177,6 +177,7 @@ func TestCHUMNotSpawnedOnFailure(t *testing.T) {
 	env.OnActivity(a.GetProteinInstructionsActivity, mock.Anything, mock.Anything).Return("", nil).Maybe()
 	env.OnActivity(a.EvolveGenomeActivity, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 	env.OnActivity(a.HibernateGenomeActivity, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnActivity(a.FileInvestigationTaskActivity, mock.Anything, mock.Anything).Return("", nil).Maybe()
 
 	env.ExecuteWorkflow(ChumAgentWorkflow, TaskRequest{
 		TaskID:  "test-morsel-fail",
@@ -846,6 +847,7 @@ func TestStepDurationLoggingEscalation(t *testing.T) {
 	env.OnActivity(a.GetProteinInstructionsActivity, mock.Anything, mock.Anything).Return("", nil).Maybe()
 	env.OnActivity(a.EvolveGenomeActivity, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 	env.OnActivity(a.HibernateGenomeActivity, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnActivity(a.FileInvestigationTaskActivity, mock.Anything, mock.Anything).Return("", nil).Maybe()
 	env.OnActivity(a.GetGenomeForPromptActivity, mock.Anything, mock.Anything).Return("", nil).Maybe()
 
 	env.OnWorkflow(ContinuousLearnerWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
@@ -1033,6 +1035,7 @@ func TestFailureTriageRetryGuidance(t *testing.T) {
 	env.OnActivity(a.GetProteinInstructionsActivity, mock.Anything, mock.Anything).Return("", nil).Maybe()
 	env.OnActivity(a.EvolveGenomeActivity, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 	env.OnActivity(a.HibernateGenomeActivity, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnActivity(a.FileInvestigationTaskActivity, mock.Anything, mock.Anything).Return("", nil).Maybe()
 	env.OnWorkflow(ContinuousLearnerWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
 	env.OnWorkflow(TacticalGroomWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
 	env.OnWorkflow(TurtleToCrabWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
@@ -1091,6 +1094,7 @@ func TestFailureTriageRescope(t *testing.T) {
 	env.OnActivity(a.GetProteinInstructionsActivity, mock.Anything, mock.Anything).Return("", nil).Maybe()
 	env.OnActivity(a.EvolveGenomeActivity, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 	env.OnActivity(a.HibernateGenomeActivity, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnActivity(a.FileInvestigationTaskActivity, mock.Anything, mock.Anything).Return("", nil).Maybe()
 	env.OnWorkflow(ContinuousLearnerWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
 	env.OnWorkflow(TacticalGroomWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
 	env.OnWorkflow(TurtleToCrabWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
@@ -1143,6 +1147,7 @@ func TestFailureTriageFallback(t *testing.T) {
 	env.OnActivity(a.GetProteinInstructionsActivity, mock.Anything, mock.Anything).Return("", nil).Maybe()
 	env.OnActivity(a.EvolveGenomeActivity, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 	env.OnActivity(a.HibernateGenomeActivity, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnActivity(a.FileInvestigationTaskActivity, mock.Anything, mock.Anything).Return("", nil).Maybe()
 	env.OnWorkflow(ContinuousLearnerWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
 	env.OnWorkflow(TacticalGroomWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
 	env.OnWorkflow(TurtleToCrabWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()

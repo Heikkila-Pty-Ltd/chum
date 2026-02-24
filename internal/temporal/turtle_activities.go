@@ -61,14 +61,8 @@ Consider: What could go wrong? What dependencies exist? What's the simplest path
 				return
 			}
 
-			jsonStr := extractJSON(cliResult.Output)
-			if jsonStr == "" {
-				results <- agentResult{agent: agentName, err: fmt.Errorf("no JSON in output")}
-				return
-			}
-
 			var proposal TurtleProposal
-			if err := json.Unmarshal([]byte(sanitizeLLMJSON(jsonStr)), &proposal); err != nil {
+			if err := robustParseJSON(cliResult.Output, &proposal); err != nil {
 				results <- agentResult{agent: agentName, err: fmt.Errorf("parse JSON: %w", err)}
 				return
 			}
@@ -186,14 +180,8 @@ Be constructive. Look for the BEST ideas across all proposals. Converge toward t
 				return
 			}
 
-			jsonStr := extractJSON(cliResult.Output)
-			if jsonStr == "" {
-				results <- critiqueResult{agent: agentName, err: fmt.Errorf("no JSON in output")}
-				return
-			}
-
 			var critique TurtleCritique
-			if err := json.Unmarshal([]byte(sanitizeLLMJSON(jsonStr)), &critique); err != nil {
+			if err := robustParseJSON(cliResult.Output, &critique); err != nil {
 				results <- critiqueResult{agent: agentName, err: fmt.Errorf("parse JSON: %w", err)}
 				return
 			}
@@ -278,13 +266,8 @@ If all agents converged, score should be high (>80). If major disagreements rema
 		return nil, fmt.Errorf("convergence failed: %w", err)
 	}
 
-	jsonStr := extractJSON(cliResult.Output)
-	if jsonStr == "" {
-		return nil, fmt.Errorf("synthesizer produced no JSON")
-	}
-
 	var consensus TurtleConsensus
-	if err := json.Unmarshal([]byte(sanitizeLLMJSON(jsonStr)), &consensus); err != nil {
+	if err := robustParseJSON(cliResult.Output, &consensus); err != nil {
 		return nil, fmt.Errorf("parse consensus JSON: %w", err)
 	}
 
@@ -352,13 +335,8 @@ IMPORTANT: Each morsel must be small enough for a shark. If something is too big
 		return nil, fmt.Errorf("decomposition failed: %w", err)
 	}
 
-	jsonStr := extractJSONArray(cliResult.Output)
-	if jsonStr == "" {
-		return nil, fmt.Errorf("decomposer produced no JSON array")
-	}
-
 	var morsels []TurtleMorsel
-	if err := json.Unmarshal([]byte(sanitizeLLMJSON(jsonStr)), &morsels); err != nil {
+	if err := robustParseJSONArray(cliResult.Output, &morsels); err != nil {
 		return nil, fmt.Errorf("parse morsels JSON: %w", err)
 	}
 

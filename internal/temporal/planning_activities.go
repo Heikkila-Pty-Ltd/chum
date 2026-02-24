@@ -200,6 +200,90 @@ Be specific. The implementation team needs to know EXACTLY what to build.`,
 	return &summary, nil
 }
 
+// robustParseJSON tries multiple strategies to extract and parse JSON from LLM output.
+// This is specifically designed to handle Gemini's escaping quirks which cause
+// extractJSON to truncate the JSON after sanitization alters the brace depths.
+func robustParseJSON(raw string, target interface{}) error {
+	// Strategy 1: Standard path — extractJSON → sanitizeLLMJSON → unmarshal
+	if jsonStr := extractJSON(raw); jsonStr != "" {
+		sanitized := sanitizeLLMJSON(jsonStr)
+		if err := json.Unmarshal([]byte(sanitized), target); err == nil {
+			return nil
+		}
+	}
+
+	// Strategy 2: Sanitize FIRST, then extract
+	// (fixes cases where backslashes confuse brace matching)
+	sanitizedRaw := sanitizeLLMJSON(raw)
+	if jsonStr := extractJSON(sanitizedRaw); jsonStr != "" {
+		if err := json.Unmarshal([]byte(jsonStr), target); err == nil {
+			return nil
+		}
+	}
+
+	// Strategy 3: Try nuking all invalid backslashes first, then extract
+	nuked := nukeInvalidBackslashes(raw)
+	if jsonStr := extractJSON(nuked); jsonStr != "" {
+		if err := json.Unmarshal([]byte(jsonStr), target); err == nil {
+			return nil
+		}
+	}
+
+	// Strategy 4: Extract from code fences only (bypass brace matching entirely)
+	if idx := strings.Index(raw, "```json"); idx >= 0 {
+		start := idx + 7
+		if end := strings.Index(raw[start:], "```"); end >= 0 {
+			fenced := strings.TrimSpace(raw[start : start+end])
+			sanitized := sanitizeLLMJSON(fenced)
+			if err := json.Unmarshal([]byte(sanitized), target); err == nil {
+				return nil
+			}
+		}
+	}
+
+	// All strategies failed — return the most informative error
+	jsonStr := extractJSON(raw)
+	if jsonStr == "" {
+		return fmt.Errorf("no JSON found in output (%d bytes)", len(raw))
+	}
+	sanitized := sanitizeLLMJSON(jsonStr)
+	return json.Unmarshal([]byte(sanitized), target)
+}
+
+// robustParseJSONArray is like robustParseJSON but for JSON arrays.
+func robustParseJSONArray(raw string, target interface{}) error {
+	// Strategy 1: Standard path
+	if jsonStr := extractJSONArray(raw); jsonStr != "" {
+		sanitized := sanitizeLLMJSON(jsonStr)
+		if err := json.Unmarshal([]byte(sanitized), target); err == nil {
+			return nil
+		}
+	}
+
+	// Strategy 2: Sanitize first, then extract
+	sanitizedRaw := sanitizeLLMJSON(raw)
+	if jsonStr := extractJSONArray(sanitizedRaw); jsonStr != "" {
+		if err := json.Unmarshal([]byte(jsonStr), target); err == nil {
+			return nil
+		}
+	}
+
+	// Strategy 3: Nuke backslashes, then extract
+	nuked := nukeInvalidBackslashes(raw)
+	if jsonStr := extractJSONArray(nuked); jsonStr != "" {
+		if err := json.Unmarshal([]byte(jsonStr), target); err == nil {
+			return nil
+		}
+	}
+
+	// All failed
+	jsonStr := extractJSONArray(raw)
+	if jsonStr == "" {
+		return fmt.Errorf("no JSON array found in output (%d bytes)", len(raw))
+	}
+	return json.Unmarshal([]byte(sanitizeLLMJSON(jsonStr)), target)
+}
+
 // extractJSONArray finds the first JSON array in text.
 func extractJSONArray(text string) string {
 	// Try code fences first

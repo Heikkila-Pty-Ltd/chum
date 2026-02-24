@@ -82,6 +82,19 @@ func ResolveProviderCLI(providers map[string]config.Provider, providerKey string
 	return cli, p.Model
 }
 
+// normalizeAgent extracts the canonical CLI name from a provider key.
+// For example: "gemini-pro" → "gemini", "codex-spark" → "codex".
+// Unknown keys are returned lowercased.
+func normalizeAgent(agent string) string {
+	lower := strings.ToLower(strings.TrimSpace(agent))
+	for _, prefix := range []string{"gemini", "codex", "deepseek"} {
+		if strings.HasPrefix(lower, prefix) {
+			return prefix
+		}
+	}
+	return lower
+}
+
 // cliCommand returns an exec.Cmd for a given agent in non-interactive coding mode.
 //
 // SECURITY: The prompt is NOT included in the argument list. Instead, runCLI
@@ -97,7 +110,7 @@ func cliCommand(agent, workDir string) *exec.Cmd {
 // When model is empty, the CLI uses its default model.
 func cliCommandWithModel(agent, workDir, model string) *exec.Cmd {
 	var cmd *exec.Cmd
-	switch strings.ToLower(agent) {
+	switch normalizeAgent(agent) {
 	case "codex":
 		args := []string{"exec", "--full-auto", "--json"}
 		if model != "" {
@@ -116,12 +129,12 @@ func cliCommandWithModel(agent, workDir, model string) *exec.Cmd {
 			args = append(args, "--model", model)
 		}
 		cmd = exec.Command("deepseek", args...)
-	default: // claude — JSON output gives us token usage
-		args := []string{"--print", "--output-format", "json", "--dangerously-skip-permissions"}
+	default: // codex fallback — claude is not installed
+		args := []string{"exec", "--full-auto", "--json"}
 		if model != "" {
-			args = append(args, "--model", model)
+			args = append(args, "-m", model)
 		}
-		cmd = exec.Command("claude", args...)
+		cmd = exec.Command("codex", args...)
 	}
 	cmd.Dir = workDir
 	return cmd
@@ -134,14 +147,16 @@ func cliCommandWithModel(agent, workDir, model string) *exec.Cmd {
 // SECURITY: Same stdin-piped prompt as cliCommand — see that function for details.
 func cliReviewCommand(agent, workDir string) *exec.Cmd {
 	var cmd *exec.Cmd
-	switch strings.ToLower(agent) {
+	switch normalizeAgent(agent) {
 	case "codex":
 		// codex exec for review — same as coding, but the prompt asks for review output
 		cmd = exec.Command("codex", "exec", "--full-auto")
+	case "gemini":
+		cmd = exec.Command("gemini", "-p", "", "--yolo", "-o", "json")
 	case "deepseek":
 		cmd = exec.Command("deepseek", "--json")
-	default: // claude reviews via --print with JSON output for token tracking
-		cmd = exec.Command("claude", "--print", "--output-format", "json", "--dangerously-skip-permissions")
+	default: // codex fallback
+		cmd = exec.Command("codex", "exec", "--full-auto")
 	}
 	cmd.Dir = workDir
 	return cmd

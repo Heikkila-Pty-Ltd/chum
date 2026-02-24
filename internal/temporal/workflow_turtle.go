@@ -2,6 +2,7 @@ package temporal
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	enumspb "go.temporal.io/api/enums/v1"
@@ -252,8 +253,10 @@ func AutonomousPlanningCeremonyWorkflow(ctx workflow.Context, req TurtlePlanning
 	logger.Info(TurtlePrefix+" Consensus result",
 		"Score", consensus.ConfidenceScore, "Items", len(consensus.Items), "Disagreements", len(consensus.Disagreements))
 
-	// If consensus is low, wait for human tiebreak via signal
-	if consensus.ConfidenceScore < convergenceThreshold && len(consensus.Disagreements) > 0 {
+	// If consensus is low, wait for human tiebreak via signal.
+	// This catches both genuine disagreements AND degraded paths (e.g. 0%
+	// confidence from failed agents producing stub proposals).
+	if consensus.ConfidenceScore < convergenceThreshold {
 		logger.Info(TurtlePrefix+" Low consensus — requesting human tiebreak",
 			"Score", consensus.ConfidenceScore)
 
@@ -349,7 +352,7 @@ func TurtleToCrabWorkflow(ctx workflow.Context, req TurtlePlanningRequest) (*Tur
 		PlanID:       req.TaskID,
 		Project:      req.Project,
 		WorkDir:      req.WorkDir,
-		PlanMarkdown: result.Consensus.MergedPlan,
+		PlanMarkdown: formatConsensusAsPlanMarkdown(req.TaskID, result.Consensus),
 		Tier:         "balanced",
 	}
 	crabOpts := workflow.ChildWorkflowOptions{
@@ -369,4 +372,29 @@ func TurtleToCrabWorkflow(ctx workflow.Context, req TurtlePlanningRequest) (*Tur
 		"TaskID", req.TaskID, "Morsels", len(result.MorselsEmitted))
 
 	return &result, nil
+}
+
+// formatConsensusAsPlanMarkdown converts a TurtleConsensus into structured
+// markdown that the crab parser can parse (requires # title + ## Scope checklist).
+func formatConsensusAsPlanMarkdown(taskID string, c *TurtleConsensus) string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("# Plan: %s\n\n", taskID))
+	sb.WriteString("## Context\n")
+	sb.WriteString(c.MergedPlan)
+	sb.WriteString("\n\n## Scope\n")
+	if len(c.Items) > 0 {
+		for _, item := range c.Items {
+			sb.WriteString(fmt.Sprintf("- [ ] %s: %s\n", item.Title, item.Description))
+		}
+	} else {
+		// Fallback: synthesize a single scope item from the plan title
+		sb.WriteString(fmt.Sprintf("- [ ] Implement %s\n", taskID))
+	}
+	if len(c.Disagreements) > 0 {
+		sb.WriteString("\n## Notes\n")
+		for _, d := range c.Disagreements {
+			sb.WriteString(fmt.Sprintf("- %s\n", d))
+		}
+	}
+	return sb.String()
 }

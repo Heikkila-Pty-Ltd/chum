@@ -12,12 +12,13 @@ import (
 // cliCommand — builds exec.Cmd for coding mode (prompt piped via stdin)
 // ---------------------------------------------------------------------------
 
-func TestCliCommand_Claude(t *testing.T) {
+func TestCliCommand_Claude_FallsToCodex(t *testing.T) {
+	// claude is not a recognized CLI prefix — falls to codex default
 	cmd := cliCommand("claude", "/tmp/work")
 
-	require.Equal(t, "claude", cmd.Path[len(cmd.Path)-len("claude"):])
+	require.Contains(t, cmd.Path, "codex")
 	require.Equal(t, []string{
-		"claude", "--print", "--output-format", "json", "--dangerously-skip-permissions",
+		"codex", "exec", "--full-auto", "--json",
 	}, cmd.Args)
 	require.Equal(t, "/tmp/work", cmd.Dir)
 }
@@ -42,12 +43,12 @@ func TestCliCommand_Gemini(t *testing.T) {
 	require.Equal(t, "/tmp/work", cmd.Dir)
 }
 
-func TestCliCommand_UnknownDefaultsToClaude(t *testing.T) {
+func TestCliCommand_UnknownDefaultsToCodex(t *testing.T) {
 	cmd := cliCommand("unknown-agent", "/tmp/work")
 
-	// Unknown agents fall through to the default (claude) branch
+	// Unknown agents fall through to the default (codex) branch
 	require.Equal(t, []string{
-		"claude", "--print", "--output-format", "json", "--dangerously-skip-permissions",
+		"codex", "exec", "--full-auto", "--json",
 	}, cmd.Args)
 	require.Equal(t, "/tmp/work", cmd.Dir)
 }
@@ -60,10 +61,51 @@ func TestCliCommand_CaseInsensitive(t *testing.T) {
 	}, cmd.Args)
 }
 
-func TestCliCommand_EmptyAgentDefaultsToClaude(t *testing.T) {
+func TestCliCommand_EmptyAgentDefaultsToCodex(t *testing.T) {
 	cmd := cliCommand("", "/tmp/work")
 	require.Equal(t, []string{
-		"claude", "--print", "--output-format", "json", "--dangerously-skip-permissions",
+		"codex", "exec", "--full-auto", "--json",
+	}, cmd.Args)
+}
+
+// ---------------------------------------------------------------------------
+// normalizeAgent — provider key → CLI name resolution
+// ---------------------------------------------------------------------------
+
+func TestNormalizeAgent_DirectCLINames(t *testing.T) {
+	require.Equal(t, "codex", normalizeAgent("codex"))
+	require.Equal(t, "gemini", normalizeAgent("gemini"))
+	require.Equal(t, "deepseek", normalizeAgent("deepseek"))
+}
+
+func TestNormalizeAgent_ProviderKeys(t *testing.T) {
+	require.Equal(t, "gemini", normalizeAgent("gemini-pro"))
+	require.Equal(t, "gemini", normalizeAgent("gemini-flash"))
+	require.Equal(t, "codex", normalizeAgent("codex-spark"))
+	require.Equal(t, "deepseek", normalizeAgent("deepseek-v3"))
+}
+
+func TestNormalizeAgent_CaseInsensitive(t *testing.T) {
+	require.Equal(t, "gemini", normalizeAgent("Gemini-Pro"))
+	require.Equal(t, "codex", normalizeAgent("CODEX-SPARK"))
+}
+
+func TestNormalizeAgent_Unknown(t *testing.T) {
+	require.Equal(t, "claude", normalizeAgent("claude"))
+	require.Equal(t, "gpt-4", normalizeAgent("gpt-4"))
+}
+
+func TestCliCommand_GeminiProResolvesToGemini(t *testing.T) {
+	cmd := cliCommand("gemini-pro", "/tmp/work")
+	require.Equal(t, []string{
+		"gemini", "-p", "", "--yolo", "-o", "json",
+	}, cmd.Args)
+}
+
+func TestCliCommand_CodexSparkResolvesToCodex(t *testing.T) {
+	cmd := cliCommand("codex-spark", "/tmp/work")
+	require.Equal(t, []string{
+		"codex", "exec", "--full-auto", "--json",
 	}, cmd.Args)
 }
 
@@ -89,11 +131,12 @@ func TestCliCommand_PromptNotInArgs(t *testing.T) {
 // cliReviewCommand — builds exec.Cmd for review mode (prompt piped via stdin)
 // ---------------------------------------------------------------------------
 
-func TestCliReviewCommand_Claude(t *testing.T) {
+func TestCliReviewCommand_Claude_FallsToCodex(t *testing.T) {
+	// claude is not a recognized CLI prefix — falls to codex default
 	cmd := cliReviewCommand("claude", "/tmp/work")
 
 	require.Equal(t, []string{
-		"claude", "--print", "--output-format", "json", "--dangerously-skip-permissions",
+		"codex", "exec", "--full-auto",
 	}, cmd.Args)
 	require.Equal(t, "/tmp/work", cmd.Dir)
 }
@@ -115,11 +158,17 @@ func TestCliReviewCommand_CodexNoJSON(t *testing.T) {
 	}
 }
 
-func TestCliReviewCommand_UnknownDefaultsToClaude(t *testing.T) {
+func TestCliReviewCommand_GeminiResolvesCorrectly(t *testing.T) {
 	cmd := cliReviewCommand("gemini", "/tmp/work")
-	// gemini is not in the codex case, falls to default (claude)
 	require.Equal(t, []string{
-		"claude", "--print", "--output-format", "json", "--dangerously-skip-permissions",
+		"gemini", "-p", "", "--yolo", "-o", "json",
+	}, cmd.Args)
+}
+
+func TestCliReviewCommand_UnknownDefaultsToCodex(t *testing.T) {
+	cmd := cliReviewCommand("unknown", "/tmp/work")
+	require.Equal(t, []string{
+		"codex", "exec", "--full-auto",
 	}, cmd.Args)
 }
 
@@ -156,12 +205,31 @@ func TestCodingVsReviewMode_CodexArgDifferences(t *testing.T) {
 	require.False(t, reviewHasJSON, "codex review mode should not include --json")
 }
 
-func TestCodingVsReviewMode_ClaudeSameArgs(t *testing.T) {
-	// Claude uses the same flags for both modes — differentiation is in the prompt
+func TestCodingVsReviewMode_ClaudeFallsToCodexArgDifferences(t *testing.T) {
+	// claude falls to codex in both modes; coding has --json, review doesn't
 	codingCmd := cliCommand("claude", "/tmp")
 	reviewCmd := cliReviewCommand("claude", "/tmp")
 
-	require.Equal(t, codingCmd.Args, reviewCmd.Args)
+	// Both use codex binary
+	require.Contains(t, codingCmd.Path, "codex")
+	require.Contains(t, reviewCmd.Path, "codex")
+
+	// Coding mode has --json, review mode does not
+	codingHasJSON := false
+	for _, arg := range codingCmd.Args {
+		if arg == "--json" {
+			codingHasJSON = true
+		}
+	}
+	require.True(t, codingHasJSON, "codex coding mode should include --json")
+
+	reviewHasJSON := false
+	for _, arg := range reviewCmd.Args {
+		if arg == "--json" {
+			reviewHasJSON = true
+		}
+	}
+	require.False(t, reviewHasJSON, "codex review mode should not include --json")
 }
 
 // ---------------------------------------------------------------------------

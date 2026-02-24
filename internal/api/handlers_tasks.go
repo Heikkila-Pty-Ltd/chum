@@ -222,8 +222,8 @@ func (s *Server) triggerCrabReview(project, taskID, title, description string) {
 	workDir := config.ExpandHome(strings.TrimSpace(proj.Workspace))
 
 	// Build a minimal plan markdown for the crab to review.
-	planMD := fmt.Sprintf("# Review Task: %s\n\nTask ID: %s\nProject: %s\n\n%s\n\nPlease review this task for appropriate sizing, dependencies, and acceptance criteria.",
-		title, taskID, project, description)
+	planMD := fmt.Sprintf("# Review Task: %s\n\n## Context\nTask ID: %s\nProject: %s\n\n%s\n\n## Scope\n- [ ] %s\n\nPlease review this task for appropriate sizing, dependencies, and acceptance criteria.",
+		title, taskID, project, description, title)
 
 	req := temporal.CrabDecompositionRequest{
 		PlanID:             fmt.Sprintf("review-%s-%d", taskID, time.Now().Unix()),

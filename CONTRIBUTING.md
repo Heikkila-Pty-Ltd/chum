@@ -9,7 +9,7 @@ Thank you for your interest in contributing to CHUM! This document provides guid
 - Go 1.24 or later
 - SQLite 3
 - Make
-- [Morsels (`bd`)](https://github.com/steveyegge/morsels) - For issue tracking
+- CHUM binary (built from this repo) - For automated task dispatch
 - [OpenClaw](https://github.com/openclaw/openclaw) - For agent runtime (optional)
 
 ### Quick Start
@@ -43,10 +43,21 @@ Please familiarize yourself with the [Project Structure](./PROJECT_STRUCTURE.md)
 
 ### 1. Create an Issue
 
-Before starting work, create or find an issue in the [morsels tracker](./.morsels):
+Before starting work, create or find a morsel in [`.morsels/`](./.morsels):
 
 ```bash
-bd create "Add feature X to Y"
+# Create a morsel markdown file
+cat > .morsels/my-feature.md << 'EOF'
+---
+title: "Add feature X to Y"
+status: ready
+priority: 2
+type: task
+estimate: 90
+---
+## Description
+Goal and scope.
+EOF
 ```
 
 ### 2. Create a Branch

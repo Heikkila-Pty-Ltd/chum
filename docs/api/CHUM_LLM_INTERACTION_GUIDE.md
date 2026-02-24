@@ -81,10 +81,10 @@ Inspect:
 - `failure_category`, `failure_summary`
 - `output_tail`
 
-Then correlate with Morsels:
+Then correlate with the morsel file:
 
 ```bash
-bd show <morsel_id>
+cat .morsels/<morsel_id>.md
 ```
 
 ## C) Retry a Failed Dispatch
@@ -158,9 +158,9 @@ curl -s -X POST http://127.0.0.1:8900/dispatches/<dispatch_id>/retry
 curl -s -X POST http://127.0.0.1:8900/dispatches/<dispatch_id>/cancel
 
 # Morsels context
-bd ready
-bd show <morsel_id>
-bd update <morsel_id> --notes "triage findings"
+ls .morsels/                         # List available morsels
+cat .morsels/<morsel_id>.md          # View morsel details
+curl -s http://127.0.0.1:8900/api/tasks  # List tasks via API
 ```
 
 ## Prompting Guidance for External LLM Controllers

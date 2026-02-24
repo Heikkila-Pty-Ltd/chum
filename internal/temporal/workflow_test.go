@@ -47,6 +47,10 @@ func stubActivities(env *testsuite.TestWorkflowEnvironment) {
 	env.OnActivity(a.DoDVerifyActivity, mock.Anything, mock.Anything).Return(&DoDResult{
 		Passed: true,
 	}, nil)
+
+	env.OnActivity(a.SentinelScanActivity, mock.Anything, mock.Anything).Return(&SentinelResult{
+		Passed: true,
+	}, nil).Maybe()
 }
 
 // TestCHUMChildWorkflowsSpawn verifies that ChumAgentWorkflow spawns
@@ -125,6 +129,7 @@ func TestCHUMNotSpawnedOnFailure(t *testing.T) {
 	env.OnActivity(a.RunUBSScanActivity, mock.Anything, mock.Anything).Return(&UBSScanResult{
 		Passed: true,
 	}, nil)
+	env.OnActivity(a.SentinelScanActivity, mock.Anything, mock.Anything).Return(&SentinelResult{Passed: true}, nil).Maybe()
 
 	// DoD always fails
 	env.OnActivity(a.DoDVerifyActivity, mock.Anything, mock.Anything).Return(&DoDResult{
@@ -365,6 +370,7 @@ func TestChumAgentWorkflowPausesForDrainUntilResume(t *testing.T) {
 	env.OnActivity(a.RunUBSScanActivity, mock.Anything, mock.Anything).Return(&UBSScanResult{
 		Passed: true,
 	}, nil)
+	env.OnActivity(a.SentinelScanActivity, mock.Anything, mock.Anything).Return(&SentinelResult{Passed: true}, nil).Maybe()
 	env.OnActivity(a.DoDVerifyActivity, mock.Anything, mock.Anything).Return(&DoDResult{
 		Passed: true,
 	}, nil)
@@ -765,6 +771,7 @@ func TestStepDurationLoggingWhenReviewActivityFails(t *testing.T) {
 	env.OnActivity((*Activities)(nil).RunUBSScanActivity, mock.Anything, mock.Anything).Return(&UBSScanResult{
 		Passed: true,
 	}, nil)
+	env.OnActivity((*Activities)(nil).SentinelScanActivity, mock.Anything, mock.Anything).Return(&SentinelResult{Passed: true}, nil).Maybe()
 	env.OnActivity((*Activities)(nil).DoDVerifyActivity, mock.Anything, mock.Anything).Return(&DoDResult{
 		Passed: true,
 	}, nil)
@@ -825,6 +832,7 @@ func TestStepDurationLoggingEscalation(t *testing.T) {
 	env.OnActivity(a.RunUBSScanActivity, mock.Anything, mock.Anything).Return(&UBSScanResult{
 		Passed: true,
 	}, nil)
+	env.OnActivity(a.SentinelScanActivity, mock.Anything, mock.Anything).Return(&SentinelResult{Passed: true}, nil).Maybe()
 	env.OnActivity(a.DoDVerifyActivity, mock.Anything, mock.Anything).Return(&DoDResult{
 		Passed: false, Failures: []string{"tests failed"},
 	}, nil)
@@ -956,6 +964,7 @@ func TestDispatcherAppliesSlowStepThresholdFallback(t *testing.T) {
 			SlowStepThreshold: 0,
 			Priority:          7,
 			EstimateMinutes:   60,
+			HasCrabSeal:       true,
 		}},
 		Running:  0,
 		MaxTotal: 3,
@@ -998,6 +1007,7 @@ func TestFailureTriageRetryGuidance(t *testing.T) {
 		Approved: true, ReviewerAgent: "codex",
 	}, nil)
 	env.OnActivity(a.RunUBSScanActivity, mock.Anything, mock.Anything).Return(&UBSScanResult{Passed: true}, nil)
+	env.OnActivity(a.SentinelScanActivity, mock.Anything, mock.Anything).Return(&SentinelResult{Passed: true}, nil).Maybe()
 
 	// DoD always fails — triage returns "retry" each time
 	env.OnActivity(a.DoDVerifyActivity, mock.Anything, mock.Anything).Return(&DoDResult{
@@ -1061,6 +1071,7 @@ func TestFailureTriageRescope(t *testing.T) {
 		Approved: true, ReviewerAgent: "codex",
 	}, nil)
 	env.OnActivity(a.RunUBSScanActivity, mock.Anything, mock.Anything).Return(&UBSScanResult{Passed: true}, nil)
+	env.OnActivity(a.SentinelScanActivity, mock.Anything, mock.Anything).Return(&SentinelResult{Passed: true}, nil).Maybe()
 	env.OnActivity(a.DoDVerifyActivity, mock.Anything, mock.Anything).Return(&DoDResult{
 		Passed: false, Failures: []string{"tests failed"},
 	}, nil)
@@ -1116,6 +1127,7 @@ func TestFailureTriageFallback(t *testing.T) {
 		Approved: true, ReviewerAgent: "codex",
 	}, nil)
 	env.OnActivity(a.RunUBSScanActivity, mock.Anything, mock.Anything).Return(&UBSScanResult{Passed: true}, nil)
+	env.OnActivity(a.SentinelScanActivity, mock.Anything, mock.Anything).Return(&SentinelResult{Passed: true}, nil).Maybe()
 	env.OnActivity(a.DoDVerifyActivity, mock.Anything, mock.Anything).Return(&DoDResult{
 		Passed: false, Failures: []string{"go test failed"},
 	}, nil)

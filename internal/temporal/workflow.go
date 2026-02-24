@@ -393,6 +393,42 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 
 			awaitResumeGate()
 
+			// --- SENTINEL SCAN — detect execution drift ---
+			sentinelStart := workflow.Now(ctx)
+			sentinelOpts := workflow.ActivityOptions{
+				StartToCloseTimeout: 1 * time.Minute,
+				RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 1},
+			}
+			sentinelCtx := workflow.WithActivityOptions(ctx, sentinelOpts)
+			var sentinelResult SentinelResult
+			if err := workflow.ExecuteActivity(sentinelCtx, a.SentinelScanActivity, SentinelScanRequest{
+				WorktreePath:  worktreePath,
+				ExpectedFiles: plan.FilesToModify,
+				MorselID:      req.TaskID,
+				Project:       req.Project,
+				Attempt:       attempt + 1,
+			}).Get(ctx, &sentinelResult); err != nil {
+				logger.Warn(SharkPrefix+" Sentinel scan failed (non-fatal)", "error", err)
+				recordStep(fmt.Sprintf("sentinel[%d]", attempt+1), sentinelStart, "skipped")
+			} else {
+				if len(sentinelResult.RevertedFiles) > 0 {
+					plan.PreviousErrors = append(plan.PreviousErrors,
+						fmt.Sprintf("SENTINEL: reverted %d out-of-scope file(s) that broke the build: %s. Stay within scope — only modify files listed in the plan.",
+							len(sentinelResult.RevertedFiles),
+							strings.Join(sentinelResult.RevertedFiles, ", ")))
+					logger.Warn(SharkPrefix+" Sentinel reverted drift",
+						"RevertedFiles", sentinelResult.RevertedFiles)
+				} else if len(sentinelResult.OutOfScopeFiles) > 0 {
+					logger.Info(SharkPrefix+" Sentinel: out-of-scope files detected but build OK",
+						"OutOfScope", sentinelResult.OutOfScopeFiles)
+				}
+				status := "ok"
+				if !sentinelResult.Passed {
+					status = "failed"
+				}
+				recordStep(fmt.Sprintf("sentinel[%d]", attempt+1), sentinelStart, status)
+			}
+
 			// --- CROSS-MODEL REVIEW LOOP ---
 			updateSearchAttributes(chumWorkflowStatusReview)
 

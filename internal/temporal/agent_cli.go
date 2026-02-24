@@ -95,6 +95,47 @@ func normalizeAgent(agent string) string {
 	return lower
 }
 
+// PreflightCLIs validates that CLI binaries exist for all enabled providers.
+// Returns a list of warnings for any missing CLIs. Called at worker startup.
+func PreflightCLIs(cfg *config.Config, logger interface{ Warn(string, ...any) }) []string {
+	if cfg == nil {
+		return nil
+	}
+
+	var warnings []string
+	seen := make(map[string]bool) // dedup by resolved CLI binary
+
+	for name, prov := range cfg.Providers {
+		if !prov.IsEnabled() {
+			continue
+		}
+
+		// Resolve the CLI binary: use dispatch.cli config if available, else provider.CLI, else the provider key
+		cliCmd := prov.CLI
+		if cliCfg, ok := cfg.Dispatch.CLI[name]; ok && cliCfg.Cmd != "" {
+			cliCmd = cliCfg.Cmd
+		}
+		if cliCmd == "" {
+			cliCmd = name
+		}
+
+		if seen[cliCmd] {
+			continue
+		}
+		seen[cliCmd] = true
+
+		if _, err := exec.LookPath(cliCmd); err != nil {
+			msg := fmt.Sprintf("CLI binary %q not found for provider %q — provider will use hardcoded fallback", cliCmd, name)
+			warnings = append(warnings, msg)
+			if logger != nil {
+				logger.Warn(msg, "provider", name, "cli", cliCmd)
+			}
+		}
+	}
+
+	return warnings
+}
+
 // ---------------------------------------------------------------------------
 // CLI command builders and runners — Activities methods with package wrappers
 // ---------------------------------------------------------------------------

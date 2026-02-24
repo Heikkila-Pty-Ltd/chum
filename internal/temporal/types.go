@@ -1,6 +1,10 @@
 package temporal
 
-import "time"
+import (
+	"time"
+
+	"github.com/antigravity-dev/chum/internal/config"
+)
 
 // TaskRequest is submitted via the API to start a workflow.
 type TaskRequest struct {
@@ -29,12 +33,21 @@ type EscalationTier struct {
 	CLI         string `json:"cli"`          // CLI agent name: "codex", "gemini", "claude"
 	Model       string `json:"model"`        // model to pass via --model flag (empty = default)
 	Tier        string `json:"tier"`         // "fast", "balanced", "premium"
+	Reviewer    string `json:"reviewer"`     // configured reviewer agent (empty = DefaultReviewer fallback)
 	Enabled     bool   `json:"enabled"`      // false = skip this tier (gated)
 }
 
 // DefaultReviewer returns the cross-model reviewer for a given primary agent.
-// V0: claude ↔ codex. If unknown, defaults to codex.
-func DefaultReviewer(agent string) string {
+// If providers is non-nil and the agent has a configured Reviewer, that is used.
+// Otherwise falls back to hardcoded cross-model routing.
+func DefaultReviewer(agent string, providers ...map[string]config.Provider) string {
+	// Check config-driven reviewer first
+	if len(providers) > 0 && providers[0] != nil {
+		if p, ok := providers[0][agent]; ok && p.Reviewer != "" {
+			return p.Reviewer
+		}
+	}
+	// Hardcoded fallback
 	switch agent {
 	case "claude":
 		return "codex"

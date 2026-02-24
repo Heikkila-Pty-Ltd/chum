@@ -499,7 +499,7 @@ func (da *DispatchActivities) ScanCandidatesActivity(ctx context.Context) (*Scan
 		Running:             running,
 		MaxTotal:            maxTotal,
 		AvailableAgents:     enabledCLIAgents(cfg),
-		EscalationTiers:     buildEscalationTiers(cfg),
+		EscalationTiers:     buildEscalationTiers(cfg, da.Store, logger),
 		MaxRetriesOverride:  higherLearningMaxRetries(cfg),
 		MaxHandoffsOverride: higherLearningMaxHandoffs(cfg),
 	}, nil
@@ -685,7 +685,7 @@ func extractTaskIDFromWorkflowID(wfID string) string {
 	return wfID[:idx]
 }
 
-func buildEscalationTiers(cfg *config.Config) []EscalationTier {
+func buildEscalationTiers(cfg *config.Config, st *store.Store, logger interface{ Warn(string, ...any) }) []EscalationTier {
 	chain := EscalationChain(cfg.Tiers, "fast")
 	tiers := make([]EscalationTier, 0, len(chain))
 	for i, providerKey := range chain {
@@ -695,11 +695,31 @@ func buildEscalationTiers(cfg *config.Config) []EscalationTier {
 		if exists {
 			enabled = prov.IsEnabled()
 		}
+
+		// Per-provider token cap check (M4)
+		if enabled && exists && prov.TokenCap > 0 && st != nil {
+			since := time.Now().UTC().Truncate(24 * time.Hour) // today midnight UTC
+			burn, err := st.TokenBurnSince(cli, since)
+			if err != nil {
+				if logger != nil {
+					logger.Warn("token cap check failed (fail-open)", "provider", providerKey, "error", err)
+				}
+			} else if burn.OutputTokens >= int64(prov.TokenCap) {
+				enabled = false
+				if logger != nil {
+					logger.Warn("provider exceeded token cap — disabled for this tick",
+						"provider", providerKey, "cli", cli,
+						"output_tokens", burn.OutputTokens, "cap", prov.TokenCap)
+				}
+			}
+		}
+
 		tiers = append(tiers, EscalationTier{
 			ProviderKey: providerKey,
 			CLI:         cli,
 			Model:       model,
 			Tier:        tierForIndex(i),
+			Reviewer:    prov.Reviewer,
 			Enabled:     enabled,
 		})
 	}

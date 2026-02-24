@@ -59,6 +59,11 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 		logger.Info("matrix notifications enabled", "account", cfg.Reporter.MatrixBotAccount, "room", cfg.Reporter.DefaultRoom)
 	}
 
+	// Preflight: validate CLI binaries exist for enabled providers.
+	if warnings := PreflightCLIs(cfg, logger); len(warnings) > 0 {
+		logger.Warn("CLI preflight warnings", "count", len(warnings))
+	}
+
 	acts := &Activities{
 		Store:       st,
 		Tiers:       tiers,

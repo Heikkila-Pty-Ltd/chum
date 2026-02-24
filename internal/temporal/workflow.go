@@ -354,7 +354,10 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 		currentAgent = tier.CLI
 		req.Agent = tier.CLI
 		req.Model = tier.Model
-		req.Reviewer = DefaultReviewer(tier.CLI)
+		req.Reviewer = tier.Reviewer
+		if req.Reviewer == "" {
+			req.Reviewer = DefaultReviewer(tier.CLI)
+		}
 		currentReviewer = req.Reviewer
 
 		logger.Info(SharkPrefix+" Tier escalation",

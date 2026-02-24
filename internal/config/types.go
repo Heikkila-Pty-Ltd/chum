@@ -133,6 +133,8 @@ type Provider struct {
 	Enabled           *bool   `toml:"enabled"` // nil = enabled (default true for backward compat)
 	Model             string  `toml:"model"`
 	CLI               string  `toml:"cli"`
+	Reviewer          string  `toml:"reviewer"`  // reviewer agent for cross-model review (empty = DefaultReviewer)
+	TokenCap          int     `toml:"token_cap"` // max output tokens per day (0 = unlimited)
 	CostInputPerMtok  float64 `toml:"cost_input_per_mtok"`
 	CostOutputPerMtok float64 `toml:"cost_output_per_mtok"`
 }

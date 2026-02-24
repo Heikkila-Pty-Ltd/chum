@@ -24,12 +24,16 @@ func inMemoryStore(t *testing.T) *Store {
 		db.Close()
 		t.Fatalf("create schema: %v", err)
 	}
+	// Match production Open() order: schema → ensureGenomesTable → migrate.
+	s := &Store{db: db}
+	if err := s.ensureGenomesTable(); err != nil {
+		db.Close()
+		t.Fatalf("ensure genomes table: %v", err)
+	}
 	if err := migrate(db); err != nil {
 		db.Close()
 		t.Fatalf("migrate schema: %v", err)
 	}
-
-	s := &Store{db: db}
 	t.Cleanup(func() {
 		_ = s.Close()
 	})

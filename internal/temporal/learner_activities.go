@@ -136,9 +136,30 @@ If there are no meaningful lessons, return an empty array [].`,
 
 	var lessons []Lesson
 	if err := json.Unmarshal([]byte(jsonStr), &lessons); err != nil {
-		logger.Warn(OctopusPrefix+" Failed to parse lessons JSON", "error", err)
+		logger.Warn(OctopusPrefix+" Primary JSON parse failed, attempting repair", "error", err)
+
+		// Strategy 1: Close unclosed braces/brackets (truncated output)
+		repaired := repairTruncatedJSONArray(jsonStr)
+		if repaired != jsonStr {
+			if err2 := json.Unmarshal([]byte(repaired), &lessons); err2 == nil {
+				logger.Info(OctopusPrefix+" Recovered lessons from truncated JSON", "Count", len(lessons))
+				goto stamped
+			}
+		}
+
+		// Strategy 2: Extract just the first complete JSON object from the array
+		if first := extractFirstCompleteJSONObject(jsonStr); first != "" {
+			wrapped := "[" + first + "]"
+			if err3 := json.Unmarshal([]byte(wrapped), &lessons); err3 == nil {
+				logger.Info(OctopusPrefix+" Recovered 1 lesson from partial JSON array")
+				goto stamped
+			}
+		}
+
+		logger.Warn(OctopusPrefix+" All JSON repair strategies failed", "error", err)
 		return nil, nil
 	}
+stamped:
 
 	// Stamp morsel/project on each lesson
 	for i := range lessons {
@@ -636,4 +657,98 @@ func (a *Activities) CommitAndPushLearnerOutputsActivity(ctx context.Context, wo
 
 	logger.Info(OctopusPrefix + " Learner outputs committed and pushed successfully")
 	return nil
+}
+
+// repairTruncatedJSONArray attempts to close unclosed braces and brackets
+// in a JSON array that was truncated mid-output (common with LLM token limits).
+func repairTruncatedJSONArray(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return s
+	}
+
+	// Count unclosed braces and brackets
+	inString := false
+	braces := 0
+	brackets := 0
+	for i := 0; i < len(s); i++ {
+		ch := s[i]
+		if ch == '\\' && inString && i+1 < len(s) {
+			i++ // skip escaped char
+			continue
+		}
+		if ch == '"' {
+			inString = !inString
+			continue
+		}
+		if inString {
+			continue
+		}
+		switch ch {
+		case '{':
+			braces++
+		case '}':
+			braces--
+		case '[':
+			brackets++
+		case ']':
+			brackets--
+		}
+	}
+
+	// Close any unclosed structures
+	var buf strings.Builder
+	buf.WriteString(s)
+
+	// If we're inside a string, close it first
+	if inString {
+		buf.WriteByte('"')
+	}
+
+	for braces > 0 {
+		buf.WriteByte('}')
+		braces--
+	}
+	for brackets > 0 {
+		buf.WriteByte(']')
+		brackets--
+	}
+
+	return buf.String()
+}
+
+// extractFirstCompleteJSONObject extracts the first complete {...} JSON object
+// from text, using brace-depth counting. Returns empty string if none found.
+func extractFirstCompleteJSONObject(s string) string {
+	start := strings.Index(s, "{")
+	if start < 0 {
+		return ""
+	}
+
+	depth := 0
+	inString := false
+	for i := start; i < len(s); i++ {
+		ch := s[i]
+		if ch == '\\' && inString && i+1 < len(s) {
+			i++
+			continue
+		}
+		if ch == '"' {
+			inString = !inString
+			continue
+		}
+		if inString {
+			continue
+		}
+		switch ch {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return s[start : i+1]
+			}
+		}
+	}
+	return ""
 }

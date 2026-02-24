@@ -177,12 +177,21 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 		StartToCloseTimeout: 30 * time.Second,
 		RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 1},
 	}
+	triageOpts := workflow.ActivityOptions{
+		StartToCloseTimeout: 90 * time.Second,
+		RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 1},
+	}
 	notifyOpts := workflow.ActivityOptions{
 		StartToCloseTimeout: 5 * time.Second,
 		RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 1},
 	}
 
 	var a *Activities
+
+	// rescopeTriggered is set to true when failure triage decides the task
+	// needs turtle/crab intervention instead of more retries.
+	var rescopeTriggered bool
+	var rescopeReason string
 
 	// === WORKTREE ISOLATION ===
 	// Each organism gets its own git worktree so concurrent sharks don't
@@ -650,6 +659,49 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 			notify("dod_fail", map[string]string{"failures": failureMsg, "attempt": fmt.Sprintf("%d", attempt+1), "detail": notifyDetail})
 			logger.Warn(SharkPrefix+" DoD failed, retrying", "Attempt", attempt+1, "Failures", failureMsg)
 
+			// --- FAILURE TRIAGE — read output, decide retry vs rescope ---
+			// Every failure is analysed. The triage reads the agent's actual
+			// output and decides: retry with guidance, or send to turtles.
+			triageStart := workflow.Now(ctx)
+			triageCtx := workflow.WithActivityOptions(ctx, triageOpts)
+			var triageResult FailureTriageResult
+			if err := workflow.ExecuteActivity(triageCtx, a.FailureTriageActivity, FailureTriageRequest{
+				TaskID:      req.TaskID,
+				Project:     req.Project,
+				WorkDir:     req.WorkDir,
+				Agent:       currentAgent,
+				FailureType: "dod",
+				Failures:    dodResult.Failures,
+				AgentOutput: execResult.Output,
+				Attempt:     attempt + 1,
+				MaxRetries:  maxRetries,
+				PlanSummary: plan.Summary,
+				Tier:        tier.Tier,
+			}).Get(ctx, &triageResult); err != nil {
+				logger.Warn(SharkPrefix+" Failure triage failed (non-fatal, continuing)", "error", err)
+				recordStep(fmt.Sprintf("triage[%d]", attempt+1), triageStart, "failed")
+			} else {
+				recordStep(fmt.Sprintf("triage[%d]", attempt+1), triageStart, "ok")
+
+				if triageResult.Decision == "rescope" {
+					logger.Info(SharkPrefix+" Triage decision: RESCOPE to turtles",
+						"Reason", triageResult.RescopeReason, "Category", triageResult.Category)
+					allFailures = append(allFailures,
+						fmt.Sprintf("Triage rescope (attempt %d): %s", attempt+1, triageResult.RescopeReason))
+					rescopeTriggered = true
+					rescopeReason = triageResult.RescopeReason
+					break // break retry loop → will also break tier loop below
+				}
+
+				// Decision: retry with guidance
+				if triageResult.Guidance != "" {
+					plan.PreviousErrors = append(plan.PreviousErrors,
+						"TRIAGE GUIDANCE (from failure analysis): "+triageResult.Guidance)
+					logger.Info(SharkPrefix+" Triage guidance injected for next attempt",
+						"Category", triageResult.Category)
+				}
+			}
+
 			// --- AUTO-FIX: run gofmt + goimports before next retry ---
 			// Cheap and deterministic — fixes formatting issues that agents
 			// commonly introduce, saving a full retry attempt.
@@ -672,6 +724,14 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 		// All retries exhausted for this tier — record failure and try next tier
 		lastFailedProvider = tier.ProviderKey
 		lastFailedTier = tier.Tier
+
+		// If triage said rescope, skip remaining tiers entirely
+		if rescopeTriggered {
+			logger.Info(SharkPrefix+" Triage rescope — skipping remaining tiers",
+				"Reason", rescopeReason)
+			break
+		}
+
 		logger.Warn(SharkPrefix+" Tier exhausted, escalating",
 			"Tier", tier.Tier, "Provider", tier.ProviderKey, "Attempts", maxRetries)
 	} // end tier loop

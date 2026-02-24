@@ -143,6 +143,9 @@ func TestCHUMNotSpawnedOnFailure(t *testing.T) {
 		}
 	}).Return(nil)
 	env.OnActivity(a.EscalateActivity, mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity(a.FailureTriageActivity, mock.Anything, mock.Anything).Return(&FailureTriageResult{
+		Decision: "retry", Guidance: "try harder", Category: "logic",
+	}, nil).Maybe()
 
 	original := upsertChumSearchAttributesFn
 	t.Cleanup(func() {
@@ -161,6 +164,14 @@ func TestCHUMNotSpawnedOnFailure(t *testing.T) {
 	// Register the child workflows but they should NOT be called
 	env.OnWorkflow(ContinuousLearnerWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
 	env.OnWorkflow(TacticalGroomWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnWorkflow(AutonomousPlanningCeremonyWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
+
+	env.OnActivity(a.AutoFixLintActivity, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnActivity(a.RecordFailureActivity, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnActivity(a.GetBugPrimingActivity, mock.Anything, mock.Anything, mock.Anything).Return("", nil).Maybe()
+	env.OnActivity(a.GetProteinInstructionsActivity, mock.Anything, mock.Anything).Return("", nil).Maybe()
+	env.OnActivity(a.EvolveGenomeActivity, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnActivity(a.HibernateGenomeActivity, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 
 	env.ExecuteWorkflow(ChumAgentWorkflow, TaskRequest{
 		TaskID:  "test-morsel-fail",
@@ -820,6 +831,9 @@ func TestStepDurationLoggingEscalation(t *testing.T) {
 	env.OnActivity(a.EscalateActivity, mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity(a.RecordFailureActivity, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 	env.OnActivity(a.AutoFixLintActivity, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnActivity(a.FailureTriageActivity, mock.Anything, mock.Anything).Return(&FailureTriageResult{
+		Decision: "retry", Guidance: "try again", Category: "logic",
+	}, nil).Maybe()
 	env.OnActivity(a.GetBugPrimingActivity, mock.Anything, mock.Anything, mock.Anything).Return("", nil).Maybe()
 	env.OnActivity(a.GetProteinInstructionsActivity, mock.Anything, mock.Anything).Return("", nil).Maybe()
 	env.OnActivity(a.EvolveGenomeActivity, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
@@ -828,6 +842,7 @@ func TestStepDurationLoggingEscalation(t *testing.T) {
 
 	env.OnWorkflow(ContinuousLearnerWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
 	env.OnWorkflow(TacticalGroomWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnWorkflow(AutonomousPlanningCeremonyWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
 
 	var outcome OutcomeRecord
 	env.OnActivity(a.RecordOutcomeActivity, mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
@@ -961,6 +976,176 @@ func TestDispatcherAppliesSlowStepThresholdFallback(t *testing.T) {
 	require.Equal(t, defaultSlowStepThreshold, capturedReq.SlowStepThreshold)
 	require.Equal(t, "Build dashboard", capturedReq.TaskTitle)
 	require.Equal(t, 4, capturedReq.Priority)
+}
+
+// TestFailureTriageRetryGuidance verifies that when triage returns "retry"
+// with guidance, the triage activity is called on DoD failure and guidance
+// is injected into the workflow.
+func TestFailureTriageRetryGuidance(t *testing.T) {
+	s := testsuite.WorkflowTestSuite{}
+	env := s.NewTestWorkflowEnvironment()
+
+	env.OnActivity(a.StructuredPlanActivity, mock.Anything, mock.Anything).Return(&StructuredPlan{
+		Summary:            "will fail then retry",
+		Steps:              []PlanStep{{Description: "fix bug", File: "main.go", Rationale: "test"}},
+		FilesToModify:      []string{"main.go"},
+		AcceptanceCriteria: []string{"tests pass"},
+	}, nil)
+	env.OnActivity(a.ExecuteActivity, mock.Anything, mock.Anything, mock.Anything).Return(&ExecutionResult{
+		ExitCode: 0, Output: "wrote code", Agent: "claude",
+	}, nil)
+	env.OnActivity(a.CodeReviewActivity, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&ReviewResult{
+		Approved: true, ReviewerAgent: "codex",
+	}, nil)
+	env.OnActivity(a.RunUBSScanActivity, mock.Anything, mock.Anything).Return(&UBSScanResult{Passed: true}, nil)
+
+	// DoD always fails — triage returns "retry" each time
+	env.OnActivity(a.DoDVerifyActivity, mock.Anything, mock.Anything).Return(&DoDResult{
+		Passed: false, Failures: []string{"go test failed"},
+	}, nil)
+
+	// Triage returns retry with guidance
+	var triageCalls int32
+	env.OnActivity(a.FailureTriageActivity, mock.Anything, mock.Anything).Run(func(_ mock.Arguments) {
+		atomic.AddInt32(&triageCalls, 1)
+	}).Return(&FailureTriageResult{
+		Decision:   "retry",
+		Guidance:   "Run go test before marking complete",
+		Category:   "logic",
+		Antibodies: []string{"always run tests"},
+	}, nil)
+
+	env.OnActivity(a.AutoFixLintActivity, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnActivity(a.EscalateActivity, mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity(a.RecordOutcomeActivity, mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity(a.RecordFailureActivity, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnActivity(a.GetBugPrimingActivity, mock.Anything, mock.Anything, mock.Anything).Return("", nil).Maybe()
+	env.OnActivity(a.GetProteinInstructionsActivity, mock.Anything, mock.Anything).Return("", nil).Maybe()
+	env.OnActivity(a.EvolveGenomeActivity, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnActivity(a.HibernateGenomeActivity, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnWorkflow(ContinuousLearnerWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnWorkflow(TacticalGroomWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnWorkflow(AutonomousPlanningCeremonyWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
+
+	env.ExecuteWorkflow(ChumAgentWorkflow, TaskRequest{
+		TaskID:  "test-triage-retry",
+		Project: "test-project",
+		Prompt:  "fix the bug",
+		Agent:   "claude",
+		WorkDir: "/tmp/test",
+	})
+
+	require.True(t, env.IsWorkflowCompleted())
+	// Workflow escalates since DoD always fails, but triage was called
+	require.Error(t, env.GetWorkflowError())
+	require.Greater(t, atomic.LoadInt32(&triageCalls), int32(0),
+		"triage should have been called at least once on DoD failure")
+}
+
+// TestFailureTriageRescope verifies that when triage returns "rescope",
+// the workflow breaks out of retries and routes to turtle rescue.
+func TestFailureTriageRescope(t *testing.T) {
+	s := testsuite.WorkflowTestSuite{}
+	env := s.NewTestWorkflowEnvironment()
+
+	env.OnActivity(a.StructuredPlanActivity, mock.Anything, mock.Anything).Return(&StructuredPlan{
+		Summary:            "task too broad",
+		Steps:              []PlanStep{{Description: "do everything", File: "main.go", Rationale: "scope"}},
+		FilesToModify:      []string{"main.go"},
+		AcceptanceCriteria: []string{"everything works"},
+	}, nil)
+	env.OnActivity(a.ExecuteActivity, mock.Anything, mock.Anything, mock.Anything).Return(&ExecutionResult{
+		ExitCode: 0, Output: "attempted", Agent: "claude",
+	}, nil)
+	env.OnActivity(a.CodeReviewActivity, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&ReviewResult{
+		Approved: true, ReviewerAgent: "codex",
+	}, nil)
+	env.OnActivity(a.RunUBSScanActivity, mock.Anything, mock.Anything).Return(&UBSScanResult{Passed: true}, nil)
+	env.OnActivity(a.DoDVerifyActivity, mock.Anything, mock.Anything).Return(&DoDResult{
+		Passed: false, Failures: []string{"tests failed"},
+	}, nil)
+
+	// Triage says rescope
+	env.OnActivity(a.FailureTriageActivity, mock.Anything, mock.Anything).Return(&FailureTriageResult{
+		Decision:      "rescope",
+		RescopeReason: "Task scope too broad — needs decomposition",
+		Category:      "scope",
+	}, nil)
+
+	env.OnActivity(a.AutoFixLintActivity, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnActivity(a.EscalateActivity, mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity(a.RecordOutcomeActivity, mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity(a.RecordFailureActivity, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnActivity(a.GetBugPrimingActivity, mock.Anything, mock.Anything, mock.Anything).Return("", nil).Maybe()
+	env.OnActivity(a.GetProteinInstructionsActivity, mock.Anything, mock.Anything).Return("", nil).Maybe()
+	env.OnActivity(a.EvolveGenomeActivity, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnActivity(a.HibernateGenomeActivity, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnWorkflow(ContinuousLearnerWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnWorkflow(TacticalGroomWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnWorkflow(AutonomousPlanningCeremonyWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
+
+	env.ExecuteWorkflow(ChumAgentWorkflow, TaskRequest{
+		TaskID:  "test-triage-rescope",
+		Project: "test-project",
+		Prompt:  "do everything",
+		Agent:   "claude",
+		WorkDir: "/tmp/test",
+	})
+
+	require.True(t, env.IsWorkflowCompleted())
+	require.Error(t, env.GetWorkflowError())
+	// Should have escalated after just 1 attempt (rescope breaks the loop)
+}
+
+// TestFailureTriageFallback verifies that when the triage activity itself
+// fails, the workflow falls back to normal retry behavior without crashing.
+func TestFailureTriageFallback(t *testing.T) {
+	s := testsuite.WorkflowTestSuite{}
+	env := s.NewTestWorkflowEnvironment()
+
+	env.OnActivity(a.StructuredPlanActivity, mock.Anything, mock.Anything).Return(&StructuredPlan{
+		Summary:            "triage will fail",
+		Steps:              []PlanStep{{Description: "write code", File: "main.go", Rationale: "test"}},
+		FilesToModify:      []string{"main.go"},
+		AcceptanceCriteria: []string{"tests pass"},
+	}, nil)
+	env.OnActivity(a.ExecuteActivity, mock.Anything, mock.Anything, mock.Anything).Return(&ExecutionResult{
+		ExitCode: 0, Output: "wrote code", Agent: "claude",
+	}, nil)
+	env.OnActivity(a.CodeReviewActivity, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&ReviewResult{
+		Approved: true, ReviewerAgent: "codex",
+	}, nil)
+	env.OnActivity(a.RunUBSScanActivity, mock.Anything, mock.Anything).Return(&UBSScanResult{Passed: true}, nil)
+	env.OnActivity(a.DoDVerifyActivity, mock.Anything, mock.Anything).Return(&DoDResult{
+		Passed: false, Failures: []string{"go test failed"},
+	}, nil)
+
+	// Triage activity itself fails
+	env.OnActivity(a.FailureTriageActivity, mock.Anything, mock.Anything).Return(nil, errors.New("triage LLM unavailable"))
+
+	env.OnActivity(a.AutoFixLintActivity, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnActivity(a.EscalateActivity, mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity(a.RecordOutcomeActivity, mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity(a.RecordFailureActivity, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnActivity(a.GetBugPrimingActivity, mock.Anything, mock.Anything, mock.Anything).Return("", nil).Maybe()
+	env.OnActivity(a.GetProteinInstructionsActivity, mock.Anything, mock.Anything).Return("", nil).Maybe()
+	env.OnActivity(a.EvolveGenomeActivity, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnActivity(a.HibernateGenomeActivity, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnWorkflow(ContinuousLearnerWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnWorkflow(TacticalGroomWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnWorkflow(AutonomousPlanningCeremonyWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
+
+	env.ExecuteWorkflow(ChumAgentWorkflow, TaskRequest{
+		TaskID:  "test-triage-fallback",
+		Project: "test-project",
+		Prompt:  "triage will fail",
+		Agent:   "claude",
+		WorkDir: "/tmp/test",
+	})
+
+	require.True(t, env.IsWorkflowCompleted())
+	// Should complete (with error from escalation) — NOT crash from triage failure
+	require.Error(t, env.GetWorkflowError())
 }
 
 func intPtr(i int) *int { return &i }

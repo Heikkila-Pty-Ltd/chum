@@ -291,7 +291,30 @@ type SemgrepRule struct {
 	Category string `json:"category"`  // error-handling, security, performance, etc.
 }
 
+// FailureTriageRequest is passed to FailureTriageActivity after any pipeline failure.
+// The triage reads the agent's actual output and decides: retry with guidance or rescope.
+type FailureTriageRequest struct {
+	TaskID      string   `json:"task_id"`
+	Project     string   `json:"project"`
+	WorkDir     string   `json:"work_dir"`
+	Agent       string   `json:"agent"`
+	FailureType string   `json:"failure_type"` // "execute", "review", "dod", "ubs"
+	Failures    []string `json:"failures"`     // structured error strings
+	AgentOutput string   `json:"agent_output"` // raw dispatch_output tail (truncated)
+	Attempt     int      `json:"attempt"`
+	MaxRetries  int      `json:"max_retries"`
+	PlanSummary string   `json:"plan_summary"`
+	Tier        string   `json:"tier"`
+}
 
+// FailureTriageResult is the LLM's triage decision after analysing a failure.
+type FailureTriageResult struct {
+	Decision      string   `json:"decision"`        // "retry" or "rescope"
+	Guidance      string   `json:"guidance"`         // if retry: specific instruction for next attempt
+	RescopeReason string   `json:"rescope_reason"`   // if rescope: why this needs turtle/crab intervention
+	Antibodies    []string `json:"antibodies"`       // patterns to inject into genome
+	Category      string   `json:"category"`         // "infrastructure", "logic", "scope", "complexity"
+}
 
 // TacticalGroomRequest is passed to TacticalGroomWorkflow after a task completes.
 type TacticalGroomRequest struct {

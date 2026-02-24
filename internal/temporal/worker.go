@@ -120,6 +120,7 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 	w.RegisterActivity(acts.CommitAndPushLearnerOutputsActivity)
 	w.RegisterActivity(acts.RecordEscalationActivity)
 	w.RegisterActivity(acts.AutoFixLintActivity)
+	w.RegisterActivity(acts.FailureTriageActivity)
 
 	// --- Paleontologist Activities ---
 	w.RegisterWorkflow(PaleontologistWorkflow)

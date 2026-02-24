@@ -6,8 +6,54 @@ import (
 	"strings"
 	"time"
 
+	"github.com/antigravity-dev/chum/internal/matrix"
 	"go.temporal.io/sdk/activity"
 )
+
+// agentToBotName maps CLI agent names to their Matrix bot account names.
+// Each bot appears as a separate persona in Matrix deliberation channels.
+var agentToBotName = map[string]string{
+	"claude": "claudebot",
+	"codex":  "codexbot",
+	"gemini": "geminibot",
+}
+
+// TurtleSendAsRequest carries per-agent Matrix message data.
+type TurtleSendAsRequest struct {
+	Agent   string `json:"agent"`   // claude/codex/gemini
+	Room    string `json:"room"`    // room ID (empty = default)
+	Message string `json:"message"` // markdown message body
+}
+
+// TurtleSendAsActivity sends a Matrix message as a specific bot persona.
+// This creates the visual effect of a multi-agent conversation in the channel.
+func (a *Activities) TurtleSendAsActivity(ctx context.Context, req TurtleSendAsRequest) error {
+	logger := activity.GetLogger(ctx)
+
+	botName, ok := agentToBotName[req.Agent]
+	if !ok {
+		botName = "spritzbot" // fallback to default
+	}
+
+	room := req.Room
+	if room == "" {
+		room = a.TurtleRoom // dedicated deliberation channel
+	}
+	if room == "" {
+		room = a.DefaultRoom // fallback
+	}
+	if room == "" {
+		logger.Warn(TurtlePrefix+" No Matrix room configured, skipping per-agent send")
+		return nil
+	}
+
+	sender := matrix.NewHTTPSender(nil, botName)
+	if err := sender.SendMessage(ctx, room, req.Message); err != nil {
+		logger.Warn(TurtlePrefix+" Per-agent Matrix send failed (non-fatal)",
+			"Agent", req.Agent, "Bot", botName, "error", err)
+	}
+	return nil // never fail the workflow over a notification
+}
 
 // NotifyRequest carries the data for a Matrix notification.
 type NotifyRequest struct {

@@ -181,6 +181,7 @@ type Reporter struct {
 	MatrixBotAccount string `toml:"matrix_bot_account"` // optional OpenClaw matrix account id for direct reporting
 	DefaultRoom      string `toml:"default_room"`       // fallback Matrix room when project has no explicit room
 	AdminRoom        string `toml:"admin_room"`         // direct message room for critical escalations
+	TurtleRoom       string `toml:"turtle_room"`        // 3-agent deliberation channel
 	DailyDigestTime  string `toml:"daily_digest_time"`
 	WeeklyRetroDay   string `toml:"weekly_retro_day"`
 }

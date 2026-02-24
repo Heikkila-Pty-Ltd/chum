@@ -152,6 +152,16 @@ func AutonomousPlanningCeremonyWorkflow(ctx workflow.Context, req TurtlePlanning
 		"description": truncate(req.Description, 200),
 	})
 
+	// Per-agent Matrix send helper — posts as the agent's dedicated bot persona.
+	sendAs := func(agent, message string) {
+		sendCtx := workflow.WithActivityOptions(ctx, notifyOpts)
+		_ = workflow.ExecuteActivity(sendCtx, a.TurtleSendAsActivity, TurtleSendAsRequest{
+			Agent:   agent,
+			Room:    req.MatrixRoom,
+			Message: message,
+		}).Get(ctx, nil)
+	}
+
 	// ===== PHASE 1: EXPLORE =====
 	exploreStart := workflow.Now(ctx)
 	logger.Info(TurtlePrefix+" Phase 1: EXPLORE — 3 agents analyzing independently", "TaskID", req.TaskID)
@@ -166,6 +176,17 @@ func AutonomousPlanningCeremonyWorkflow(ctx workflow.Context, req TurtlePlanning
 	recordStep("explore", exploreStart, "ok")
 
 	logger.Info(TurtlePrefix+" Exploration complete", "Proposals", len(proposals))
+
+	// Post each proposal as its agent's bot persona
+	for _, p := range proposals {
+		if p.Confidence == 0 && len(p.Morsels) == 0 {
+			continue // skip stub proposals from failed agents
+		}
+		msg := fmt.Sprintf("**Proposal for `%s`**\n\n%s\n\nScope: %s | Confidence: %d%%\nMorsels: %s",
+			req.TaskID, truncate(p.Approach, 500), p.Scope, p.Confidence,
+			truncate(fmt.Sprintf("%v", p.Morsels), 300))
+		sendAs(p.Agent, msg)
+	}
 
 	// ===== PHASE 2: DELIBERATE (up to 5 rounds) =====
 	const maxRounds = 5
@@ -187,6 +208,14 @@ func AutonomousPlanningCeremonyWorkflow(ctx workflow.Context, req TurtlePlanning
 		}
 		allCritiques = append(allCritiques, critiques...)
 		recordStep(fmt.Sprintf("deliberate_r%d", round), deliberateStart, "ok")
+
+		// Post each critique as its agent's bot persona
+		for _, c := range critiques {
+			msg := fmt.Sprintf("**Round %d review**\n\n%s\n\nAgreed: %s\nDisagreed: %s",
+				c.Round, truncate(c.Synthesis, 400),
+				truncate(c.Agreements, 200), truncate(c.Disagreements, 200))
+			sendAs(c.Agent, msg)
+		}
 
 		// Check convergence — if all agents are mostly aligned, exit early
 		converging := true

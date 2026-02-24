@@ -32,6 +32,7 @@ type Activities struct {
 	Sender      matrix.Sender // Matrix notification sender (nil = disabled)
 	DefaultRoom string        // Matrix room ID for standard notifications
 	AdminRoom   string        // Matrix room ID for critical escalations (DM)
+	TurtleRoom  string        // Matrix room for turtle deliberation (3-agent conversation)
 }
 
 // WorktreeDir returns the worktree directory path for a task/explosion pair.

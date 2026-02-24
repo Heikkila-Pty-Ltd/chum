@@ -63,6 +63,7 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 		Sender:      sender,
 		DefaultRoom: cfg.Reporter.DefaultRoom,
 		AdminRoom:   cfg.Reporter.AdminRoom,
+		TurtleRoom:  cfg.Reporter.TurtleRoom,
 	}
 	dispatchActs := &DispatchActivities{
 		CfgMgr: cfgMgr,
@@ -165,6 +166,7 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 	w.RegisterActivity(acts.TurtleConvergeActivity)
 	w.RegisterActivity(acts.TurtleDecomposeActivity)
 	w.RegisterActivity(acts.TurtleEmitActivity)
+	w.RegisterActivity(acts.TurtleSendAsActivity)
 
 	// --- Calcifier (Stochastic→Deterministic) ---
 	w.RegisterWorkflow(CalcificationWorkflow)

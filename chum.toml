@@ -119,6 +119,7 @@ agent_id = "main"
 matrix_bot_account = "spritzbot"
 default_room = "!adJhqAxLcYqQuYraGf:vmi3041112.contaboserver.net"
 admin_room = "!cUBDGkwSjaemsiueKq:vmi3041112.contaboserver.net" # DM with Hex for critical escalations
+turtle_room = "!OHcxJdeesMjhMTvcvW:vmi3041112.contaboserver.net" # 3-agent deliberation channel
 daily_digest_time = "09:00"
 weekly_retro_day = "Monday"
 

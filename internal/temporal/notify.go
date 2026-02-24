@@ -127,6 +127,31 @@ func themed(event, taskID string, extra map[string]string) string {
 		applied := get("applied")
 		return fmt.Sprintf("🪥 **remoras cleaning up** — %s mutations applied after `%s`", applied, taskID)
 
+	// --- Turtle (Autonomous Planning Ceremony) ---
+	case "turtle_start":
+		desc := get("description")
+		return fmt.Sprintf("🐢 **turtle planning ceremony** — 3 agents deliberating on `%s`: %s", taskID, desc)
+
+	case "turtle_done":
+		morsels := get("morsels")
+		score := get("score")
+		duration := get("duration")
+		return fmt.Sprintf("🐢 **consensus reached** — `%s`: %s morsels emitted (%s%% confidence, %s)", taskID, morsels, score, duration)
+
+	case "turtle_disagreement":
+		score := get("score")
+		disagreements := get("disagreements")
+		return fmt.Sprintf("🐢 **need human tiebreak** — `%s` has unresolved disagreements (%s%% confidence)\n%s", taskID, score, disagreements)
+
+	case "turtle_failed":
+		phase := get("phase")
+		errMsg := get("error")
+		return fmt.Sprintf("🐢 **ceremony failed** — `%s` phase %s: %s", taskID, phase, errMsg)
+
+	case "crab_escalate":
+		reason := get("reason")
+		return fmt.Sprintf("🦀→🐢 **crab couldn't slice** — `%s` escalated to turtle (%s)", taskID, reason)
+
 	default:
 		return ""
 	}

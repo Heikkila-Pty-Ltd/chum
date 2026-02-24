@@ -158,6 +158,14 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 	w.RegisterActivity(acts.SizeMorselsActivity)
 	w.RegisterActivity(acts.EmitMorselsActivity)
 
+	// --- Turtle (Autonomous Planning Ceremony) ---
+	w.RegisterWorkflow(AutonomousPlanningCeremonyWorkflow)
+	w.RegisterActivity(acts.TurtleExploreActivity)
+	w.RegisterActivity(acts.TurtleDeliberateActivity)
+	w.RegisterActivity(acts.TurtleConvergeActivity)
+	w.RegisterActivity(acts.TurtleDecomposeActivity)
+	w.RegisterActivity(acts.TurtleEmitActivity)
+
 	// --- Calcifier (Stochastic→Deterministic) ---
 	w.RegisterWorkflow(CalcificationWorkflow)
 	w.RegisterActivity(acts.DetectCalcificationCandidatesActivity)

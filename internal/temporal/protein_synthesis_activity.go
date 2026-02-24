@@ -195,6 +195,17 @@ Respond with ONLY a JSON object:
 		"Molecules", len(parsed.Molecules),
 		"Name", parsed.Name)
 
+	// Notify coordination room
+	if a.Sender != nil && a.DefaultRoom != "" {
+		var molNames []string
+		for _, m := range parsed.Molecules {
+			molNames = append(molNames, m.ID)
+		}
+		msg := fmt.Sprintf("🧬 **Protein Synthesised!**\nSpecies: `%s`\nName: %s\nMolecules: %d (%s)\nGeneration: 0\n\nFuture dispatches for this species will follow this protein automatically.",
+			req.Species, parsed.Name, len(parsed.Molecules), strings.Join(molNames, " → "))
+		_ = a.Sender.SendMessage(ctx, a.DefaultRoom, msg)
+	}
+
 	return &ProteinSynthesisResult{
 		ProteinID:   proteinID,
 		Name:        parsed.Name,
@@ -345,6 +356,13 @@ Respond with ONLY a JSON object:
 		"Generation", newGen,
 		"Molecules", len(parsed.Molecules),
 		"Verdict", req.RetroVerdict)
+
+	// Notify coordination room
+	if a.Sender != nil && a.DefaultRoom != "" {
+		msg := fmt.Sprintf("🧬 **Protein Mutated!**\nSpecies: `%s`\nParent: `%s` → Child: `%s`\nGeneration: %d\nVerdict: %s\nMolecules: %d\n\nBoth versions now coexist — fitness selects the winner.",
+			req.Species, existing.ID, newProteinID, newGen, req.RetroVerdict, len(parsed.Molecules))
+		_ = a.Sender.SendMessage(ctx, a.DefaultRoom, msg)
+	}
 
 	return &MutateProteinResult{
 		NewProteinID: newProteinID,

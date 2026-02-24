@@ -54,7 +54,7 @@ func PaleontologistWorkflow(ctx workflow.Context, req PaleontologistRequest) err
 		RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 1},
 	}
 
-	var totalAntibodies, totalGenes, totalProteins, totalAudited, totalAlerts int
+	var totalAntibodies, totalGenes, totalProteins, totalAudited, totalAlerts, totalSynthesised int
 
 	// Step 1: Provider Fitness Analysis
 	sqlCtx := workflow.WithActivityOptions(ctx, sqlOpts)
@@ -95,6 +95,7 @@ func PaleontologistWorkflow(ctx workflow.Context, req PaleontologistRequest) err
 		if err := workflow.ExecuteActivity(llmCtx, a.SynthesizeProteinCandidatesActivity, req).Get(ctx, &synthesised); err != nil {
 			logger.Warn(PaleontologistPrefix+" Protein synthesis failed (non-fatal)", "error", err)
 		} else if synthesised > 0 {
+			totalSynthesised += synthesised
 			logger.Info(PaleontologistPrefix+" 🧬 Proteins synthesised!", "Count", synthesised)
 		}
 	}
@@ -136,8 +137,8 @@ func PaleontologistWorkflow(ctx workflow.Context, req PaleontologistRequest) err
 	}
 
 	// Record the run
-	summary := fmt.Sprintf("Antibodies:%d Genes:%d Proteins:%d Audited:%d Alerts:%d RecurringFailures:%d",
-		totalAntibodies, totalGenes, totalProteins, totalAudited, totalAlerts, recurringFailures)
+	summary := fmt.Sprintf("Antibodies:%d Genes:%d Proteins:%d Synthesised:%d Audited:%d Alerts:%d RecurringFailures:%d",
+		totalAntibodies, totalGenes, totalProteins, totalSynthesised, totalAudited, totalAlerts, recurringFailures)
 
 	_ = workflow.ExecuteActivity(sqlCtx, a.RecordPaleontologyRunActivity,
 		totalAntibodies, totalGenes, totalProteins, totalAudited, totalAlerts, recurringFailures, summary).Get(ctx, nil)

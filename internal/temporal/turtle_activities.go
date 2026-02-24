@@ -377,7 +377,8 @@ Respond with ONLY a JSON array:
 ]
 
 Order by dependency: independent morsels first, then dependent ones.
-IMPORTANT: Each morsel must be small enough for a shark. If something is too big, split it further.`,
+IMPORTANT: Each morsel must be small enough for a shark. If something is too big, split it further.
+CRITICAL: Output ONLY the JSON array. No text before or after. No markdown fences.`,
 		req.TaskID, req.Project, consensus.MergedPlan, itemsSummary.String())
 
 	agent := ResolveTierAgent(a.Tiers, "balanced")
@@ -387,12 +388,67 @@ IMPORTANT: Each morsel must be small enough for a shark. If something is too big
 	}
 
 	var morsels []TurtleMorsel
-	if err := robustParseJSONArray(cliResult.Output, &morsels); err != nil {
-		return nil, fmt.Errorf("parse morsels JSON: %w", err)
+	parseErr := robustParseJSONArray(cliResult.Output, &morsels)
+
+	// Retry once with correction prompt if JSON parsing failed
+	if parseErr != nil || len(morsels) == 0 {
+		logger.Warn(TurtlePrefix+" First decomposition attempt failed, retrying with correction",
+			"ParseError", parseErr, "OutputLen", len(cliResult.Output),
+			"OutputHead", truncate(cliResult.Output, 200))
+
+		// Alert coordination room
+		if a.Sender != nil && a.DefaultRoom != "" {
+			msg := fmt.Sprintf("⚠️ **Turtle Decompose: JSON parse failed** (retrying)\nTask: `%s`\nError: %v\nOutput length: %d bytes",
+				req.TaskID, parseErr, len(cliResult.Output))
+			_ = a.Sender.SendMessage(ctx, a.DefaultRoom, msg)
+		}
+
+		retryPrompt := fmt.Sprintf(`Your previous response could not be parsed as valid JSON. The error was: %v
+
+Output the morsels as a VALID JSON array. No prose, no markdown fences — ONLY the raw JSON array starting with [ and ending with ].
+
+TASK: %s
+DELIVERABLES:
+%s
+
+JSON array of morsels:`, parseErr, req.TaskID, itemsSummary.String())
+
+		retryResult, retryErr := runAgent(ctx, agent, retryPrompt, req.WorkDir)
+		if retryErr == nil {
+			morsels = nil
+			parseErr = robustParseJSONArray(retryResult.Output, &morsels)
+		}
 	}
 
-	if len(morsels) == 0 {
-		return nil, fmt.Errorf("decomposition produced no morsels")
+	// Final fallback: synthesise morsels directly from consensus items.
+	// This ensures the ceremony NEVER fails just because JSON parsing broke.
+	if parseErr != nil || len(morsels) == 0 {
+		logger.Warn(TurtlePrefix+" Decomposition JSON failed twice, falling back to consensus items",
+			"ParseError", parseErr, "ConsensusItems", len(consensus.Items))
+
+		// Alert coordination room
+		if a.Sender != nil && a.DefaultRoom != "" {
+			msg := fmt.Sprintf("⚠️ **Turtle Decompose: fallback triggered**\nTask: `%s`\nJSON parse failed twice — creating morsels from %d consensus items.\nThis is a signal to review the balanced-tier agent's JSON compliance.",
+				req.TaskID, len(consensus.Items))
+			_ = a.Sender.SendMessage(ctx, a.DefaultRoom, msg)
+		}
+
+		if len(consensus.Items) == 0 {
+			return nil, fmt.Errorf("decomposition produced no morsels and consensus has no items")
+		}
+
+		for i, item := range consensus.Items {
+			morsels = append(morsels, TurtleMorsel{
+				Title:              item.Title,
+				Description:        item.Description,
+				AcceptanceCriteria: fmt.Sprintf("%s (auto-generated from consensus)", item.Title),
+				DoDChecks:          []string{"go build ./...", "go test ./..."},
+				Priority:           i + 1,
+				EstimateMinutes:    30,
+				Labels:             []string{"turtle-fallback"},
+			})
+		}
+		logger.Info(TurtlePrefix+" Fallback morsels created from consensus", "Count", len(morsels))
 	}
 
 	// Cap at 10 morsels — if more, the task is probably still too big

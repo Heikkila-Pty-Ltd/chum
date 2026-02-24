@@ -757,6 +757,48 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 		}
 	}
 
+	// ===== TURTLE RESCUE — beached shark → turtle investigation =====
+	// Instead of letting the task rot, spawn a turtle ceremony to investigate
+	// WHY it failed and decompose it into better, smaller morsels.
+	// The shark dies, but the turtles carry its failure memory into new plans.
+	var failureContext strings.Builder
+	failureContext.WriteString(fmt.Sprintf("BEACHED SHARK INVESTIGATION: Task `%s` failed after %d attempts across all provider tiers.\n\n", req.TaskID, escalationAttempt))
+	failureContext.WriteString(fmt.Sprintf("ORIGINAL PLAN: %s\n\n", plan.Summary))
+	failureContext.WriteString("FAILURE HISTORY:\n")
+	for i, f := range allFailures {
+		failureContext.WriteString(fmt.Sprintf("  %d. %s\n", i+1, truncate(f, 300)))
+	}
+	failureContext.WriteString("\nINSTRUCTION: Investigate why this task failed repeatedly. Consider:\n")
+	failureContext.WriteString("- Is the task scope too broad? Decompose into smaller, achievable morsels.\n")
+	failureContext.WriteString("- Are there missing prerequisites or dependencies?\n")
+	failureContext.WriteString("- Should the acceptance criteria be revised?\n")
+	failureContext.WriteString("- Is this task fundamentally blocked by infrastructure issues?\n")
+
+	turtleReq := TurtlePlanningRequest{
+		TaskID:      fmt.Sprintf("rescue-%s", req.TaskID),
+		Project:     req.Project,
+		WorkDir:     baseWorkDir,
+		Description: failureContext.String(),
+		Context:     plan.FilesToModify,
+		Tier:        "balanced", // quality matters for rescue planning
+	}
+	turtleOpts := workflow.ChildWorkflowOptions{
+		ParentClosePolicy: enumspb.PARENT_CLOSE_POLICY_ABANDON,
+		WorkflowID:        fmt.Sprintf("turtle-rescue-%s-%d", req.TaskID, workflow.Now(ctx).Unix()),
+	}
+	turtleCtx := workflow.WithChildOptions(ctx, turtleOpts)
+	turtleFut := workflow.ExecuteChildWorkflow(turtleCtx, AutonomousPlanningCeremonyWorkflow, turtleReq)
+	if err := turtleFut.GetChildWorkflowExecution().Get(ctx, nil); err != nil {
+		logger.Warn(SharkPrefix+" Turtle rescue ceremony failed to start", "error", err)
+	} else {
+		logger.Info(SharkPrefix+" 🐢 Turtle rescue spawned — beached shark will be investigated and rescoped",
+			"TaskID", req.TaskID, "TurtleWorkflowID", fmt.Sprintf("turtle-rescue-%s", req.TaskID))
+		notify("turtle_rescue", map[string]string{
+			"task":     req.TaskID,
+			"attempts": fmt.Sprintf("%d", escalationAttempt),
+		})
+	}
+
 	cleanupWorktree()
 	return fmt.Errorf("task escalated after %d attempts: %s", escalationAttempt, strings.Join(allFailures, "; "))
 }

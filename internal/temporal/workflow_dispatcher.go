@@ -299,6 +299,32 @@ func (da *DispatchActivities) ScanCandidatesActivity(ctx context.Context) (*Scan
 		}
 	}
 
+	// Exclude beached sharks: tasks that were escalated (failed all retries)
+	// in the last 24h. Without this, the DAG keeps serving them as "ready"
+	// candidates and we burn tokens re-dispatching doomed tasks.
+	if da.Store != nil {
+		cutoff := time.Now().Add(-24 * time.Hour).Format("2006-01-02 15:04:05")
+		rows, err := da.Store.DB().QueryContext(ctx,
+			`SELECT DISTINCT morsel_id FROM dispatches
+			 WHERE status = 'escalated' AND dispatched_at > ?`, cutoff)
+		if err != nil {
+			logger.Warn(SharkPrefix+" Dispatcher: failed to query beached tasks", "error", err)
+		} else {
+			beached := 0
+			for rows.Next() {
+				var morselID string
+				if rows.Scan(&morselID) == nil {
+					runningSet[morselID] = struct{}{}
+					beached++
+				}
+			}
+			rows.Close()
+			if beached > 0 {
+				logger.Info(SharkPrefix+" Dispatcher: excluding beached sharks", "count", beached)
+			}
+		}
+	}
+
 	maxPerProject := cfg.Dispatch.Git.MaxConcurrentPerProject
 	if maxPerProject <= 0 {
 		maxPerProject = 3

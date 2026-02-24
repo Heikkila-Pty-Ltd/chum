@@ -23,6 +23,7 @@ checks = [
     "go test ./...",
     "go vet ./...",
     "golangci-lint run --timeout=5m --new-from-rev=HEAD~1",
+    "semgrep --config .semgrep/ . --error --quiet",
 ]
 coverage_min = 70
 require_estimate = true

@@ -123,10 +123,20 @@ func StrategicGroomWorkflow(ctx workflow.Context, req StrategicGroomRequest) err
 		logger.Warn(RemoraPrefix+" Morning briefing failed (non-fatal)", "error", err)
 	}
 
+	// Step 6: UBS baseline scan — scan the trunk for bugs and create morsels
+	ubsCtx := workflow.WithActivityOptions(ctx, shortAO)
+	var ubsMorselsCreated int
+	if err := workflow.ExecuteActivity(ubsCtx, a.UBSBaselineScanActivity, req.Project, req.WorkDir).Get(ctx, &ubsMorselsCreated); err != nil {
+		logger.Warn(RemoraPrefix+" UBS baseline scan failed (non-fatal)", "error", err)
+	} else if ubsMorselsCreated > 0 {
+		logger.Info(RemoraPrefix+" UBS baseline created morsels", "Count", ubsMorselsCreated)
+	}
+
 	logger.Info(RemoraPrefix+" StrategicGroom complete",
 		"Project", req.Project,
 		"Priorities", len(analysis.Priorities),
 		"Risks", len(analysis.Risks),
+		"UBSMorsels", ubsMorselsCreated,
 	)
 	return nil
 }

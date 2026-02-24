@@ -132,6 +132,7 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 
 	// --- UBS (Ultimate Bug Scanner) ---
 	w.RegisterActivity(acts.RunUBSScanActivity)
+	w.RegisterActivity(acts.UBSBaselineScanActivity)
 	w.RegisterActivity(acts.GetBugPrimingActivity)
 
 	// --- Proteins (Deterministic Workflow Sequences) ---

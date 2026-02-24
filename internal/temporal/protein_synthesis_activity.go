@@ -26,7 +26,7 @@ type ProteinSynthesisResult struct {
 	ProteinID  string `json:"protein_id"`
 	Name       string `json:"name"`
 	Molecules  int    `json:"molecules"`
-	Synthesised bool  `json:"synthesised"`
+	Synthesized bool  `json:"synthesized"`
 }
 
 // SynthesizeProteinActivity analyses accumulated success patterns for a species
@@ -58,7 +58,7 @@ func (a *Activities) SynthesizeProteinActivity(ctx context.Context, req ProteinS
 			"Species", req.Species, "ProteinID", existing.ID)
 		return &ProteinSynthesisResult{
 			ProteinID:   existing.ID,
-			Synthesised: false,
+			Synthesized: false,
 		}, nil
 	}
 
@@ -148,13 +148,13 @@ Respond with ONLY a JSON object:
 	cliResult, err := runAgent(ctx, agent, prompt, "/tmp")
 	if err != nil {
 		logger.Warn(PaleontologistPrefix+" Protein synthesis LLM failed", "error", err)
-		return &ProteinSynthesisResult{Synthesised: false}, nil
+		return &ProteinSynthesisResult{Synthesized: false}, nil
 	}
 
 	jsonStr := extractJSON(cliResult.Output)
 	if jsonStr == "" {
 		logger.Warn(PaleontologistPrefix + " Protein synthesis produced no JSON")
-		return &ProteinSynthesisResult{Synthesised: false}, nil
+		return &ProteinSynthesisResult{Synthesized: false}, nil
 	}
 
 	jsonStr = sanitizeLLMJSON(jsonStr)
@@ -165,12 +165,12 @@ Respond with ONLY a JSON object:
 	}
 	if err := json.Unmarshal([]byte(jsonStr), &parsed); err != nil {
 		logger.Warn(PaleontologistPrefix+" Protein synthesis JSON parse failed", "error", err)
-		return &ProteinSynthesisResult{Synthesised: false}, nil
+		return &ProteinSynthesisResult{Synthesized: false}, nil
 	}
 
 	if len(parsed.Molecules) == 0 {
 		logger.Warn(PaleontologistPrefix + " Protein synthesis produced zero molecules")
-		return &ProteinSynthesisResult{Synthesised: false}, nil
+		return &ProteinSynthesisResult{Synthesized: false}, nil
 	}
 
 	// Assign a unique ID
@@ -185,11 +185,11 @@ Respond with ONLY a JSON object:
 	}
 
 	if err := a.Store.InsertProtein(protein); err != nil {
-		logger.Warn(PaleontologistPrefix+" Failed to store synthesised protein", "error", err)
-		return &ProteinSynthesisResult{Synthesised: false}, nil
+		logger.Warn(PaleontologistPrefix+" Failed to store synthesized protein", "error", err)
+		return &ProteinSynthesisResult{Synthesized: false}, nil
 	}
 
-	logger.Info(PaleontologistPrefix+" 🧬 Protein synthesised!",
+	logger.Info(PaleontologistPrefix+" 🧬 Protein synthesized!",
 		"ProteinID", proteinID,
 		"Species", req.Species,
 		"Molecules", len(parsed.Molecules),
@@ -201,7 +201,7 @@ Respond with ONLY a JSON object:
 		for _, m := range parsed.Molecules {
 			molNames = append(molNames, m.ID)
 		}
-		msg := fmt.Sprintf("🧬 **Protein Synthesised!**\nSpecies: `%s`\nName: %s\nMolecules: %d (%s)\nGeneration: 0\n\nFuture dispatches for this species will follow this protein automatically.",
+		msg := fmt.Sprintf("🧬 **Protein Synthesized!**\nSpecies: `%s`\nName: %s\nMolecules: %d (%s)\nGeneration: 0\n\nFuture dispatches for this species will follow this protein automatically.",
 			req.Species, parsed.Name, len(parsed.Molecules), strings.Join(molNames, " → "))
 		_ = a.Sender.SendMessage(ctx, a.DefaultRoom, msg)
 	}
@@ -210,7 +210,7 @@ Respond with ONLY a JSON object:
 		ProteinID:   proteinID,
 		Name:        parsed.Name,
 		Molecules:   len(parsed.Molecules),
-		Synthesised: true,
+		Synthesized: true,
 	}, nil
 }
 
@@ -374,7 +374,7 @@ Respond with ONLY a JSON object:
 // SynthesizeProteinCandidatesActivity is the orchestrator called by
 // PaleontologistWorkflow. It fetches protein candidates from the store
 // and synthesises a protein for each candidate that doesn't have one yet.
-// Returns the number of proteins successfully synthesised.
+// Returns the number of proteins successfully synthesized.
 func (a *Activities) SynthesizeProteinCandidatesActivity(ctx context.Context, req PaleontologistRequest) (int, error) {
 	logger := activity.GetLogger(ctx)
 	logger.Info(PaleontologistPrefix + " Synthesising proteins for candidates")
@@ -388,7 +388,7 @@ func (a *Activities) SynthesizeProteinCandidatesActivity(ctx context.Context, re
 		return 0, fmt.Errorf("get protein candidates: %w", err)
 	}
 
-	synthesised := 0
+	synthesized := 0
 	for _, c := range candidates {
 		if c.HasProtein {
 			continue
@@ -406,12 +406,12 @@ func (a *Activities) SynthesizeProteinCandidatesActivity(ctx context.Context, re
 				"Species", c.Species, "error", err)
 			continue
 		}
-		if result.Synthesised {
-			synthesised++
+		if result.Synthesized {
+			synthesized++
 		}
 	}
 
 	logger.Info(PaleontologistPrefix+" Protein synthesis pass complete",
-		"Synthesised", synthesised)
-	return synthesised, nil
+		"Synthesized", synthesized)
+	return synthesized, nil
 }

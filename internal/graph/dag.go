@@ -114,6 +114,13 @@ const (
 			INNER JOIN reachable r ON e.from_task = r.task_id
 		)
 		SELECT 1 FROM reachable WHERE task_id = ? LIMIT 1;`
+	readyTransitionCheckSQL = `SELECT e.to_task, lower(coalesce(dependency.status, ''))
+		FROM task_edges e
+		LEFT JOIN tasks dependency ON dependency.id = e.to_task
+		WHERE e.from_task = ?
+		  AND (dependency.id IS NULL OR lower(dependency.status) != ?)
+		ORDER BY e.to_task ASC
+		LIMIT 1;`
 	dependenciesSQL = `SELECT from_task, to_task FROM task_edges WHERE from_task IN `
 )
 
@@ -140,6 +147,11 @@ var updatableColumns = map[string]struct{}{
 
 type rowScanner interface {
 	Scan(dest ...any) error
+}
+
+type taskUpdateField struct {
+	column string
+	value  any
 }
 
 type DAG struct {
@@ -350,12 +362,7 @@ func (d *DAG) UpdateTask(ctx context.Context, id string, fields map[string]any) 
 		return nil
 	}
 
-	type updateField struct {
-		column string
-		value  any
-	}
-
-	assignments := make([]updateField, 0, len(fields))
+	assignments := make([]taskUpdateField, 0, len(fields))
 	unrecognized := make([]string, 0)
 	for rawKey, rawValue := range fields {
 		key := strings.TrimSpace(strings.ToLower(rawKey))
@@ -366,45 +373,45 @@ func (d *DAG) UpdateTask(ctx context.Context, id string, fields map[string]any) 
 
 		switch key {
 		case "title":
-			assignments = append(assignments, updateField{column: "title", value: coerceString(rawValue)})
+			assignments = append(assignments, taskUpdateField{column: "title", value: coerceString(rawValue)})
 		case "description":
-			assignments = append(assignments, updateField{column: "description", value: coerceString(rawValue)})
+			assignments = append(assignments, taskUpdateField{column: "description", value: coerceString(rawValue)})
 		case "status":
-			assignments = append(assignments, updateField{column: "status", value: normalizeTaskStatus(coerceString(rawValue))})
+			assignments = append(assignments, taskUpdateField{column: "status", value: normalizeTaskStatus(coerceString(rawValue))})
 		case "priority":
 			priority, err := coerceInt(rawValue)
 			if err != nil {
 				return err
 			}
-			assignments = append(assignments, updateField{column: "priority", value: priority})
+			assignments = append(assignments, taskUpdateField{column: "priority", value: priority})
 		case "type":
-			assignments = append(assignments, updateField{column: "\"type\"", value: normalizeTaskType(coerceString(rawValue))})
+			assignments = append(assignments, taskUpdateField{column: "\"type\"", value: normalizeTaskType(coerceString(rawValue))})
 		case "assignee":
-			assignments = append(assignments, updateField{column: "assignee", value: coerceString(rawValue)})
+			assignments = append(assignments, taskUpdateField{column: "assignee", value: coerceString(rawValue)})
 		case "labels":
 			labelsJSON, err := marshalLabelsValue(rawValue)
 			if err != nil {
 				return fmt.Errorf("labels: %w", err)
 			}
-			assignments = append(assignments, updateField{column: "labels", value: labelsJSON})
+			assignments = append(assignments, taskUpdateField{column: "labels", value: labelsJSON})
 		case "estimate_minutes":
 			value, err := coerceInt(rawValue)
 			if err != nil {
 				return err
 			}
-			assignments = append(assignments, updateField{column: "estimate_minutes", value: value})
+			assignments = append(assignments, taskUpdateField{column: "estimate_minutes", value: value})
 		case "parent_id":
-			assignments = append(assignments, updateField{column: "parent_id", value: coerceString(rawValue)})
+			assignments = append(assignments, taskUpdateField{column: "parent_id", value: coerceString(rawValue)})
 		case "acceptance":
-			assignments = append(assignments, updateField{column: "acceptance", value: coerceString(rawValue)})
+			assignments = append(assignments, taskUpdateField{column: "acceptance", value: coerceString(rawValue)})
 		case "design":
-			assignments = append(assignments, updateField{column: "design", value: coerceString(rawValue)})
+			assignments = append(assignments, taskUpdateField{column: "design", value: coerceString(rawValue)})
 		case "notes":
-			assignments = append(assignments, updateField{column: "notes", value: coerceString(rawValue)})
+			assignments = append(assignments, taskUpdateField{column: "notes", value: coerceString(rawValue)})
 		case "project":
-			assignments = append(assignments, updateField{column: "project", value: coerceString(rawValue)})
+			assignments = append(assignments, taskUpdateField{column: "project", value: coerceString(rawValue)})
 		case "error_log":
-			assignments = append(assignments, updateField{column: "error_log", value: coerceString(rawValue)})
+			assignments = append(assignments, taskUpdateField{column: "error_log", value: coerceString(rawValue)})
 		}
 	}
 	if len(assignments) == 0 {
@@ -420,6 +427,12 @@ func (d *DAG) UpdateTask(ctx context.Context, id string, fields map[string]any) 
 	sort.Slice(assignments, func(i, j int) bool {
 		return assignments[i].column < assignments[j].column
 	})
+
+	if transitioningToReady(assignments) {
+		if err := d.ensureReadyTransitionUnblocked(ctx, id); err != nil {
+			return err
+		}
+	}
 
 	setClauses := make([]string, len(assignments))
 	args := make([]any, 0, len(assignments)+2)
@@ -445,6 +458,36 @@ func (d *DAG) UpdateTask(ctx context.Context, id string, fields map[string]any) 
 	}
 
 	return nil
+}
+
+func transitioningToReady(assignments []taskUpdateField) bool {
+	for i := range assignments {
+		if assignments[i].column != "status" {
+			continue
+		}
+		status, ok := assignments[i].value.(string)
+		if !ok {
+			return false
+		}
+		return normalizeTaskStatus(status) == statusReady
+	}
+	return false
+}
+
+func (d *DAG) ensureReadyTransitionUnblocked(ctx context.Context, id string) error {
+	var dependencyID string
+	var dependencyStatus string
+	err := queryRowContext(ctx, d.db, readyTransitionCheckSQL, id, statusClosed).Scan(&dependencyID, &dependencyStatus)
+	if err == nil {
+		if dependencyStatus == "" {
+			dependencyStatus = "missing"
+		}
+		return fmt.Errorf("cannot set task %q to ready: unresolved dependency %q has status %q", id, dependencyID, dependencyStatus)
+	}
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	return fmt.Errorf("check ready transition dependencies: %w", err)
 }
 
 func (d *DAG) CloseTask(ctx context.Context, id string) error {

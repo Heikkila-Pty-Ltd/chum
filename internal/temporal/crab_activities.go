@@ -293,6 +293,10 @@ Rules:
 4. Include file hints where possible
 5. Specify dependencies between morsels (by index)
 6. Do NOT duplicate work already covered by existing morsels
+7. STRUCTURAL/FEATURE SPLIT: If a morsel touches >5 files, split it into TWO morsels:
+   a. A "structural" morsel: zero behavior change (rename, move, re-signature, add unused fields). All existing tests must pass unchanged.
+   b. A "feature" morsel: wires the new behavior, adds new tests. Depends on the structural morsel.
+   This pattern applies to: DI refactors, schema migrations, config additions, interface extractions, package moves, observability wiring.
 
 Respond with ONLY a JSON array of whales:
 [
@@ -420,6 +424,10 @@ Rules:
 3. If a morsel is too small, note it but don't merge (merging risks scope creep)
 4. Preserve dependency indices (update if splits occur)
 5. Preserve all existing fields
+6. STRUCTURAL/FEATURE SPLIT: Any morsel touching >5 files MUST be split into:
+   a. A structural morsel (zero behavior change, all tests pass unchanged)
+   b. A feature morsel (new behavior, new tests, depends on structural morsel)
+   The structural morsel should be described without using "and" — one concern only.
 
 Respond with ONLY a JSON array of whales (same format as input, with adjustments):
 [

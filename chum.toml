@@ -22,7 +22,7 @@ priority = 0
 checks = [
     "go test ./...",
     "go vet ./...",
-    "golangci-lint run --timeout=5m --new-from-rev=HEAD~1",
+    "golangci-lint run --timeout=5m --allow-parallel-runners --new-from-rev=HEAD~1",
     "semgrep --config .semgrep/ . --error --quiet",
 ]
 coverage_min = 70

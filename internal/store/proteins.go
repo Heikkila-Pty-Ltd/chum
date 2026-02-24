@@ -233,3 +233,18 @@ Rules:
 		string(goMolJSON), goFeatureProtein.Category, goFeatureProtein.Name, goFeatureProtein.ID)
 	return err
 }
+
+// InsertProtein stores a newly synthesised protein. Uses INSERT OR REPLACE
+// so it can safely be called for both new proteins and protein forks.
+func (s *Store) InsertProtein(p Protein) error {
+	molJSON, err := json.Marshal(p.Molecules)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`INSERT OR REPLACE INTO proteins
+		(id, category, name, molecules, generation, successes, failures, avg_tokens, fitness, parent_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		p.ID, p.Category, p.Name, string(molJSON),
+		p.Generation, p.Successes, p.Failures, p.AvgTokens, p.Fitness, p.ParentID)
+	return err
+}

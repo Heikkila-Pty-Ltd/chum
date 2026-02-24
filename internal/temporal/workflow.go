@@ -630,9 +630,22 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 				return nil
 			}
 
-			// DoD failed — feed detailed check output back to agent
+			// DoD failed — classify before feeding back to agent
 			recordStep(fmt.Sprintf("dod[%d]", attempt+1), dodStart, "failed")
 			failureMsg := strings.Join(dodResult.Failures, "; ")
+
+			// JUDGEMENT LAYER: infrastructure failures don't burn attempts.
+			// If the failure is environmental (golangci-lint parallel lock,
+			// semgrep config error, disk full, etc), the shark didn't cause it.
+			if isInfrastructureFailure(strings.ToLower(failureMsg)) {
+				reason := extractInfraReason(strings.ToLower(failureMsg))
+				logger.Warn(SharkPrefix+" DoD failed due to INFRASTRUCTURE (not burning attempt)",
+					"Attempt", attempt+1, "Reason", reason)
+				notify("dod_infra", map[string]string{"reason": reason, "attempt": fmt.Sprintf("%d", attempt+1)})
+				attempt--
+				continue
+			}
+
 			allFailures = append(allFailures, fmt.Sprintf("Attempt %d DoD failed: %s", attempt+1, failureMsg))
 
 			// Build detailed feedback with per-check output so the agent

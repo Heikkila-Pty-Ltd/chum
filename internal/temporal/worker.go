@@ -140,6 +140,9 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 	w.RegisterActivity(acts.GetProteinInstructionsActivity)
 	w.RegisterActivity(acts.RecordProteinFoldActivity)
 	w.RegisterActivity(acts.MoleculeRetroActivity)
+	w.RegisterActivity(acts.SynthesizeProteinActivity)
+	w.RegisterActivity(acts.MutateProteinActivity)
+	w.RegisterActivity(acts.SynthesizeProteinCandidatesActivity)
 
 	// --- Genome Evolution ---
 	w.RegisterActivity(acts.EvolveGenomeActivity)

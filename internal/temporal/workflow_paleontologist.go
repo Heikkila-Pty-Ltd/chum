@@ -75,14 +75,28 @@ func PaleontologistWorkflow(ctx workflow.Context, req PaleontologistRequest) err
 		logger.Info(PaleontologistPrefix+" Antibody discovery complete", "AntibodiesDiscovered", antibodies)
 	}
 
-	// Step 3: Proteinisation Scan (uses LLM for synthesis)
-	llmCtx := workflow.WithActivityOptions(ctx, llmOpts)
+	// Step 3: Proteinisation Scan (SQL — find candidates)
 	var proteins int
-	if err := workflow.ExecuteActivity(llmCtx, a.ScanProteinCandidatesActivity, req).Get(ctx, &proteins); err != nil {
+	if err := workflow.ExecuteActivity(sqlCtx, a.ScanProteinCandidatesActivity, req).Get(ctx, &proteins); err != nil {
 		logger.Warn(PaleontologistPrefix+" Proteinisation scan failed (non-fatal)", "error", err)
 	} else {
 		totalProteins += proteins
 		logger.Info(PaleontologistPrefix+" Proteinisation scan complete", "ProteinsNominated", proteins)
+	}
+
+	// Step 3.5: Protein Synthesis — actually create proteins for nominated candidates.
+	// The scan above finds candidates; this step synthesises deterministic molecule
+	// sequences for species that don't have a protein yet. This is the bridge from
+	// "immune system" (antibodies prevent errors) to "capability extension"
+	// (proteins codify what works into reusable programs).
+	if proteins > 0 {
+		llmCtx := workflow.WithActivityOptions(ctx, llmOpts)
+		var synthesised int
+		if err := workflow.ExecuteActivity(llmCtx, a.SynthesizeProteinCandidatesActivity, req).Get(ctx, &synthesised); err != nil {
+			logger.Warn(PaleontologistPrefix+" Protein synthesis failed (non-fatal)", "error", err)
+		} else if synthesised > 0 {
+			logger.Info(PaleontologistPrefix+" 🧬 Proteins synthesised!", "Count", synthesised)
+		}
 	}
 
 	// Step 4: Species Health Audit

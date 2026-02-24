@@ -241,6 +241,24 @@ func robustParseJSON(raw string, target interface{}) error {
 		}
 	}
 
+	// Strategy 5: Repair truncated JSON (LLM output cut off at context limit)
+	// Try extracting whatever JSON-like content we can find and close unclosed braces.
+	if jsonStr := extractJSON(raw); jsonStr != "" {
+		sanitized := sanitizeLLMJSON(jsonStr)
+		repaired := repairTruncatedJSONArray(sanitized) // works for objects too
+		if repaired != sanitized {
+			if err := json.Unmarshal([]byte(repaired), target); err == nil {
+				return nil
+			}
+		}
+		// Also try extracting first complete object
+		if first := extractFirstCompleteJSONObject(sanitized); first != "" {
+			if err := json.Unmarshal([]byte(first), target); err == nil {
+				return nil
+			}
+		}
+	}
+
 	// All strategies failed — return the most informative error
 	jsonStr := extractJSON(raw)
 	if jsonStr == "" {

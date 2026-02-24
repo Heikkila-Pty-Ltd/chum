@@ -28,6 +28,7 @@ import (
 type Activities struct {
 	Store       *store.Store
 	Tiers       config.Tiers
+	CfgMgr      config.ConfigManager // hot-reloadable config for CLI dispatch
 	DAG         *graph.DAG
 	Sender      matrix.Sender // Matrix notification sender (nil = disabled)
 	DefaultRoom string        // Matrix room ID for standard notifications
@@ -63,7 +64,7 @@ func (a *Activities) StructuredPlanActivity(ctx context.Context, req TaskRequest
 
 	semgrepContext := loadSemgrepContext(req.WorkDir)
 	if semgrepContext != "" {
-		logger.Info(SharkPrefix+" Semgrep gates injected into planning prompt")
+		logger.Info(SharkPrefix + " Semgrep gates injected into planning prompt")
 	}
 
 	// Inject previous failures — the scent of death.
@@ -98,7 +99,7 @@ OUTPUT FORMAT: You MUST respond with ONLY a JSON object (no markdown, no comment
 
 Be thorough. Planning space is cheap — implementation is expensive.`, req.Prompt, genomeContext, semgrepContext, failureContext)
 
-	cliResult, err := runAgent(ctx, req.Agent, prompt, req.WorkDir)
+	cliResult, err := a.runAgent(ctx, req.Agent, prompt, req.WorkDir)
 	if err != nil {
 		return nil, fmt.Errorf("plan generation failed: %w", err)
 	}
@@ -221,7 +222,7 @@ func (a *Activities) ExecuteActivity(ctx context.Context, plan StructuredPlan, r
 
 	sb.WriteString("\nImplement this plan now. Make all necessary code changes.")
 
-	cliResult, err := runAgent(ctx, agent, sb.String(), req.WorkDir)
+	cliResult, err := a.runAgent(ctx, agent, sb.String(), req.WorkDir)
 
 	// Auto-stage any untracked or modified files so the review agent can see them
 	// and so DoD checks see the same committed state.
@@ -293,7 +294,7 @@ Be rigorous. Quality enterprise-grade code only. Flag any: missing error handlin
 		truncate(execResult.Output, 3000),
 	)
 
-	cliResult, err := runReviewAgent(ctx, reviewer, prompt, req.WorkDir)
+	cliResult, err := a.runReviewAgent(ctx, reviewer, prompt, req.WorkDir)
 	if err != nil {
 		// Review failure is not fatal — log and approve with warning
 		logger.Warn(SharkPrefix+" Review agent error, defaulting to approved with warning", "error", err)
@@ -333,7 +334,7 @@ Be rigorous. Quality enterprise-grade code only. Flag any: missing error handlin
 // infrastructure errors never block the pipeline.
 func parseReviewJSON(jsonStr, reviewer string, cliResult CLIResult) ReviewResult {
 	var result ReviewResult
-	if err := json.Unmarshal([]byte(jsonStr), &result); err != nil {
+	if err := robustParseJSON(jsonStr, &result); err != nil {
 		return ReviewResult{
 			Approved:      true,
 			Issues:        []string{"Failed to parse review JSON: " + err.Error()},
@@ -881,7 +882,7 @@ func (a *Activities) SetupWorktreeActivity(ctx context.Context, baseDir, taskID,
 //  3. camelCase keys: {"filesToModify":[...]} — normalize to snake_case
 func flexUnmarshalPlan(jsonStr string) (*StructuredPlan, error) {
 	var plan StructuredPlan
-	if err := json.Unmarshal([]byte(jsonStr), &plan); err != nil {
+	if err := robustParseJSON(jsonStr, &plan); err != nil {
 		return nil, err
 	}
 
@@ -895,11 +896,11 @@ func flexUnmarshalPlan(jsonStr string) (*StructuredPlan, error) {
 		SessionID string `json:"session_id"`
 		Response  string `json:"response"`
 	}
-	if err := json.Unmarshal([]byte(jsonStr), &envelope); err == nil && envelope.Response != "" {
+	if err := robustParseJSON(jsonStr, &envelope); err == nil && envelope.Response != "" {
 		// Gemini wraps plan as a JSON string inside "response".
 		// The response value is the actual plan JSON.
 		var innerPlan StructuredPlan
-		if err := json.Unmarshal([]byte(envelope.Response), &innerPlan); err == nil {
+		if err := robustParseJSON(envelope.Response, &innerPlan); err == nil {
 			if innerPlan.Summary != "" || len(innerPlan.Steps) > 0 {
 				return &innerPlan, nil
 			}
@@ -907,7 +908,7 @@ func flexUnmarshalPlan(jsonStr string) (*StructuredPlan, error) {
 		// Inner parse failed or still empty — try key normalization on inner JSON
 		if normalized, err := normalizeJSONKeys(envelope.Response); err == nil {
 			var innerPlan2 StructuredPlan
-			if err := json.Unmarshal(normalized, &innerPlan2); err == nil {
+			if err := robustParseJSON(string(normalized), &innerPlan2); err == nil {
 				if innerPlan2.Summary != "" || len(innerPlan2.Steps) > 0 {
 					return &innerPlan2, nil
 				}
@@ -918,7 +919,7 @@ func flexUnmarshalPlan(jsonStr string) (*StructuredPlan, error) {
 	// Last resort: try key normalization on the original JSON.
 	if normalized, err := normalizeJSONKeys(jsonStr); err == nil {
 		var plan2 StructuredPlan
-		if err := json.Unmarshal(normalized, &plan2); err == nil {
+		if err := robustParseJSON(string(normalized), &plan2); err == nil {
 			return &plan2, nil
 		}
 	}
@@ -964,7 +965,7 @@ func (a *Activities) PushWorktreeActivity(ctx context.Context, wtDir string) err
 		return fmt.Errorf("git push origin HEAD failed: %w\n%s", err, string(out))
 	}
 
-	logger.Info(SharkPrefix+" Worktree branch pushed successfully")
+	logger.Info(SharkPrefix + " Worktree branch pushed successfully")
 	return nil
 }
 
@@ -1072,7 +1073,7 @@ func (a *Activities) ReviewExplosionCandidatesActivity(ctx context.Context, task
 
 	// Use gemini as the senior reviewer for explosion comparison
 	reviewer := "gemini"
-	cliResult, err := runReviewAgent(ctx, reviewer, promptBuilder.String(), "")
+	cliResult, err := a.runReviewAgent(ctx, reviewer, promptBuilder.String(), "")
 	if err != nil {
 		logger.Warn(SharkPrefix+" Senior review failed — falling back to fastest candidate", "error", err)
 		return 0, nil // Fall back to first candidate (fastest)
@@ -1080,20 +1081,20 @@ func (a *Activities) ReviewExplosionCandidatesActivity(ctx context.Context, task
 
 	jsonStr := extractJSON(cliResult.Output)
 	if jsonStr == "" {
-		logger.Warn(SharkPrefix+" Senior review output was not valid JSON — falling back to fastest")
+		logger.Warn(SharkPrefix + " Senior review output was not valid JSON — falling back to fastest")
 		return 0, nil
 	}
 
 	// Parse the winner index
 	var reviewResult struct {
-		Winner    int      `json:"winner"`
-		Rationale string   `json:"rationale"`
+		Winner    int    `json:"winner"`
+		Rationale string `json:"rationale"`
 		Patterns  struct {
 			Good []string `json:"good"`
 			Bad  []string `json:"bad"`
 		} `json:"patterns"`
 	}
-	if err := json.Unmarshal([]byte(jsonStr), &reviewResult); err != nil {
+	if err := robustParseJSON(jsonStr, &reviewResult); err != nil {
 		logger.Warn(SharkPrefix+" Failed to parse review JSON", "error", err)
 		return 0, nil
 	}
@@ -1373,7 +1374,7 @@ func loadSemgrepContext(workDir string) string {
 // Returns the number of genome mutations applied.
 func (a *Activities) AnalyzeProviderFitnessActivity(ctx context.Context, req PaleontologistRequest) (int, error) {
 	logger := activity.GetLogger(ctx)
-	logger.Info(PaleontologistPrefix+" Analyzing provider fitness")
+	logger.Info(PaleontologistPrefix + " Analyzing provider fitness")
 
 	since := time.Now().UTC().Add(-time.Duration(req.LookbackH) * time.Hour)
 	rates, err := a.Store.GetProviderSuccessRates(since)
@@ -1417,7 +1418,7 @@ func (a *Activities) AnalyzeProviderFitnessActivity(ctx context.Context, req Pal
 // Returns the number of antibodies created.
 func (a *Activities) DiscoverAntibodiesActivity(ctx context.Context, req PaleontologistRequest) (int, error) {
 	logger := activity.GetLogger(ctx)
-	logger.Info(PaleontologistPrefix+" Discovering antibodies from UBS patterns")
+	logger.Info(PaleontologistPrefix + " Discovering antibodies from UBS patterns")
 
 	patterns, err := a.Store.GetRepeatingUBSPatterns(3)
 	if err != nil {
@@ -1449,7 +1450,7 @@ func (a *Activities) DiscoverAntibodiesActivity(ctx context.Context, req Paleont
 // Returns the number of proteins nominated.
 func (a *Activities) ScanProteinCandidatesActivity(ctx context.Context, req PaleontologistRequest) (int, error) {
 	logger := activity.GetLogger(ctx)
-	logger.Info(PaleontologistPrefix+" Scanning for proteinisation candidates")
+	logger.Info(PaleontologistPrefix + " Scanning for proteinisation candidates")
 
 	candidates, err := a.Store.GetProteinCandidates(5)
 	if err != nil {
@@ -1479,7 +1480,7 @@ func (a *Activities) ScanProteinCandidatesActivity(ctx context.Context, req Pale
 // Returns the number of species audited.
 func (a *Activities) AuditSpeciesHealthActivity(ctx context.Context, req PaleontologistRequest) (int, error) {
 	logger := activity.GetLogger(ctx)
-	logger.Info(PaleontologistPrefix+" Auditing species health")
+	logger.Info(PaleontologistPrefix + " Auditing species health")
 
 	audited := 0
 
@@ -1493,7 +1494,7 @@ func (a *Activities) AuditSpeciesHealthActivity(ctx context.Context, req Paleont
 			logger.Info(PaleontologistPrefix+" Stale hibernator detected",
 				"Species", h.Species, "Generation", h.Generation,
 				"Issue", h.Issue, "Antibodies", h.AntibodyCount, "LastEvolved", h.LastEvolved)
-			
+
 			if a.Sender != nil {
 				targetRoom := a.AdminRoom
 				if targetRoom == "" {
@@ -1514,7 +1515,7 @@ func (a *Activities) AuditSpeciesHealthActivity(ctx context.Context, req Paleont
 			audited++
 			logger.Info(PaleontologistPrefix+" Stuck species detected",
 				"Species", s.Species, "Antibodies", s.AntibodyCount)
-			
+
 			if a.Sender != nil {
 				targetRoom := a.AdminRoom
 				if targetRoom == "" {
@@ -1548,7 +1549,7 @@ func (a *Activities) AuditSpeciesHealthActivity(ctx context.Context, req Paleont
 // Returns the number of cost alerts generated.
 func (a *Activities) AnalyzeCostTrendsActivity(ctx context.Context, req PaleontologistRequest) (int, error) {
 	logger := activity.GetLogger(ctx)
-	logger.Info(PaleontologistPrefix+" Analyzing cost trends")
+	logger.Info(PaleontologistPrefix + " Analyzing cost trends")
 
 	current, previous, err := a.Store.GetCostTrends(req.LookbackH)
 	if err != nil {
@@ -1587,7 +1588,7 @@ func (a *Activities) AnalyzeCostTrendsActivity(ctx context.Context, req Paleonto
 // Returns the number of recurring failure patterns detected.
 func (a *Activities) DiscoverRecurringDoDFailuresActivity(ctx context.Context, req PaleontologistRequest) (int, error) {
 	logger := activity.GetLogger(ctx)
-	logger.Info(PaleontologistPrefix+" Discovering recurring DoD failures")
+	logger.Info(PaleontologistPrefix + " Discovering recurring DoD failures")
 
 	since := time.Now().UTC().Add(-time.Duration(req.LookbackH) * time.Hour)
 	patterns, err := a.Store.GetRecurringDoDFailures(3, since) // threshold: 3+ occurrences
@@ -1667,7 +1668,7 @@ func (a *Activities) DiscoverRecurringDoDFailuresActivity(ctx context.Context, r
 // NOT a hard gate - Hex decides whether to pause based on the clock.
 func (a *Activities) AnalyzeFailureRateTrendsActivity(ctx context.Context, req PaleontologistRequest) error {
 	logger := activity.GetLogger(ctx)
-	logger.Info(PaleontologistPrefix+" Analyzing failure rate trends")
+	logger.Info(PaleontologistPrefix + " Analyzing failure rate trends")
 
 	// Analyze overall failure rate delta (all projects)
 	delta, err := a.Store.GetFailureRateDelta("", req.LookbackH)
@@ -1796,4 +1797,3 @@ func (a *Activities) RecordPaleontologyRunActivity(ctx context.Context,
 		Summary:              summary,
 	})
 }
-

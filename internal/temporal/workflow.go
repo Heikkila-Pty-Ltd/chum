@@ -166,8 +166,8 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 		RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 1},
 	}
 	execOpts := workflow.ActivityOptions{
-		StartToCloseTimeout: 15 * time.Minute,
-		HeartbeatTimeout:    30 * time.Second,
+		StartToCloseTimeout: 45 * time.Minute,
+		HeartbeatTimeout:    2 * time.Minute,
 		RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 1}, // no auto-retry, we handle it
 	}
 	reviewOpts := workflow.ActivityOptions{
@@ -175,7 +175,7 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 		RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 1},
 	}
 	dodOpts := workflow.ActivityOptions{
-		StartToCloseTimeout: 5 * time.Minute,
+		StartToCloseTimeout: 45 * time.Minute,
 		RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 1},
 	}
 	recordOpts := workflow.ActivityOptions{

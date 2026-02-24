@@ -145,7 +145,7 @@ Respond with ONLY a JSON object:
 }`, strings.Join(contextParts, "\n\n"), req.TotalSuccesses)
 
 	agent := ResolveTierAgent(a.Tiers, "premium")
-	cliResult, err := runAgent(ctx, agent, prompt, "/tmp")
+	cliResult, err := a.runAgent(ctx, agent, prompt, "/tmp")
 	if err != nil {
 		logger.Warn(PaleontologistPrefix+" Protein synthesis LLM failed", "error", err)
 		return &ProteinSynthesisResult{Synthesized: false}, nil
@@ -305,7 +305,7 @@ Respond with ONLY a JSON object:
 		string(existingMolJSON), strings.Join(feedbackParts, "\n\n"))
 
 	agent := ResolveTierAgent(a.Tiers, "premium")
-	cliResult, err := runAgent(ctx, agent, prompt, "/tmp")
+	cliResult, err := a.runAgent(ctx, agent, prompt, "/tmp")
 	if err != nil {
 		logger.Warn(PaleontologistPrefix+" Protein mutation LLM failed", "error", err)
 		return &MutateProteinResult{Mutated: false}, nil

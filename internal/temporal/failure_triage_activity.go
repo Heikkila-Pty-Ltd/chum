@@ -69,7 +69,7 @@ Respond with ONLY a JSON object:
 }`, strings.Join(contextParts, "\n\n"), req.Attempt, req.MaxRetries)
 
 	agent := ResolveTierAgent(a.Tiers, "fast")
-	cliResult, err := runAgent(ctx, agent, prompt, req.WorkDir)
+	cliResult, err := a.runAgent(ctx, agent, prompt, req.WorkDir)
 	if err != nil {
 		logger.Warn(OctopusPrefix+" Failure triage LLM failed (falling back to retry)", "error", err)
 		// Fallback: if we can't triage, default to retry

@@ -53,7 +53,7 @@ Consider: What could go wrong? What dependencies exist? What's the simplest path
 		go func(agentName string) {
 			defer wg.Done()
 
-			cliResult, err := runAgent(ctx, agentName, prompt, req.WorkDir)
+			cliResult, err := a.runAgent(ctx, agentName, prompt, req.WorkDir)
 			if err != nil {
 				results <- agentResult{agent: agentName, err: err}
 				return
@@ -172,7 +172,7 @@ Be constructive. Look for the BEST ideas across all proposals. Converge toward t
 		go func(agentName string) {
 			defer wg.Done()
 
-			cliResult, err := runAgent(ctx, agentName, prompt, req.WorkDir)
+			cliResult, err := a.runAgent(ctx, agentName, prompt, req.WorkDir)
 			if err != nil {
 				results <- critiqueResult{agent: agentName, err: err}
 				return
@@ -278,7 +278,7 @@ Per-item confidence shows how aligned the team is on each specific deliverable.`
 
 	// Use the first agent (balanced tier) for synthesis
 	agent := ResolveTierAgent(a.Tiers, "balanced")
-	cliResult, err := runAgent(ctx, agent, prompt, req.WorkDir)
+	cliResult, err := a.runAgent(ctx, agent, prompt, req.WorkDir)
 	if err != nil {
 		return nil, fmt.Errorf("convergence failed: %w", err)
 	}

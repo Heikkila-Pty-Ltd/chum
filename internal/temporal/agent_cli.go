@@ -95,7 +95,17 @@ func normalizeAgent(agent string) string {
 	return lower
 }
 
+// ---------------------------------------------------------------------------
+// CLI command builders and runners — Activities methods with package wrappers
+// ---------------------------------------------------------------------------
+//
+// The core logic lives on (a *Activities) methods so production code reads
+// config via a.CfgMgr (hot-reloadable). Package-level wrappers delegate to
+// a zero-value Activities{} for backward compatibility and testing.
+// ---------------------------------------------------------------------------
+
 // cliCommand returns an exec.Cmd for a given agent in non-interactive coding mode.
+// Package-level wrapper — delegates to the Activities method.
 //
 // SECURITY: The prompt is NOT included in the argument list. Instead, runCLI
 // pipes it via stdin from a temp file. This prevents:
@@ -103,12 +113,47 @@ func normalizeAgent(agent string) string {
 //   - ARG_MAX overflow on long prompts
 //   - Any CLI-level argument parsing surprises from untrusted prompt content
 func cliCommand(agent, workDir string) *exec.Cmd {
-	return cliCommandWithModel(agent, workDir, "")
+	return (&Activities{}).cliCommandWithModel(agent, workDir, "")
 }
 
 // cliCommandWithModel returns an exec.Cmd for a given agent with an optional model override.
-// When model is empty, the CLI uses its default model.
+// Package-level wrapper — delegates to the Activities method.
 func cliCommandWithModel(agent, workDir, model string) *exec.Cmd {
+	return (&Activities{}).cliCommandWithModel(agent, workDir, model)
+}
+
+// cliReviewCommand returns an exec.Cmd for a given agent in code review mode.
+// Package-level wrapper — delegates to the Activities method.
+func cliReviewCommand(agent, workDir string) *exec.Cmd {
+	return (&Activities{}).cliReviewCommand(agent, workDir)
+}
+
+// ---------------------------------------------------------------------------
+// Activities methods — production code uses these directly via DI
+// ---------------------------------------------------------------------------
+
+// cliCommandWithModel returns an exec.Cmd for a given agent with an optional model override.
+// When model is empty, the CLI uses its default model.
+//
+// Config-driven: if a.CfgMgr is set, looks up [dispatch.cli.<agent>] first.
+// Falls back to hardcoded defaults when CfgMgr is nil or the agent key is missing.
+func (a *Activities) cliCommandWithModel(agent, workDir, model string) *exec.Cmd {
+	// --- Config-driven path (hot-reloadable) ---
+	if a.CfgMgr != nil {
+		if cfg := a.CfgMgr.Get(); cfg != nil {
+			if cliCfg, ok := cfg.Dispatch.CLI[agent]; ok && cliCfg.Cmd != "" {
+				args := append([]string{}, cliCfg.Args...)
+				if model != "" && cliCfg.ModelFlag != "" {
+					args = append(args, cliCfg.ModelFlag, model)
+				}
+				cmd := exec.Command(cliCfg.Cmd, args...)
+				cmd.Dir = workDir
+				return cmd
+			}
+		}
+	}
+
+	// --- Hardcoded fallback (tests, missing config keys) ---
 	var cmd *exec.Cmd
 	switch normalizeAgent(agent) {
 	case "codex":
@@ -145,7 +190,7 @@ func cliCommandWithModel(agent, workDir, model string) *exec.Cmd {
 // We use `codex exec` for both coding and review — the prompt differentiates them.
 //
 // SECURITY: Same stdin-piped prompt as cliCommand — see that function for details.
-func cliReviewCommand(agent, workDir string) *exec.Cmd {
+func (a *Activities) cliReviewCommand(agent, workDir string) *exec.Cmd {
 	var cmd *exec.Cmd
 	switch normalizeAgent(agent) {
 	case "codex":
@@ -168,7 +213,7 @@ func cliReviewCommand(agent, workDir string) *exec.Cmd {
 // SECURITY: The prompt is written to a temp file and piped as stdin to keep it
 // out of process argument lists (/proc/PID/cmdline) and avoid ARG_MAX limits.
 // The temp file is removed on return.
-func runCLI(ctx context.Context, agent, prompt string, cmd *exec.Cmd) (CLIResult, error) {
+func (a *Activities) runCLI(ctx context.Context, agent, prompt string, cmd *exec.Cmd) (CLIResult, error) {
 	// Write prompt to temp file, then pipe as stdin.
 	promptFile, err := os.CreateTemp("", "chum-prompt-*.txt")
 	if err != nil {
@@ -219,16 +264,16 @@ func runCLI(ctx context.Context, agent, prompt string, cmd *exec.Cmd) (CLIResult
 }
 
 // runAgent executes a CLI agent in coding mode and returns a CLIResult.
-func runAgent(ctx context.Context, agent, prompt, workDir string) (CLIResult, error) {
-	return runCLI(ctx, agent, prompt, cliCommand(agent, workDir))
+func (a *Activities) runAgent(ctx context.Context, agent, prompt, workDir string) (CLIResult, error) {
+	return a.runCLI(ctx, agent, prompt, a.cliCommandWithModel(agent, workDir, ""))
 }
 
 // runAgentWithModel executes a CLI agent with a specific model and returns a CLIResult.
-func runAgentWithModel(ctx context.Context, agent, model, prompt, workDir string) (CLIResult, error) {
-	return runCLI(ctx, agent, prompt, cliCommandWithModel(agent, workDir, model))
+func (a *Activities) runAgentWithModel(ctx context.Context, agent, model, prompt, workDir string) (CLIResult, error) {
+	return a.runCLI(ctx, agent, prompt, a.cliCommandWithModel(agent, workDir, model))
 }
 
 // runReviewAgent executes a CLI agent in code review mode and returns a CLIResult.
-func runReviewAgent(ctx context.Context, agent, prompt, workDir string) (CLIResult, error) {
-	return runCLI(ctx, agent, prompt, cliReviewCommand(agent, workDir))
+func (a *Activities) runReviewAgent(ctx context.Context, agent, prompt, workDir string) (CLIResult, error) {
+	return a.runCLI(ctx, agent, prompt, a.cliReviewCommand(agent, workDir))
 }

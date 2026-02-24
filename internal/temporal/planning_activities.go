@@ -46,7 +46,7 @@ Respond with ONLY a JSON object:
 Start wide — consider all possible areas of improvement. Then rank by impact.`, req.Project)
 
 	agent := ResolveTierAgent(a.Tiers, req.Tier)
-	cliResult, err := runAgent(ctx, agent, prompt, req.WorkDir)
+	cliResult, err := a.runAgent(ctx, agent, prompt, req.WorkDir)
 	if err != nil {
 		return nil, fmt.Errorf("backlog grooming failed: %w", err)
 	}
@@ -57,7 +57,7 @@ Start wide — consider all possible areas of improvement. Then rank by impact.`
 	}
 
 	var backlog BacklogPresentation
-	if err := json.Unmarshal([]byte(jsonStr), &backlog); err != nil {
+	if err := robustParseJSON(jsonStr, &backlog); err != nil {
 		return nil, fmt.Errorf("failed to parse backlog JSON: %w\nRaw: %s", err, truncate(jsonStr, 500))
 	}
 
@@ -111,7 +111,7 @@ Think carefully. These questions prevent wasted tokens and wrong assumptions.`,
 	)
 
 	agent := ResolveTierAgent(a.Tiers, req.Tier)
-	cliResult, err := runAgent(ctx, agent, prompt, req.WorkDir)
+	cliResult, err := a.runAgent(ctx, agent, prompt, req.WorkDir)
 	if err != nil {
 		return nil, fmt.Errorf("question generation failed: %w", err)
 	}
@@ -122,7 +122,7 @@ Think carefully. These questions prevent wasted tokens and wrong assumptions.`,
 	}
 
 	var questions []PlanningQuestion
-	if err := json.Unmarshal([]byte(jsonStr), &questions); err != nil {
+	if err := robustParseJSONArray(jsonStr, &questions); err != nil {
 		return nil, fmt.Errorf("failed to parse questions JSON: %w", err)
 	}
 
@@ -177,7 +177,7 @@ Be specific. The implementation team needs to know EXACTLY what to build.`,
 	)
 
 	agent := ResolveTierAgent(a.Tiers, req.Tier)
-	cliResult, err := runAgent(ctx, agent, prompt, req.WorkDir)
+	cliResult, err := a.runAgent(ctx, agent, prompt, req.WorkDir)
 	if err != nil {
 		return nil, fmt.Errorf("plan summary failed: %w", err)
 	}
@@ -188,7 +188,7 @@ Be specific. The implementation team needs to know EXACTLY what to build.`,
 	}
 
 	var summary PlanSummary
-	if err := json.Unmarshal([]byte(jsonStr), &summary); err != nil {
+	if err := robustParseJSON(jsonStr, &summary); err != nil {
 		return nil, fmt.Errorf("failed to parse summary JSON: %w", err)
 	}
 

@@ -401,3 +401,164 @@ func TestStructuredPlan_Validate_MultipleStepsAndCriteria(t *testing.T) {
 	issues := plan.Validate()
 	require.Empty(t, issues)
 }
+
+// ---------------------------------------------------------------------------
+// Config-driven CLI commands (M1b)
+// ---------------------------------------------------------------------------
+
+// mockConfigManager implements config.ConfigManager for tests.
+type mockConfigManager struct {
+	cfg *config.Config
+}
+
+func (m *mockConfigManager) Get() *config.Config  { return m.cfg }
+func (m *mockConfigManager) Set(*config.Config)    {}
+func (m *mockConfigManager) Reload(string) error   { return nil }
+
+func TestCLICommandWithModel_ConfigDriven_CodexHigh(t *testing.T) {
+	acts := &Activities{
+		CfgMgr: &mockConfigManager{cfg: &config.Config{
+			Dispatch: config.Dispatch{
+				CLI: map[string]config.CLIConfig{
+					"codex-high": {
+						Cmd:       "codex",
+						Args:      []string{"exec", "--full-auto", "-c", "model_reasoning_effort=high"},
+						ModelFlag: "-m",
+					},
+				},
+			},
+		}},
+	}
+
+	cmd := acts.cliCommandWithModel("codex-high", "/tmp/work", "")
+	require.Contains(t, cmd.Path, "codex")
+	require.Equal(t, []string{
+		"codex", "exec", "--full-auto", "-c", "model_reasoning_effort=high",
+	}, cmd.Args)
+	require.Equal(t, "/tmp/work", cmd.Dir)
+}
+
+func TestCLICommandWithModel_ConfigDriven_CodexLow(t *testing.T) {
+	acts := &Activities{
+		CfgMgr: &mockConfigManager{cfg: &config.Config{
+			Dispatch: config.Dispatch{
+				CLI: map[string]config.CLIConfig{
+					"codex-low": {
+						Cmd:       "codex",
+						Args:      []string{"exec", "--full-auto", "-c", "model_reasoning_effort=low"},
+						ModelFlag: "-m",
+					},
+				},
+			},
+		}},
+	}
+
+	cmd := acts.cliCommandWithModel("codex-low", "/tmp/work", "")
+	require.Equal(t, []string{
+		"codex", "exec", "--full-auto", "-c", "model_reasoning_effort=low",
+	}, cmd.Args)
+}
+
+func TestCLICommandWithModel_ConfigDriven_DifferentArgs(t *testing.T) {
+	// Core acceptance criterion: codex-high and codex-low produce DIFFERENT commands
+	acts := &Activities{
+		CfgMgr: &mockConfigManager{cfg: &config.Config{
+			Dispatch: config.Dispatch{
+				CLI: map[string]config.CLIConfig{
+					"codex-high": {
+						Cmd:       "codex",
+						Args:      []string{"exec", "--full-auto", "-c", "model_reasoning_effort=high"},
+						ModelFlag: "-m",
+					},
+					"codex-low": {
+						Cmd:       "codex",
+						Args:      []string{"exec", "--full-auto", "-c", "model_reasoning_effort=low"},
+						ModelFlag: "-m",
+					},
+				},
+			},
+		}},
+	}
+
+	highCmd := acts.cliCommandWithModel("codex-high", "/tmp", "")
+	lowCmd := acts.cliCommandWithModel("codex-low", "/tmp", "")
+
+	// Both use codex binary
+	require.Contains(t, highCmd.Path, "codex")
+	require.Contains(t, lowCmd.Path, "codex")
+
+	// But args differ
+	require.NotEqual(t, highCmd.Args, lowCmd.Args, "codex-high and codex-low must produce different args")
+	require.Contains(t, highCmd.Args, "model_reasoning_effort=high")
+	require.Contains(t, lowCmd.Args, "model_reasoning_effort=low")
+}
+
+func TestCLICommandWithModel_ConfigDriven_WithModelOverride(t *testing.T) {
+	acts := &Activities{
+		CfgMgr: &mockConfigManager{cfg: &config.Config{
+			Dispatch: config.Dispatch{
+				CLI: map[string]config.CLIConfig{
+					"codex-high": {
+						Cmd:       "codex",
+						Args:      []string{"exec", "--full-auto"},
+						ModelFlag: "-m",
+					},
+				},
+			},
+		}},
+	}
+
+	cmd := acts.cliCommandWithModel("codex-high", "/tmp", "gpt-5.3-codex")
+	require.Equal(t, []string{
+		"codex", "exec", "--full-auto", "-m", "gpt-5.3-codex",
+	}, cmd.Args)
+}
+
+func TestCLICommandWithModel_ConfigDriven_FallbackOnMissingKey(t *testing.T) {
+	// Agent key not in config → falls back to hardcoded switch
+	acts := &Activities{
+		CfgMgr: &mockConfigManager{cfg: &config.Config{
+			Dispatch: config.Dispatch{
+				CLI: map[string]config.CLIConfig{
+					"codex-high": {Cmd: "codex", Args: []string{"exec"}},
+				},
+			},
+		}},
+	}
+
+	// "gemini" not in config → should use hardcoded gemini args
+	cmd := acts.cliCommandWithModel("gemini", "/tmp", "")
+	require.Contains(t, cmd.Path, "gemini")
+	require.Contains(t, cmd.Args, "--yolo")
+}
+
+func TestCLICommandWithModel_NilCfgMgr_UsesHardcoded(t *testing.T) {
+	// CfgMgr is nil (test/zero-value Activities) → hardcoded path
+	acts := &Activities{}
+	cmd := acts.cliCommandWithModel("codex", "/tmp/work", "")
+	require.Equal(t, []string{
+		"codex", "exec", "--full-auto", "--json",
+	}, cmd.Args)
+}
+
+func TestCLICommandWithModel_ConfigDriven_DoesNotMutateConfigArgs(t *testing.T) {
+	// Verify that adding model flag doesn't mutate the config's Args slice
+	cliCfg := config.CLIConfig{
+		Cmd:       "codex",
+		Args:      []string{"exec", "--full-auto"},
+		ModelFlag: "-m",
+	}
+	acts := &Activities{
+		CfgMgr: &mockConfigManager{cfg: &config.Config{
+			Dispatch: config.Dispatch{
+				CLI: map[string]config.CLIConfig{"codex-high": cliCfg},
+			},
+		}},
+	}
+
+	// Call with model to trigger append
+	acts.cliCommandWithModel("codex-high", "/tmp", "gpt-5")
+	// Original config args should be untouched
+	require.Equal(t, []string{"exec", "--full-auto"}, cliCfg.Args)
+}
+

@@ -347,7 +347,7 @@ func Open(dbPath string) (*Store, error) {
 // verifySchema runs post-migration sanity checks on the DB schema.
 // Catches drift caused by multiple binaries hitting the same DB file.
 func (s *Store) verifySchema() error {
-	criticalTables := []string{"morsels", "dispatches", "lessons"}
+	criticalTables := []string{"morsel_stages", "dispatches", "lessons", "genomes"}
 	for _, table := range criticalTables {
 		var count int
 		err := s.db.QueryRow(
@@ -361,15 +361,28 @@ func (s *Store) verifySchema() error {
 		}
 	}
 
-	// Verify morsel_id column exists (catches pre-rename databases)
-	var hasCol int
-	if err := s.db.QueryRow(
-		`SELECT COUNT(*) FROM pragma_table_info('dispatches') WHERE name = 'morsel_id'`,
-	).Scan(&hasCol); err != nil {
-		return fmt.Errorf("verify dispatches.morsel_id: %w", err)
+	// Verify critical columns exist (catches schema drift from older binaries)
+	colChecks := []struct {
+		table  string
+		column string
+	}{
+		{"dispatches", "morsel_id"},
+		{"dispatches", "failure_category"},
+		{"dispatches", "backend"},
+		{"dispatches", "labels"},
+		{"genomes", "provider_genes"},
+		{"genomes", "hibernating"},
 	}
-	if hasCol == 0 {
-		return fmt.Errorf("dispatches.morsel_id column missing — bead→morsel migration may have failed")
+	for _, c := range colChecks {
+		var hasCol int
+		if err := s.db.QueryRow(
+			`SELECT COUNT(*) FROM pragma_table_info('`+c.table+`') WHERE name = ?`, c.column,
+		).Scan(&hasCol); err != nil {
+			return fmt.Errorf("verify %s.%s: %w", c.table, c.column, err)
+		}
+		if hasCol == 0 {
+			return fmt.Errorf("schema drift: %s.%s column missing — run migrations or update binary", c.table, c.column)
+		}
 	}
 
 	return nil

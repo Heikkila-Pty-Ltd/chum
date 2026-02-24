@@ -285,11 +285,19 @@ CREATE TABLE IF NOT EXISTS paleontology_runs (
 `
 
 // Open creates or opens a SQLite database at the given path and ensures the schema exists.
+// Uses WAL mode for concurrent reads, busy_timeout of 30s to survive Cambrian Explosion
+// multi-writer contention, and MaxOpenConns=1 to serialize writes at the Go level.
 func Open(dbPath string) (*Store, error) {
-	db, err := sql.Open("sqlite", dbPath+"?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)")
+	db, err := sql.Open("sqlite", dbPath+"?_pragma=journal_mode(WAL)&_pragma=busy_timeout(30000)")
 	if err != nil {
 		return nil, fmt.Errorf("store: open %s: %w", dbPath, err)
 	}
+
+	// Single-writer enforcement: serialise all writes through one connection.
+	// SQLite WAL supports concurrent reads but only one writer at a time.
+	// Without this, Cambrian Explosion child workflows race for the write lock
+	// and get SQLITE_BUSY errors even with busy_timeout.
+	db.SetMaxOpenConns(1)
 
 	// Rename bead→morsel columns in existing databases BEFORE schema DDL runs.
 	// The schema uses morsel_id but pre-rename databases have bead_id.
@@ -318,6 +326,13 @@ func Open(dbPath string) (*Store, error) {
 		return nil, fmt.Errorf("store: migrate: %w", err)
 	}
 
+	// Pre-flight check: verify critical columns exist after all migrations.
+	// Catches schema drift when multiple binaries hit the same DB.
+	if err := s.verifySchema(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("store: schema verification failed: %w", err)
+	}
+
 	// Seed initial proteins (deterministic workflow sequences)
 	if err := s.SeedProteins(); err != nil {
 		db.Close()
@@ -329,6 +344,37 @@ func Open(dbPath string) (*Store, error) {
 
 // addColumnIfNotExists checks whether a column exists on a table and adds it
 // using the supplied DDL fragment when it is missing.
+// verifySchema runs post-migration sanity checks on the DB schema.
+// Catches drift caused by multiple binaries hitting the same DB file.
+func (s *Store) verifySchema() error {
+	criticalTables := []string{"morsels", "dispatches", "lessons"}
+	for _, table := range criticalTables {
+		var count int
+		err := s.db.QueryRow(
+			`SELECT COUNT(*) FROM pragma_table_info('` + table + `')`,
+		).Scan(&count)
+		if err != nil {
+			return fmt.Errorf("verify table %s: %w", table, err)
+		}
+		if count == 0 {
+			return fmt.Errorf("critical table %q is missing — schema migration may have failed", table)
+		}
+	}
+
+	// Verify morsel_id column exists (catches pre-rename databases)
+	var hasCol int
+	if err := s.db.QueryRow(
+		`SELECT COUNT(*) FROM pragma_table_info('dispatches') WHERE name = 'morsel_id'`,
+	).Scan(&hasCol); err != nil {
+		return fmt.Errorf("verify dispatches.morsel_id: %w", err)
+	}
+	if hasCol == 0 {
+		return fmt.Errorf("dispatches.morsel_id column missing — bead→morsel migration may have failed")
+	}
+
+	return nil
+}
+
 func addColumnIfNotExists(db *sql.DB, table, column, ddl string) error {
 	var count int
 	err := db.QueryRow(

@@ -119,14 +119,6 @@ func applyDefaults(cfg *Config, md toml.MetaData) {
 		cfg.Dispatch.Git.MaxConcurrentPerProject = 3
 	}
 
-	// Dispatch Tmux
-	if cfg.Dispatch.Tmux.HistoryLimit == 0 {
-		cfg.Dispatch.Tmux.HistoryLimit = 50000
-	}
-	if cfg.Dispatch.Tmux.SessionPrefix == "" {
-		cfg.Dispatch.Tmux.SessionPrefix = "chum-"
-	}
-
 	// Dispatch cost-control defaults
 	if cfg.Dispatch.CostControl.RetryEscalationAttempt == 0 {
 		cfg.Dispatch.CostControl.RetryEscalationAttempt = 2

@@ -75,10 +75,10 @@ func TestLessonsStoreAndSearch(t *testing.T) {
 		t.Fatal("expected at least 1 result for file path search")
 	}
 
-	// Get by bead
-	results, err = st.GetLessonsByBead("chum-abc")
+	// Get by morsel
+	results, err = st.GetLessonsByMorsel("chum-abc")
 	if err != nil {
-		t.Fatalf("GetLessonsByBead: %v", err)
+		t.Fatalf("GetLessonsByMorsel: %v", err)
 	}
 	if len(results) != 1 {
 		t.Fatalf("expected 1 lesson for chum-abc, got %d", len(results))

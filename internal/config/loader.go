@@ -64,7 +64,7 @@ func normalizePaths(cfg *Config) {
 	cfg.API.Security.AuditLog = ExpandHome(strings.TrimSpace(cfg.API.Security.AuditLog))
 
 	for name, project := range cfg.Projects {
-		project.BeadsDir = ExpandHome(strings.TrimSpace(project.BeadsDir))
+		project.MorselsDir = ExpandHome(strings.TrimSpace(project.MorselsDir))
 		project.Workspace = ExpandHome(strings.TrimSpace(project.Workspace))
 		cfg.Projects[name] = project
 	}

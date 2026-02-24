@@ -34,6 +34,54 @@ func ResolveTierAgent(tiers config.Tiers, tier string) string {
 	return "codex"
 }
 
+// EscalationChain returns the ordered list of provider names to try for a
+// given starting tier: fast → balanced → premium. Each entry is a provider
+// key from [providers.*] in config.
+func EscalationChain(tiers config.Tiers, startTier string) []string {
+	startTier = strings.TrimSpace(strings.ToLower(startTier))
+	var chain []string
+	seen := make(map[string]bool)
+
+	addUnique := func(agents []string) {
+		for _, a := range agents {
+			if !seen[a] {
+				seen[a] = true
+				chain = append(chain, a)
+			}
+		}
+	}
+
+	switch startTier {
+	case "fast", "":
+		addUnique(tiers.Fast)
+		addUnique(tiers.Balanced)
+		addUnique(tiers.Premium)
+	case "balanced":
+		addUnique(tiers.Balanced)
+		addUnique(tiers.Premium)
+	case "premium":
+		addUnique(tiers.Premium)
+	}
+	if len(chain) == 0 {
+		chain = []string{"codex-spark"}
+	}
+	return chain
+}
+
+// ResolveProviderCLI returns the CLI name and model for a provider key.
+// Example: "gemini-flash" → ("gemini", "gemini-2.5-flash")
+func ResolveProviderCLI(providers map[string]config.Provider, providerKey string) (cli, model string) {
+	p, ok := providers[providerKey]
+	if !ok {
+		return "codex", "" // fallback
+	}
+	cli = p.CLI
+	if cli == "" {
+		cli = "codex"
+	}
+	return cli, p.Model
+}
+
 // cliCommand returns an exec.Cmd for a given agent in non-interactive coding mode.
 //
 // SECURITY: The prompt is NOT included in the argument list. Instead, runCLI
@@ -42,18 +90,38 @@ func ResolveTierAgent(tiers config.Tiers, tier string) string {
 //   - ARG_MAX overflow on long prompts
 //   - Any CLI-level argument parsing surprises from untrusted prompt content
 func cliCommand(agent, workDir string) *exec.Cmd {
+	return cliCommandWithModel(agent, workDir, "")
+}
+
+// cliCommandWithModel returns an exec.Cmd for a given agent with an optional model override.
+// When model is empty, the CLI uses its default model.
+func cliCommandWithModel(agent, workDir, model string) *exec.Cmd {
 	var cmd *exec.Cmd
 	switch strings.ToLower(agent) {
 	case "codex":
-		// codex exec reads the prompt from stdin in --full-auto mode.
-		cmd = exec.Command("codex", "exec", "--full-auto", "--json")
+		args := []string{"exec", "--full-auto", "--json"}
+		if model != "" {
+			args = append(args, "-m", model)
+		}
+		cmd = exec.Command("codex", args...)
 	case "gemini":
-		// gemini CLI: -p "" enters headless mode, --yolo auto-accept, -o json for stats.
-		// Gemini appends stdin to the -p value, so the actual prompt arrives via stdin.
-		cmd = exec.Command("gemini", "-p", "", "--yolo", "-o", "json")
+		args := []string{"-p", "", "--yolo", "-o", "json"}
+		if model != "" {
+			args = append(args, "--model", model)
+		}
+		cmd = exec.Command("gemini", args...)
+	case "deepseek":
+		args := []string{"--json"}
+		if model != "" {
+			args = append(args, "--model", model)
+		}
+		cmd = exec.Command("deepseek", args...)
 	default: // claude — JSON output gives us token usage
-		// claude --print reads from stdin when no positional prompt is given.
-		cmd = exec.Command("claude", "--print", "--output-format", "json", "--dangerously-skip-permissions")
+		args := []string{"--print", "--output-format", "json", "--dangerously-skip-permissions"}
+		if model != "" {
+			args = append(args, "--model", model)
+		}
+		cmd = exec.Command("claude", args...)
 	}
 	cmd.Dir = workDir
 	return cmd
@@ -70,6 +138,8 @@ func cliReviewCommand(agent, workDir string) *exec.Cmd {
 	case "codex":
 		// codex exec for review — same as coding, but the prompt asks for review output
 		cmd = exec.Command("codex", "exec", "--full-auto")
+	case "deepseek":
+		cmd = exec.Command("deepseek", "--json")
 	default: // claude reviews via --print with JSON output for token tracking
 		cmd = exec.Command("claude", "--print", "--output-format", "json", "--dangerously-skip-permissions")
 	}
@@ -136,6 +206,11 @@ func runCLI(ctx context.Context, agent, prompt string, cmd *exec.Cmd) (CLIResult
 // runAgent executes a CLI agent in coding mode and returns a CLIResult.
 func runAgent(ctx context.Context, agent, prompt, workDir string) (CLIResult, error) {
 	return runCLI(ctx, agent, prompt, cliCommand(agent, workDir))
+}
+
+// runAgentWithModel executes a CLI agent with a specific model and returns a CLIResult.
+func runAgentWithModel(ctx context.Context, agent, model, prompt, workDir string) (CLIResult, error) {
+	return runCLI(ctx, agent, prompt, cliCommandWithModel(agent, workDir, model))
 }
 
 // runReviewAgent executes a CLI agent in code review mode and returns a CLIResult.

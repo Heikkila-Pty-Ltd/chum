@@ -53,11 +53,11 @@ func (s *Server) handleProjectDetail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := map[string]any{
-		"name":      id,
-		"enabled":   proj.Enabled,
-		"priority":  proj.Priority,
-		"workspace": proj.Workspace,
-		"beads_dir": proj.BeadsDir,
+		"name":        id,
+		"enabled":     proj.Enabled,
+		"priority":    proj.Priority,
+		"workspace":   proj.Workspace,
+		"morsels_dir": proj.MorselsDir,
 	}
 	writeJSON(w, resp)
 }
@@ -77,7 +77,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 				"type":        e.EventType,
 				"details":     e.Details,
 				"dispatch_id": e.DispatchID,
-				"bead_id":     e.BeadID,
+				"morsel_id":   e.MorselID,
 				"time":        e.CreatedAt.Format(time.RFC3339),
 			})
 		}
@@ -134,14 +134,14 @@ func (s *Server) handleRecommendations(w http.ResponseWriter, r *http.Request) {
 		}
 		for _, l := range lessons {
 			results = append(results, map[string]any{
-				"id":        l.ID,
-				"bead_id":   l.BeadID,
-				"project":   l.Project,
-				"category":  l.Category,
-				"summary":   l.Summary,
-				"detail":    l.Detail,
-				"files":     l.FilePaths,
-				"labels":    l.Labels,
+				"id":         l.ID,
+				"morsel_id":  l.MorselID,
+				"project":    l.Project,
+				"category":   l.Category,
+				"summary":    l.Summary,
+				"detail":     l.Detail,
+				"files":      l.FilePaths,
+				"labels":     l.Labels,
 				"created_at": l.CreatedAt.Format(time.RFC3339),
 			})
 		}

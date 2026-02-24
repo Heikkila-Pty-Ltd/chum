@@ -15,7 +15,7 @@ func TestHeadlessBackend_DispatchEchoHelloWorld(t *testing.T) {
 	backend := NewHeadlessBackend(
 		map[string]config.CLIConfig{
 			"test": {
-				Cmd: "sh",
+				Cmd:  "sh",
 				Args: []string{"-c", "echo hello world"},
 			},
 		},

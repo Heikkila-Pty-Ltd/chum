@@ -80,7 +80,7 @@ func ParseMarkdownPlan(markdown string) (*ParsedPlan, error) {
 				plan.OutOfScope = append(plan.OutOfScope, bullet)
 			}
 
-		// Unknown sections are silently ignored.
+			// Unknown sections are silently ignored.
 		}
 	}
 
@@ -96,24 +96,31 @@ func ParseMarkdownPlan(markdown string) (*ParsedPlan, error) {
 }
 
 // isTitleLine checks whether a line is a plan title header.
-// Accepts "# Plan:<title>" with or without a space after the colon.
+// Accepts "# Plan: <title>" (preferred), or any H1 header "# <title>" as fallback.
 func isTitleLine(line string) bool {
-	return strings.HasPrefix(line, "# Plan:") || strings.HasPrefix(line, "# Plan: ")
+	if strings.HasPrefix(line, "# Plan:") {
+		return true
+	}
+	// Accept any H1 header that isn't a section demarcation (## or ###)
+	return strings.HasPrefix(line, "# ") && !strings.HasPrefix(line, "## ")
 }
 
-// extractTitle pulls the title text from a "# Plan: <title>" line.
+// extractTitle pulls the title text from a plan title line.
+// Handles both "# Plan: <title>" and plain "# <title>" formats.
 func extractTitle(line string) string {
-	after := strings.TrimPrefix(line, "# Plan:")
-	return strings.TrimSpace(after)
+	if strings.HasPrefix(line, "# Plan:") {
+		return strings.TrimSpace(strings.TrimPrefix(line, "# Plan:"))
+	}
+	return strings.TrimSpace(strings.TrimPrefix(line, "#"))
 }
 
 // parseScopeItem attempts to parse a scope checkbox line.
 // Supported formats:
 //
-//	- [ ] description   (uncompleted)
-//	- [x] description   (completed, case-insensitive)
-//	* [ ] description   (asterisk variant, uncompleted)
-//	* [x] description   (asterisk variant, completed)
+//   - [ ] description   (uncompleted)
+//   - [x] description   (completed, case-insensitive)
+//   - [ ] description   (asterisk variant, uncompleted)
+//   - [x] description   (asterisk variant, completed)
 func parseScopeItem(line string, index int) (ScopeItem, bool) {
 	// Normalize leading bullet: accept both "- " and "* "
 	var rest string
@@ -174,7 +181,7 @@ func parseBullet(line string) (string, bool) {
 // validateParsedPlan enforces mandatory fields on a parsed plan.
 func validateParsedPlan(plan *ParsedPlan) error {
 	if strings.TrimSpace(plan.Title) == "" {
-		return fmt.Errorf("parsed plan has no title: expected a '# Plan: <title>' header")
+		return fmt.Errorf("parsed plan has no title: expected a '# Plan: <title>' or '# <title>' header in the first line")
 	}
 	if len(plan.ScopeItems) == 0 {
 		return fmt.Errorf("parsed plan has no scope items: at least one '- [ ] <deliverable>' is required")

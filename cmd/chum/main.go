@@ -4,9 +4,12 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -20,6 +23,7 @@ import (
 	"github.com/antigravity-dev/chum/internal/api"
 	"github.com/antigravity-dev/chum/internal/config"
 	"github.com/antigravity-dev/chum/internal/graph"
+	"github.com/antigravity-dev/chum/internal/matrix"
 	"github.com/antigravity-dev/chum/internal/store"
 	"github.com/antigravity-dev/chum/internal/temporal"
 )
@@ -42,6 +46,40 @@ func configureLogger(logLevel string, useDev bool) *slog.Logger {
 	return slog.New(slog.NewJSONHandler(os.Stderr, opts))
 }
 
+func registerTemporalSearchAttributes(ctx context.Context, temporalHostPort, temporalNamespace string, logger *slog.Logger) error {
+	if strings.TrimSpace(temporalHostPort) == "" {
+		temporalHostPort = temporal.DefaultTemporalHostPort
+	}
+	if strings.TrimSpace(temporalNamespace) == "" {
+		temporalNamespace = tclient.DefaultNamespace
+	}
+
+	opts := tclient.Options{
+		HostPort:  temporalHostPort,
+		Namespace: temporalNamespace,
+	}
+	tc, err := tclient.Dial(opts)
+	if err != nil {
+		return err
+	}
+	defer tc.Close()
+
+	logger.Info("registering temporal search attributes", "host", temporalHostPort, "namespace", temporalNamespace)
+	if err := temporal.RegisterChumSearchAttributesWithNamespace(ctx, tc, temporalNamespace); err != nil {
+		return err
+	}
+	logger.Info("temporal search attributes ready", "host", temporalHostPort, "namespace", temporalNamespace)
+	return nil
+}
+
+func resolveTemporalNamespace() string {
+	namespace := strings.TrimSpace(os.Getenv("TEMPORAL_NAMESPACE"))
+	if namespace == "" {
+		return tclient.DefaultNamespace
+	}
+	return namespace
+}
+
 func validateRuntimeConfigReload(oldCfg, newCfg *config.Config) error {
 	if oldCfg == nil || newCfg == nil {
 		return fmt.Errorf("invalid config state during reload")
@@ -61,7 +99,197 @@ func validateRuntimeConfigReload(oldCfg, newCfg *config.Config) error {
 	return nil
 }
 
+type adminBatchOps interface {
+	Drain(context.Context, string) (string, error)
+	Resume(context.Context, string) (string, error)
+	Reset(context.Context, string) (string, error)
+	Terminate(context.Context, string) (string, error)
+}
+
+type adminBatchOpsRunner struct {
+	drain     func(context.Context, string) (string, error)
+	resume    func(context.Context, string) (string, error)
+	reset     func(context.Context, string) (string, error)
+	terminate func(context.Context, string) (string, error)
+}
+
+func (a *adminBatchOpsRunner) Drain(ctx context.Context, query string) (string, error) {
+	return a.drain(ctx, query)
+}
+
+func (a *adminBatchOpsRunner) Resume(ctx context.Context, query string) (string, error) {
+	return a.resume(ctx, query)
+}
+
+func (a *adminBatchOpsRunner) Reset(ctx context.Context, query string) (string, error) {
+	return a.reset(ctx, query)
+}
+
+func (a *adminBatchOpsRunner) Terminate(ctx context.Context, query string) (string, error) {
+	return a.terminate(ctx, query)
+}
+
+func parseAdminSubcommand(args []string, defaultQuery string) (command string, query string, err error) {
+	if len(args) < 2 {
+		return "", "", fmt.Errorf("admin requires a subcommand: drain | resume | reset | terminate")
+	}
+
+	command = strings.ToLower(strings.TrimSpace(args[1]))
+	switch command {
+	case "drain", "resume", "reset", "terminate":
+	default:
+		return "", "", fmt.Errorf("unknown admin command %q", command)
+	}
+
+	fs := flag.NewFlagSet(fmt.Sprintf("admin %s", command), flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	q := fs.String("query", "", "visibility query")
+	if err := fs.Parse(args[2:]); err != nil {
+		return "", "", err
+	}
+	if fs.NArg() > 0 {
+		return "", "", fmt.Errorf("unexpected arguments for admin %s: %v", command, fs.Args())
+	}
+
+	qry := strings.TrimSpace(*q)
+	if (command == "reset" || command == "terminate") && qry == "" {
+		return "", "", fmt.Errorf("--query is required for %s", command)
+	}
+	if qry == "" {
+		qry = defaultQuery
+	}
+
+	query = qry
+	return command, query, nil
+}
+
+func runAdminAction(ctx context.Context, command, query string, ops adminBatchOps) (string, error) {
+	switch command {
+	case "drain":
+		return ops.Drain(ctx, query)
+	case "resume":
+		return ops.Resume(ctx, query)
+	case "reset":
+		return ops.Reset(ctx, query)
+	case "terminate":
+		return ops.Terminate(ctx, query)
+	default:
+		return "", fmt.Errorf("unknown admin command %q", command)
+	}
+}
+
+func runAdminMode(args []string, logger *slog.Logger) error {
+	adminFS := flag.NewFlagSet("admin", flag.ContinueOnError)
+	adminFS.SetOutput(io.Discard)
+	configPath := adminFS.String("config", "chum.toml", "path to config file")
+	// args is ["./chum", "admin", "resume", ...], we want to parse starting from index 2
+	if err := adminFS.Parse(args[2:]); err != nil {
+		return err
+	}
+
+	args = append([]string{"admin"}, adminFS.Args()...)
+	command, query, err := parseAdminSubcommand(args, temporal.ChumAgentRunningVisibilityQuery())
+	if err != nil {
+		return err
+	}
+
+	cfgManager, err := config.LoadManager(*configPath)
+	if err != nil {
+		return err
+	}
+	cfg := cfgManager.Get()
+	if cfg == nil {
+		return fmt.Errorf("failed to load config snapshot")
+	}
+
+	host := strings.TrimSpace(cfg.General.TemporalHostPort)
+	if host == "" {
+		host = temporal.DefaultTemporalHostPort
+	}
+
+	temporalNamespace := resolveTemporalNamespace()
+
+	tc, err := tclient.Dial(tclient.Options{
+		HostPort:  host,
+		Namespace: temporalNamespace,
+	})
+	if err != nil {
+		return err
+	}
+	defer tc.Close()
+
+	ops := &adminBatchOpsRunner{
+		drain: func(ctx context.Context, q string) (string, error) {
+			return temporal.StartDrainAgentWorkflows(ctx, tc.WorkflowService(), temporalNamespace, q)
+		},
+		resume: func(ctx context.Context, q string) (string, error) {
+			return temporal.StartResumeAgentWorkflows(ctx, tc.WorkflowService(), temporalNamespace, q)
+		},
+		reset: func(ctx context.Context, q string) (string, error) {
+			return temporal.StartResetAgentWorkflows(ctx, tc.WorkflowService(), temporalNamespace, q)
+		},
+		terminate: func(ctx context.Context, q string) (string, error) {
+			return temporal.StartTerminateAgentWorkflows(ctx, tc.WorkflowService(), temporalNamespace, q)
+		},
+	}
+
+	operationID, err := runAdminAction(context.Background(), command, query, ops)
+	if err != nil {
+		return err
+	}
+
+	logger.Info("admin command submitted",
+		"command", command,
+		"query", query,
+		"operation_id", operationID,
+		"namespace", temporalNamespace,
+		"host", host,
+	)
+	return nil
+}
+
+// acquirePIDFile checks for an existing CHUM process and writes a new PID file.
+// Prevents multiple CHUM instances (e.g. from different worktrees) from competing
+// for the same port and database.
+func acquirePIDFile(pidPath, exe string, logger *slog.Logger) error {
+	data, err := os.ReadFile(pidPath)
+	if err == nil {
+		// PID file exists — check if process is still alive.
+		lines := strings.SplitN(string(data), "\n", 2)
+		if pid, parseErr := strconv.Atoi(strings.TrimSpace(lines[0])); parseErr == nil {
+			// Check if process exists by sending signal 0.
+			if process, findErr := os.FindProcess(pid); findErr == nil {
+				if signalErr := process.Signal(syscall.Signal(0)); signalErr == nil {
+					// Process is alive — read its binary path from PID file.
+					otherBinary := "unknown"
+					if len(lines) > 1 {
+						otherBinary = strings.TrimSpace(lines[1])
+					}
+					return fmt.Errorf("pid %d is still running (binary: %s, this binary: %s)", pid, otherBinary, exe)
+				}
+			}
+		}
+		// Stale PID file — process is dead, safe to overwrite.
+		logger.Info("removing stale pid file", "pidfile", pidPath)
+	}
+
+	// Write new PID file: line 1 = PID, line 2 = binary path.
+	content := fmt.Sprintf("%d\n%s\n", os.Getpid(), exe)
+	return os.WriteFile(pidPath, []byte(content), 0644)
+}
+
 func main() {
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	slog.SetDefault(logger)
+
+	if len(os.Args) > 1 && os.Args[1] == "admin" {
+		if err := runAdminMode(os.Args, logger); err != nil {
+			logger.Error("admin command failed", "error", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	configPath := flag.String("config", "chum.toml", "path to config file")
 	dev := flag.Bool("dev", false, "use text log format (default is JSON)")
 	disableAnthropic := flag.Bool("disable-anthropic", false, "remove Anthropic/Claude providers from config and exit")
@@ -70,10 +298,8 @@ func main() {
 	fallbackModel := flag.String("fallback-model", defaultFallbackModel, "fallback chief model used with -disable-anthropic")
 	flag.Parse()
 
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
-	slog.SetDefault(logger)
-
-	logger.Info("chum starting", "config", *configPath)
+	exe, _ := os.Executable()
+	logger.Info("chum starting", "config", *configPath, "binary", exe, "pid", os.Getpid())
 
 	if *disableAnthropic {
 		changed, err := disableAnthropicInConfigFile(*configPath, *fallbackModel)
@@ -117,6 +343,14 @@ func main() {
 	}
 	defer st.Close()
 
+	// Acquire PID file to prevent duplicate CHUM instances (e.g. from worktrees).
+	pidPath := filepath.Join(filepath.Dir(dbPath), "chum.pid")
+	if err := acquirePIDFile(pidPath, exe, logger); err != nil {
+		logger.Error("another chum instance is running", "error", err, "pidfile", pidPath)
+		os.Exit(1)
+	}
+	defer os.Remove(pidPath)
+
 	dag := graph.NewDAG(st.DB())
 	if schemaErr := dag.EnsureSchema(context.Background()); schemaErr != nil {
 		logger.Error("failed to ensure graph schema", "error", schemaErr)
@@ -142,10 +376,16 @@ func main() {
 		return nil
 	}
 
+	temporalNamespace := resolveTemporalNamespace()
+	if registerErr := registerTemporalSearchAttributes(context.Background(), cfg.General.TemporalHostPort, temporalNamespace, logger); registerErr != nil {
+		logger.Error("failed to register temporal search attributes", "host", cfg.General.TemporalHostPort, "namespace", temporalNamespace, "error", registerErr)
+		os.Exit(1)
+	}
+
 	// Start Temporal worker — now includes DispatcherWorkflow + ScanCandidatesActivity
 	go func() {
 		logger.Info("starting temporal worker")
-		if workerErr := temporal.StartWorker(st, cfg.Tiers, dag, cfgManager, cfg.General.TemporalHostPort, logger); workerErr != nil {
+		if workerErr := temporal.StartWorker(st, cfg.Tiers, dag, cfgManager, cfg.General.TemporalHostPort, temporalNamespace, logger); workerErr != nil {
 			logger.Error("temporal worker error", "error", workerErr)
 		}
 	}()
@@ -156,7 +396,8 @@ func main() {
 		time.Sleep(5 * time.Second)
 
 		tc, dialErr := tclient.Dial(tclient.Options{
-			HostPort: cfg.General.TemporalHostPort,
+			HostPort:  cfg.General.TemporalHostPort,
+			Namespace: temporalNamespace,
 		})
 		if dialErr != nil {
 			logger.Error("failed to create temporal client for schedules", "error", dialErr)
@@ -232,11 +473,88 @@ func main() {
 			}
 			logger.Info("strategic cron registered", "project", name, "workflow_id", workflowID, "schedule", "0 5 * * *")
 		}
+
+		// --- Paleontologist Schedule (every 30 minutes, per-project) ---
+		for name, project := range cfg.Projects { //nolint:gocritic
+			if !project.Enabled {
+				continue
+			}
+
+			paleoReq := temporal.PaleontologistRequest{
+				Project:   name,
+				WorkDir:   config.ExpandHome(project.Workspace),
+				LookbackH: 6,
+				Tier:      "premium",
+			}
+
+			paleoID := fmt.Sprintf("paleontologist-%s", name)
+			_, paleoErr := schedClient.Create(ctx, tclient.ScheduleOptions{
+				ID: paleoID,
+				Spec: tclient.ScheduleSpec{
+					Intervals: []tclient.ScheduleIntervalSpec{
+						{Every: 30 * time.Minute},
+					},
+				},
+				Action: &tclient.ScheduleWorkflowAction{
+					Workflow:  temporal.PaleontologistWorkflow,
+					Args:      []interface{}{paleoReq},
+					TaskQueue: "chum-task-queue",
+				},
+			})
+			if paleoErr != nil {
+				switch {
+				case strings.Contains(paleoErr.Error(), "AlreadyExists") ||
+					strings.Contains(paleoErr.Error(), "already registered"):
+					logger.Info("paleontologist schedule already exists", "project", name)
+				default:
+					logger.Error("failed to create paleontologist schedule", "project", name, "error", paleoErr)
+				}
+			} else {
+				logger.Info("paleontologist schedule registered", "project", name, "interval", "30m")
+			}
+		}
+
+		// --- Janitor Schedule (hourly worktree/branch cleanup) ---
+		var janitorWorkspaces []string
+		for _, proj := range cfg.Projects {
+			if proj.Enabled && proj.Workspace != "" {
+				janitorWorkspaces = append(janitorWorkspaces, config.ExpandHome(strings.TrimSpace(proj.Workspace)))
+			}
+		}
+		_, janitorErr := schedClient.Create(ctx, tclient.ScheduleOptions{
+			ID: "chum-janitor",
+			Spec: tclient.ScheduleSpec{
+				Intervals: []tclient.ScheduleIntervalSpec{
+					{Every: 1 * time.Hour},
+				},
+			},
+			Action: &tclient.ScheduleWorkflowAction{
+				Workflow:  temporal.JanitorWorkflow,
+				Args:      []interface{}{janitorWorkspaces},
+				TaskQueue: temporal.DefaultTaskQueue,
+				ID:        "janitor",
+			},
+			Overlap: enumspb.SCHEDULE_OVERLAP_POLICY_SKIP,
+		})
+		if janitorErr != nil {
+			var alreadyExists *serviceerror.WorkflowExecutionAlreadyStarted
+			switch {
+			case errors.As(janitorErr, &alreadyExists):
+				logger.Info("janitor schedule already exists")
+			case strings.Contains(janitorErr.Error(), "already exists") ||
+				strings.Contains(janitorErr.Error(), "AlreadyExists") ||
+				strings.Contains(janitorErr.Error(), "already registered"):
+				logger.Info("janitor schedule already exists")
+			default:
+				logger.Error("failed to create janitor schedule", "error", janitorErr)
+			}
+		} else {
+			logger.Info("janitor schedule registered", "interval", "1h")
+		}
 	}()
 
-
 	// Start API server
-	apiSrv, err := api.NewServer(cfg, st, logger.With("component", "api"))
+	apiSrv, err := api.NewServer(cfg, st, dag, logger.With("component", "api"))
 	if err != nil {
 		logger.Error("failed to create api server", "error", err)
 		os.Exit(1)
@@ -252,6 +570,19 @@ func main() {
 	logger.Info("chum running",
 		"bind", cfg.API.Bind,
 	)
+
+	// Start turtle chat poller if configured
+	if turtleRoom := strings.TrimSpace(cfg.Reporter.TurtleRoom); turtleRoom != "" {
+		go func() {
+			turtleHandler := &matrix.TurtleChatHandler{
+				Room:    turtleRoom,
+				WorkDir: filepath.Dir(*configPath),
+				Logger:  logger.With("component", "turtle-chat"),
+			}
+			turtleHandler.RunPoller(ctx)
+		}()
+		logger.Info("turtle chat poller started", "room", cfg.Reporter.TurtleRoom)
+	}
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM)

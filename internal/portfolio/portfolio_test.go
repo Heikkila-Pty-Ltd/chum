@@ -32,15 +32,15 @@ func TestPortfolioBacklogStructure(t *testing.T) {
 func TestProjectBacklogStructure(t *testing.T) {
 	// Test ProjectBacklog struct can be created with expected fields
 	backlog := ProjectBacklog{
-		ProjectName:     "test",
-		Workspace:       "/tmp",
-		Priority:        1,
-		UnrefinedBeads:  []graph.Task{},
-		RefinedBeads:    []graph.Task{},
-		AllBeads:        []graph.Task{},
-		ReadyToWork:     []graph.Task{},
-		TotalEstimate:   0,
-		CapacityPercent: 50,
+		ProjectName:      "test",
+		Workspace:        "/tmp",
+		Priority:         1,
+		UnrefinedMorsels: []graph.Task{},
+		RefinedMorsels:   []graph.Task{},
+		AllMorsels:       []graph.Task{},
+		ReadyToWork:      []graph.Task{},
+		TotalEstimate:    0,
+		CapacityPercent:  50,
 	}
 
 	if backlog.ProjectName != "test" {
@@ -98,25 +98,25 @@ func TestGetCrossProjectBlockersForProject(t *testing.T) {
 	portfolio := &PortfolioBacklog{
 		CrossProjectDeps: []CrossProjectDependency{
 			{
-				SourceProject: "project-a",
-				SourceBeadID:  "a-1",
-				TargetProject: "project-b",
-				TargetBeadID:  "b-1",
-				IsResolved:    false,
+				SourceProject:  "project-a",
+				SourceMorselID: "a-1",
+				TargetProject:  "project-b",
+				TargetMorselID: "b-1",
+				IsResolved:     false,
 			},
 			{
-				SourceProject: "project-a",
-				SourceBeadID:  "a-2",
-				TargetProject: "project-b",
-				TargetBeadID:  "b-2",
-				IsResolved:    true, // Resolved, should not be blocker
+				SourceProject:  "project-a",
+				SourceMorselID: "a-2",
+				TargetProject:  "project-b",
+				TargetMorselID: "b-2",
+				IsResolved:     true, // Resolved, should not be blocker
 			},
 			{
-				SourceProject: "project-c", // Different source project
-				SourceBeadID:  "c-1",
-				TargetProject: "project-b",
-				TargetBeadID:  "b-3",
-				IsResolved:    false,
+				SourceProject:  "project-c", // Different source project
+				SourceMorselID: "c-1",
+				TargetProject:  "project-b",
+				TargetMorselID: "b-3",
+				IsResolved:     false,
 			},
 		},
 	}
@@ -128,8 +128,8 @@ func TestGetCrossProjectBlockersForProject(t *testing.T) {
 		t.Errorf("Expected 1 blocker, got %d", len(blockers))
 	}
 
-	if len(blockers) > 0 && blockers[0].SourceBeadID != "a-1" {
-		t.Errorf("Expected blocker a-1, got %s", blockers[0].SourceBeadID)
+	if len(blockers) > 0 && blockers[0].SourceMorselID != "a-1" {
+		t.Errorf("Expected blocker a-1, got %s", blockers[0].SourceMorselID)
 	}
 }
 

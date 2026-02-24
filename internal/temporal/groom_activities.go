@@ -15,123 +15,300 @@ import (
 	"github.com/antigravity-dev/chum/internal/graph"
 )
 
-// MutateTasksActivity runs a fast LLM to decide what task mutations to apply
-// after a task completes, then executes those mutations via the DAG.
+// MutateTasksActivity runs after a morsel lands. Instead of asking an LLM for
+// vague backlog opinions, it:
+//  1. Finds open tasks related to the landed morsel (file-path + text matching)
+//  2. For each hit, asks a cheap LLM: "how did this landed task affect this item?"
+//  3. Applies concrete mutations (update_notes, close) based on LLM verdict
 //
-// Mutations are capped at 5 per cycle to prevent runaway grooming.
+// Mutations are capped at 10 per cycle. LLM calls are capped at 10 hits.
 func (a *Activities) MutateTasksActivity(ctx context.Context, req TacticalGroomRequest) (*GroomResult, error) {
 	logger := activity.GetLogger(ctx)
-	logger.Info(RemoraPrefix+" Tactical groom: analyzing tasks", "TaskID", req.TaskID, "Project", req.Project)
+	logger.Info(RemoraPrefix+" Tactical groom: searching for related tasks",
+		"TaskID", req.TaskID, "Project", req.Project, "FilesChanged", len(req.FilesChanged))
 
-	// Get current task state
+	if a.DAG == nil {
+		logger.Warn(RemoraPrefix + " No DAG configured, skipping grooming")
+		return &GroomResult{}, nil
+	}
+
+	// Get all open tasks for this project.
 	allTasks, err := a.DAG.ListTasks(ctx, req.Project)
 	if err != nil {
 		logger.Warn(RemoraPrefix+" Can't list tasks, skipping grooming", "error", err)
 		return &GroomResult{}, nil
 	}
 
-	// Get detail of completed task
+	// Get detail of the completed task for context.
 	completedTask, showErr := a.DAG.GetTask(ctx, req.TaskID)
 	if showErr != nil {
-		logger.Warn(RemoraPrefix+" Can't show completed task", "task", req.TaskID, "error", showErr)
+		logger.Warn(RemoraPrefix+" Can't find completed task", "task", req.TaskID, "error", showErr)
 	}
 
-	// Build compressed backlog summary for the LLM
-	var taskSummary strings.Builder
-	openCount := 0
+	completedTitle := req.TaskTitle
+	if completedTitle == "" && showErr == nil {
+		completedTitle = completedTask.Title
+	}
+
+	// Step 1: Find related open tasks (deterministic, no LLM).
+	related := findRelatedTasks(req, allTasks, completedTitle)
+	if len(related) == 0 {
+		logger.Info(RemoraPrefix+" No related tasks found, skipping LLM checks", "OpenTasks", countOpenTasks(allTasks))
+		return &GroomResult{}, nil
+	}
+
+	logger.Info(RemoraPrefix+" Found related tasks", "Hits", len(related))
+
+	// Step 2: Per-hit LLM impact check (cheap, ~500 tokens each).
+	agent := ResolveTierAgent(a.Tiers, req.Tier)
+	result := &GroomResult{}
+
+	filesChangedStr := strings.Join(req.FilesChanged, ", ")
+	if len(filesChangedStr) > 500 {
+		filesChangedStr = filesChangedStr[:500] + "..."
+	}
+
+	for i := range related {
+		hit := &related[i]
+		prompt := fmt.Sprintf(`A task just completed in project "%s".
+
+COMPLETED TASK: "%s" (ID: %s)
+Files changed: %s
+Summary: %s
+
+OPEN BACKLOG ITEM: "%s" (ID: %s)
+Description: %s
+Acceptance criteria: %s
+
+How does the completed task affect this backlog item?
+Consider: Is work now partially done? Is it obsolete? Does context need updating?
+
+Respond with ONLY a JSON object:
+{"action": "update_notes|close|unchanged", "reason": "one-line explanation", "updated_notes": "context to append (only for update_notes)"}`,
+			req.Project,
+			completedTitle, req.TaskID,
+			filesChangedStr,
+			truncate(req.DiffSummary, 300),
+			hit.Title, hit.ID,
+			truncate(hit.Description, 400),
+			truncate(hit.Acceptance, 200),
+		)
+
+		cliResult, runErr := runAgent(ctx, agent, prompt, req.WorkDir)
+		if runErr != nil {
+			logger.Warn(RemoraPrefix+" LLM check failed for task", "task", hit.ID, "error", runErr)
+			continue
+		}
+
+		jsonStr := extractJSON(cliResult.Output)
+		if jsonStr == "" {
+			logger.Warn(RemoraPrefix+" No JSON in LLM response for task", "task", hit.ID)
+			continue
+		}
+
+		var verdict struct {
+			Action       string `json:"action"`
+			Reason       string `json:"reason"`
+			UpdatedNotes string `json:"updated_notes"`
+		}
+		if parseErr := json.Unmarshal([]byte(jsonStr), &verdict); parseErr != nil {
+			logger.Warn(RemoraPrefix+" Failed to parse verdict JSON", "task", hit.ID, "error", parseErr)
+			continue
+		}
+
+		switch verdict.Action {
+		case "update_notes":
+			note := fmt.Sprintf("[remora] After %s completed: %s", req.TaskID, verdict.Reason)
+			if verdict.UpdatedNotes != "" {
+				note = fmt.Sprintf("[remora] After %s completed: %s", req.TaskID, verdict.UpdatedNotes)
+			}
+			if err := a.applyMutation(ctx, req.Project, MorselMutation{
+				TaskID: hit.ID,
+				Action: "update_notes",
+				Notes:  note,
+			}); err != nil {
+				result.MutationsFailed++
+				result.Details = append(result.Details, fmt.Sprintf("FAILED update_notes on %s: %v", hit.ID, err))
+			} else {
+				result.MutationsApplied++
+				result.Details = append(result.Details, fmt.Sprintf("OK update_notes on %s: %s", hit.ID, verdict.Reason))
+				logger.Info(RemoraPrefix+" Updated task notes", "task", hit.ID, "reason", verdict.Reason)
+			}
+
+		case "close":
+			if err := a.applyMutation(ctx, req.Project, MorselMutation{
+				TaskID: hit.ID,
+				Action: "close",
+				Reason: fmt.Sprintf("[remora] Closed after %s completed: %s", req.TaskID, verdict.Reason),
+			}); err != nil {
+				result.MutationsFailed++
+				result.Details = append(result.Details, fmt.Sprintf("FAILED close on %s: %v", hit.ID, err))
+			} else {
+				result.MutationsApplied++
+				result.Details = append(result.Details, fmt.Sprintf("OK close on %s: %s", hit.ID, verdict.Reason))
+				logger.Info(RemoraPrefix+" Closed obsolete task", "task", hit.ID, "reason", verdict.Reason)
+			}
+
+		case "unchanged":
+			logger.Debug(RemoraPrefix+" Task unchanged", "task", hit.ID, "reason", verdict.Reason)
+
+		default:
+			logger.Warn(RemoraPrefix+" Unknown action from LLM", "task", hit.ID, "action", verdict.Action)
+		}
+	}
+
+	// Step 3: Record health event for observability.
+	if a.Store != nil && (result.MutationsApplied > 0 || result.MutationsFailed > 0) {
+		details := fmt.Sprintf("After %s landed: checked %d related tasks, applied %d mutations, %d failed. %s",
+			req.TaskID, len(related), result.MutationsApplied, result.MutationsFailed,
+			strings.Join(result.Details, "; "))
+		if recErr := a.Store.RecordHealthEvent("remora_groom", details); recErr != nil {
+			logger.Warn(RemoraPrefix+" Failed to record health event", "error", recErr)
+		}
+	}
+
+	logger.Info(RemoraPrefix+" Tactical groom complete",
+		"Related", len(related), "Applied", result.MutationsApplied, "Failed", result.MutationsFailed)
+	return result, nil
+}
+
+// findRelatedTasks returns open tasks that are likely affected by the landed morsel.
+// Uses file-path overlap and text matching — no LLM, purely deterministic.
+// Returns at most 10 hits, sorted by relevance score.
+func findRelatedTasks(req TacticalGroomRequest, allTasks []graph.Task, completedTitle string) []graph.Task {
+	type scored struct {
+		task  graph.Task
+		score int
+	}
+	var candidates []scored
+
+	completedTitleLower := strings.ToLower(completedTitle)
+	// Extract meaningful words from the completed task title (3+ chars)
+	titleWords := extractKeywords(completedTitleLower)
+
 	for i := range allTasks {
 		t := &allTasks[i]
-		if t.Status == "open" && t.Type != "epic" {
-			taskSummary.WriteString(fmt.Sprintf("- [P%d] %s: %s\n", t.Priority, t.ID, t.Title))
-			openCount++
-			if openCount >= 30 { // cap to keep prompt small
-				taskSummary.WriteString(fmt.Sprintf("... and %d more open tasks\n", countOpenTasks(allTasks)-30))
-				break
+		// Skip non-open, container types, and the completed task itself.
+		if t.Status != "open" && t.Status != "ready" {
+			continue
+		}
+		if t.Type == "epic" || t.Type == "whale" {
+			continue
+		}
+		if t.ID == req.TaskID {
+			continue
+		}
+
+		score := 0
+
+		// File-path matching: check if the task mentions any changed file.
+		taskText := strings.ToLower(t.Description + " " + t.Acceptance + " " + t.Design + " " + t.Notes)
+		for _, file := range req.FilesChanged {
+			if taskMentionsFile(taskText, file) {
+				score += 3 // strong signal
+			}
+		}
+
+		// Text matching: check if title keywords appear in the task.
+		for _, word := range titleWords {
+			if strings.Contains(taskText, word) {
+				score++ // weak signal, but compound hits add up
+			}
+		}
+
+		// Check if the task title contains words from the completed title.
+		hitTitleLower := strings.ToLower(t.Title)
+		for _, word := range titleWords {
+			if strings.Contains(hitTitleLower, word) {
+				score += 2 // moderate signal — titles overlap
+			}
+		}
+
+		// Dependency match: task depends on or is downstream of the completed task.
+		for _, dep := range t.DependsOn {
+			if dep == req.TaskID {
+				score += 5 // very strong signal
+			}
+		}
+
+		if score > 0 {
+			candidates = append(candidates, scored{task: *t, score: score})
+		}
+	}
+
+	// Sort by score descending, cap at 10.
+	for i := 0; i < len(candidates); i++ {
+		for j := i + 1; j < len(candidates); j++ {
+			if candidates[j].score > candidates[i].score {
+				candidates[i], candidates[j] = candidates[j], candidates[i]
 			}
 		}
 	}
 
-	completedContext := ""
-	if showErr == nil {
-		completedContext = fmt.Sprintf("COMPLETED TASK: %s - %s\nDescription: %s",
-			completedTask.ID, completedTask.Title,
-			truncate(completedTask.Description, 500))
+	limit := 10
+	if len(candidates) < limit {
+		limit = len(candidates)
 	}
 
-	prompt := fmt.Sprintf(`You are a tactical backlog groomer. A task just completed. Analyze the open backlog and suggest mutations.
-
-%s
-
-OPEN TASKS (%d):
-%s
-
-Rules:
-1. Only suggest mutations that are clearly warranted by the completion
-2. Reprioritize if the completed task unblocks or changes context for siblings
-3. Add dependencies if you discover implicit blockers
-4. Append hints to related tasks using update_notes (e.g. "after %s completed, consider X")
-5. Never create vague "refactor" or "cleanup" tasks
-6. Maximum 5 mutations per cycle
-
-Respond with ONLY a JSON array of mutations:
-[{
-  "task_id": "existing-task-id or empty for create",
-  "action": "update_priority|add_dependency|update_notes|create|close",
-  "priority": 2,
-  "notes": "context to append",
-  "depends_on_id": "dependency target",
-  "title": "new task title (for create)",
-  "description": "new task description (for create)",
-  "reason": "reason for closing (for close)"
-}]
-
-Return empty array [] if no mutations are needed.`,
-		completedContext, openCount, taskSummary.String(), req.TaskID)
-
-	agent := ResolveTierAgent(a.Tiers, req.Tier)
-	cliResult, err := runAgent(ctx, agent, prompt, req.WorkDir)
-	if err != nil {
-		logger.Warn(RemoraPrefix+" LLM grooming call failed (non-fatal)", "error", err)
-		return &GroomResult{}, nil
+	result := make([]graph.Task, limit)
+	for i := 0; i < limit; i++ {
+		result[i] = candidates[i].task
 	}
+	return result
+}
 
-	jsonStr := extractJSONArray(cliResult.Output)
-	if jsonStr == "" || jsonStr == "[]" {
-		return &GroomResult{}, nil
+// taskMentionsFile checks if the task text references a file path.
+// Matches on basename (e.g. "store.go") or relative path fragments.
+func taskMentionsFile(taskText, filePath string) bool {
+	filePath = strings.ToLower(filePath)
+	// Check full path
+	if strings.Contains(taskText, filePath) {
+		return true
 	}
-
-	var mutations []BeadMutation
-	if err := json.Unmarshal([]byte(jsonStr), &mutations); err != nil {
-		logger.Warn(RemoraPrefix+" Failed to parse mutations JSON", "error", err)
-		return &GroomResult{}, nil
-	}
-
-	// Cap at 5 mutations per cycle
-	if len(mutations) > 5 {
-		mutations = mutations[:5]
-	}
-
-	result := &GroomResult{}
-	for i := range mutations {
-		m := &mutations[i]
-		if err := a.applyMutation(ctx, req.Project, *m); err != nil {
-			result.MutationsFailed++
-			result.Details = append(result.Details, fmt.Sprintf("FAILED %s on %s: %v", m.Action, m.TaskID, err))
-			logger.Warn(RemoraPrefix+" Mutation failed", "action", m.Action, "task", m.TaskID, "error", err)
-		} else {
-			result.MutationsApplied++
-			result.Details = append(result.Details, fmt.Sprintf("OK %s on %s", m.Action, m.TaskID))
+	// Check basename (e.g. "store.go")
+	parts := strings.Split(filePath, "/")
+	if len(parts) > 0 {
+		basename := parts[len(parts)-1]
+		if len(basename) > 3 && strings.Contains(taskText, basename) {
+			return true
 		}
 	}
+	// Check parent/basename (e.g. "store/store.go")
+	if len(parts) > 1 {
+		short := strings.Join(parts[len(parts)-2:], "/")
+		if strings.Contains(taskText, short) {
+			return true
+		}
+	}
+	return false
+}
 
-	logger.Info(RemoraPrefix+" Tactical groom complete", "Applied", result.MutationsApplied, "Failed", result.MutationsFailed)
-	return result, nil
+// extractKeywords returns meaningful lowercase words (3+ chars) from text.
+// Filters out common stop words.
+func extractKeywords(text string) []string {
+	stopWords := map[string]bool{
+		"the": true, "and": true, "for": true, "with": true, "from": true,
+		"that": true, "this": true, "will": true, "into": true, "when": true,
+		"add": true, "fix": true, "update": true, "implement": true,
+	}
+	words := strings.FieldsFunc(text, func(r rune) bool {
+		return !((r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' || r == '_')
+	})
+	var keywords []string
+	seen := make(map[string]bool)
+	for _, w := range words {
+		if len(w) >= 3 && !stopWords[w] && !seen[w] {
+			keywords = append(keywords, w)
+			seen[w] = true
+		}
+	}
+	return keywords
 }
 
 // ApplyStrategicMutationsActivity applies pre-normalized strategic mutations
 // directly without re-invoking the LLM. This is the correct path for mutations
 // produced by StrategicAnalysisActivity + normalizeStrategicMutations.
-func (a *Activities) ApplyStrategicMutationsActivity(ctx context.Context, project string, mutations []BeadMutation) (*GroomResult, error) {
+func (a *Activities) ApplyStrategicMutationsActivity(ctx context.Context, project string, mutations []MorselMutation) (*GroomResult, error) {
 	logger := activity.GetLogger(ctx)
 	logger.Info(RemoraPrefix+" Applying strategic mutations", "count", len(mutations))
 
@@ -152,8 +329,8 @@ func (a *Activities) ApplyStrategicMutationsActivity(ctx context.Context, projec
 	return result, nil
 }
 
-// applyMutation executes a single BeadMutation against the DAG.
-func (a *Activities) applyMutation(ctx context.Context, project string, m BeadMutation) error {
+// applyMutation executes a single MorselMutation against the DAG.
+func (a *Activities) applyMutation(ctx context.Context, project string, m MorselMutation) error {
 	switch m.Action {
 	case "update_priority":
 		if m.Priority == nil {
@@ -213,7 +390,7 @@ func (a *Activities) applyMutation(ctx context.Context, project string, m BeadMu
 	}
 }
 
-func isCreateMutationActionable(m BeadMutation) bool {
+func isCreateMutationActionable(m MorselMutation) bool {
 	return strings.TrimSpace(m.Title) != "" &&
 		strings.TrimSpace(m.Description) != "" &&
 		strings.TrimSpace(m.Acceptance) != "" &&
@@ -221,7 +398,7 @@ func isCreateMutationActionable(m BeadMutation) bool {
 		m.EstimateMinutes > 0
 }
 
-func isStrategicMutation(m BeadMutation) bool {
+func isStrategicMutation(m MorselMutation) bool {
 	return strings.EqualFold(strings.TrimSpace(m.StrategicSource), StrategicMutationSource)
 }
 
@@ -337,8 +514,8 @@ func firstLine(s string) string {
 	return s
 }
 
-// GetBeadStateSummaryActivity returns a compressed text summary of the open backlog.
-func (a *Activities) GetBeadStateSummaryActivity(ctx context.Context, req StrategicGroomRequest) (string, error) {
+// GetMorselStateSummaryActivity returns a compressed text summary of the open backlog.
+func (a *Activities) GetMorselStateSummaryActivity(ctx context.Context, req StrategicGroomRequest) (string, error) {
 	allTasks, err := a.DAG.ListTasks(ctx, req.Project)
 	if err != nil {
 		return "", fmt.Errorf("listing tasks: %w", err)
@@ -389,7 +566,7 @@ func (a *Activities) StrategicAnalysisActivity(ctx context.Context, req Strategi
 		} else if len(lessons) > 0 {
 			var lb strings.Builder
 			for i := range lessons {
-				lb.WriteString(fmt.Sprintf("- [%s] %s (task: %s)\n", lessons[i].Category, lessons[i].Summary, lessons[i].BeadID))
+				lb.WriteString(fmt.Sprintf("- [%s] %s (task: %s)\n", lessons[i].Category, lessons[i].Summary, lessons[i].MorselID))
 			}
 			lessonsContext = "RECENT LESSONS:\n" + lb.String()
 		}
@@ -504,7 +681,7 @@ func (a *Activities) GenerateMorningBriefingActivity(ctx context.Context, req St
 		}
 		for i := range stored {
 			recentLessons = append(recentLessons, Lesson{
-				TaskID:   stored[i].BeadID,
+				TaskID:   stored[i].MorselID,
 				Category: stored[i].Category,
 				Summary:  stored[i].Summary,
 			})
@@ -528,11 +705,11 @@ func (a *Activities) GenerateMorningBriefingActivity(ctx context.Context, req St
 	urgencyMarker := map[string]string{"critical": " [!!!]", "high": " [!!]", "medium": " [!]", "low": ""}
 	for i, p := range analysis.Priorities {
 		marker := urgencyMarker[p.Urgency]
-		beadRef := ""
+		morselRef := ""
 		if p.TaskID != "" {
-			beadRef = fmt.Sprintf(" (`%s`)", p.TaskID)
+			morselRef = fmt.Sprintf(" (`%s`)", p.TaskID)
 		}
-		md.WriteString(fmt.Sprintf("%d. **%s**%s%s\n   %s\n\n", i+1, p.Title, beadRef, marker, p.Rationale))
+		md.WriteString(fmt.Sprintf("%d. **%s**%s%s\n   %s\n\n", i+1, p.Title, morselRef, marker, p.Rationale))
 	}
 
 	if len(analysis.Risks) > 0 {

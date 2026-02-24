@@ -43,7 +43,7 @@ func NewRetrospectiveRecorder(cfg *config.Config, store *store.Store, dag *graph
 	}
 }
 
-// RecordRetrospectiveResults sends coordination summary and creates follow-up beads from action items.
+// RecordRetrospectiveResults sends coordination summary and creates follow-up morsels from action items.
 func (rr *RetrospectiveRecorder) RecordRetrospectiveResults(ctx context.Context, ceremonyID, output string) error {
 	if rr == nil {
 		return fmt.Errorf("retrospective recorder is nil")
@@ -62,9 +62,9 @@ func (rr *RetrospectiveRecorder) RecordRetrospectiveResults(ctx context.Context,
 	actionItems := parseRetrospectiveActionItems(output)
 	created := 0
 	for _, item := range actionItems {
-		issueID, err := rr.createActionItemBead(ctx, ceremonyID, item)
+		issueID, err := rr.createActionItemMorsel(ctx, ceremonyID, item)
 		if err != nil {
-			rr.logger.Warn("failed to create follow-up retrospective bead",
+			rr.logger.Warn("failed to create follow-up retrospective morsel",
 				"ceremony_id", ceremonyID,
 				"title", item.Title,
 				"project", item.ProjectName,
@@ -73,7 +73,7 @@ func (rr *RetrospectiveRecorder) RecordRetrospectiveResults(ctx context.Context,
 			continue
 		}
 		created++
-		rr.logger.Info("created retrospective follow-up bead",
+		rr.logger.Info("created retrospective follow-up morsel",
 			"ceremony_id", ceremonyID,
 			"issue_id", issueID,
 			"project", item.ProjectName,
@@ -81,7 +81,7 @@ func (rr *RetrospectiveRecorder) RecordRetrospectiveResults(ctx context.Context,
 	}
 
 	if rr.store != nil {
-		details := fmt.Sprintf("overall retrospective %s processed: action_items=%d followup_beads_created=%d", ceremonyID, len(actionItems), created)
+		details := fmt.Sprintf("overall retrospective %s processed: action_items=%d followup_morsels_created=%d", ceremonyID, len(actionItems), created)
 		if err := rr.store.RecordHealthEventWithDispatch("overall_retrospective_processed", details, 0, ceremonyID); err != nil {
 			rr.logger.Warn("failed to record overall retrospective health event", "error", err, "ceremony_id", ceremonyID)
 		}
@@ -134,7 +134,7 @@ func (rr *RetrospectiveRecorder) sendRetrospectiveSummaryToMatrix(ctx context.Co
 	return nil
 }
 
-func (rr *RetrospectiveRecorder) createActionItemBead(ctx context.Context, ceremonyID string, item retrospectiveActionItem) (string, error) {
+func (rr *RetrospectiveRecorder) createActionItemMorsel(ctx context.Context, ceremonyID string, item retrospectiveActionItem) (string, error) {
 	if rr.cfg == nil {
 		return "", fmt.Errorf("retrospective config is nil")
 	}

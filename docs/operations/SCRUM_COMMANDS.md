@@ -14,21 +14,21 @@ Only senders listed in the allowed command senders configuration can execute com
 
 ### `status`
 
-Returns a project summary: running dispatches, recent completions, open bead count, and active plan state.
+Returns a project summary: running dispatches, recent completions, open morsel count, and active plan state.
 
 ```
 > status
 
-📊 chum — 3 running, 12 completed (24h), 47 open beads
+📊 chum — 3 running, 12 completed (24h), 47 open morsels
 Plan: plan-2026-02-20-main (active, approved by operator)
 Scheduler: RUNNING | Tick: 60s | Capacity: 8/40
 ```
 
 ---
 
-### `priority <bead-id> <p0|p1|p2|p3|p4>`
+### `priority <morsel-id> <p0|p1|p2|p3|p4>`
 
-Updates a bead's priority. Lower numbers = higher priority.
+Updates a morsel's priority. Lower numbers = higher priority.
 
 ```
 > priority chum-o4ni p1
@@ -55,7 +55,7 @@ Cancels a running dispatch by its numeric ID. This kills the agent session and m
 ```
 > cancel 1234
 
-✅ Cancelled dispatch 1234 (bead: chum-bvnv, agent: claude)
+✅ Cancelled dispatch 1234 (morsel: chum-bvnv, agent: claude)
 ```
 
 **Validation:** Dispatch ID must be a positive integer. Attempting to cancel an already-completed dispatch returns a descriptive error.
@@ -64,7 +64,7 @@ Cancels a running dispatch by its numeric ID. This kills the agent session and m
 
 ### `create task "<title>" "<description>"`
 
-Creates a new task bead with default priority (p2).
+Creates a new task morsel with default priority (p2).
 
 ```
 > create task "Fix login redirect loop" "The /auth/callback endpoint redirects back to /login when session cookie is set but expired"
@@ -99,7 +99,7 @@ Matrix Room → Poller (30s interval) → parseScrumCommand() → handleScrumCom
                                                               Matrix Room
 ```
 
-The poller filters messages by `bot_user` mention, parses the command verb and arguments, validates permissions, executes the command against the beads/store backend, and sends the response back to the originating Matrix room.
+The poller filters messages by `bot_user` mention, parses the command verb and arguments, validates permissions, executes the command against the morsels/store backend, and sends the response back to the originating Matrix room.
 
 ---
 

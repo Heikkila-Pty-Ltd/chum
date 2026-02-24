@@ -1,121 +1,67 @@
 # CHUM (Continuous Hyper Utility Module)
-Architected to silently devour legacy paperwork industries with deterministic precision.
+Architected to silently devour legacy paperwork industries with deterministic, evolutionary precision.
 
 [![CI](https://github.com/Heikkila-Pty-Ltd/chum/actions/workflows/ci.yml/badge.svg)](https://github.com/Heikkila-Pty-Ltd/chum/actions/workflows/ci.yml)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/Heikkila-Pty-Ltd/chum)](https://go.dev/)
-[![Go Report Card](https://goreportcard.com/badge/github.com/Heikkila-Pty-Ltd/chum)](https://goreportcard.com/report/github.com/Heikkila-Pty-Ltd/chum)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-> Ephemeral agents are dead. Welcome to Durable Execution.
+> *Ephemeral agents learn nothing and die. Enduring systems evolve.*
 
-CHUM is a deterministic execution substrate for production AI work, where every run is recoverable from state and every failure remains in-band for replay.
+CHUM is a **Darwinian execution substrate** for production AI work. It treats coding tasks not as transient prompts, but as environmental pressures that select for the fittest provider models. CHUM embodies principles from evolutionary biology—specifically the *Selfish Gene*—where successful approaches are encoded into a durable species genome, and failed branches serve as antibodies.
 
-## Core Concept: Durable Execution
+## 🧬 Core Concept: The Selfish Gene & Genomic Memory
 
-CHUM is **durable, long-lived Temporal-orchestrated execution with deterministic fallback behavior**.
+Instead of launching disposable agents, CHUM tracks the evolution of specific task "Species."
 
-- Temporal owns orchestration and checkpointed control flow.
-- Stochastic operations are constrained to distillation and rewrite steps.
-- All normal execution runs through deterministic System-1 scripts.
-- Recovery is explicit: replay from persisted history, with bounded reroute behavior.
+- **The Genome**: A SQLite-backed persistent memory structure per species.
+- **Patterns (DNA)**: Approaches that pass the Definition of Done (DoD) become permanent DNA, automatically injected into future prompts for that species.
+- **Antibodies**: Approaches that fail become defensive antibodies, warning future organisms away from known dead ends.
+- **Provider Fitness**: CHUM evaluates models (Codex, Claude, Gemini, DeepSeek) based on their survival rate (DoD pass) vs. their token cost. The "selfish gene" ensures that only the most cost-effective and successful provider genes propagate.
 
-## Infrastructure
+## 🌋 The Cambrian Explosion Protocol
+
+When CHUM encounters a completely novel task (Generation 0), it triggers a **Cambrian Explosion**:
+
+1. Identical isolated git worktrees are spawned across multiple LLM providers (e.g., Gemini Flash, Codex Spark, DeepSeek R1) in parallel.
+2. Each organism attempts the task simultaneously.
+3. The environment (Definition of Done checks like `go test` or `npm run build`) aggressively filters the population.
+4. The first organism to pass DoD wins.
+5. The winning provider's code is committed, pushed, and its "gene" is recorded in the species genome for all future generations. All competing worktrees are cleanly destroyed.
+
+## 🧊 Hibernation & Token Conservation
+
+Evolution is expensive. If a species enters an unrecoverable escalation cascade (failing repeatedly across all provider tiers), CHUM flags it for **Hibernation**.
+
+- Hibernation cuts token burn instantly.
+- The organism sleeps until a human intervenes or the underlying repository environment changes.
+
+## 🏗 Infrastructure & The Moat
 
 - **Go + Temporal SDK + SQLite Hot State**
-- SQLite is the single source of execution truth: DAG nodes, frontier, retries, and checkpoints.
-- File-based task tracking is rejected because high-concurrency I/O lock risk introduces nondeterministic ordering under load.
-- Temporal Activities execute statelessly above a persisted SQLite control plane.
+- **Temporal** orchestrates the parallel branches of the Cambrian Explosion, managing asynchronous LLM calls and retry cascades.
+- **SQLite** is the single source of truth for the Genome, storing patterns, antibodies, and workflow state. File-based task tracking is rejected to avoid non-deterministic I/O under high concurrency load.
 
 ### Git Governance
 
-Git is used only for:
+Git is the environment, not the orchestrator. It is used only for:
+- Isolated test sandboxes during explosions.
+- Final accumulation of surviving genes (commits).
 
-- Algorithmic Crystallization PRs
-- Cold Audit Snapshots
+## 📊 Observability
 
-No routine scheduling, queue state, or runtime handoff should depend on Git as an operational log.
+- **Continuous Learner**: An asynchronous background process that runs over successful outputs, synthesizing `CLAUDE.md` rules and Semgrep patterns.
+- **Matrix Integration**: Built-in reporter to broadcast evolutionary milestones (e.g., "Cambrian Explosion winner selected") directly into Matrix rooms via `spritzbot`.
 
-## Moat 1: The Elastic Distillation Loop
-
-System-2 receives uncertain work and distills it into a System-1 deterministic script before execution.
-
-Execution sequence:
-1. Temporal submits the node to activity execution.
-2. Deterministic script runs against pinned context.
-3. On success, state advances deterministically.
-4. On `ActivityError`, Temporal catches the exception at workflow scope.
-5. Workflow routes to LLM-based rewrite activity.
-6. Rewritten script returns to System-1.
-7. Workflow replays/ retries deterministic logic and reconverges to next valid state.
-
-This loop keeps stochasticity in a bounded control path and keeps the system stable when scripts degrade.
-
-## Moat 2: Provable Data Sovereignty
-
-DAG nodes carry PII policy at node scope.
-
-- Temporal Task Queues route nodes by policy.
-- Cloud workers receive only encrypted ciphertext tasks.
-- Air-gapped workers process plaintext tasks for high-sensitivity nodes.
-- Routing decisions are persisted in SQLite and audit-verifiable per node.
-
-This model enforces cryptographic separation at the DAG edge rather than at project-level fiction.
-
-```mermaid
-flowchart TD
-  A[Submit DAG Intent] --> B[Temporal Orchestrator]
-  B --> C[Queue Router Node]
-  C -->|pii_tier=none| CQ[Task Queue: cloud-ciphertext]
-  C -->|pii_tier=sensitive| AQ[Task Queue: airgap-plaintext]
-  CQ --> D[Cloud Activity Workers]
-  AQ --> E[Air-Gapped Activity Workers]
-  D --> H[SQLite Hot State]
-  E --> H
-  H --> S[System-1 Script Registry]
-  S --> X[Activity Execution]
-  X --> R{ActivityError?}
-  R -->|No| P[Commit Checkpoint + Next Edges]
-  R -->|Yes| L[System-2 Distiller]
-  L --> S
-  L --> B
-```
-
-The graph includes Temporal orchestration, activity workers, SQLite hot state, and queueed routing nodes.
-
-## Execution Lifecycle
-
-1. Ingress manifests become SQLite DAG nodes.
-2. Temporal evaluates dependency readiness and dispatches eligible nodes.
-3. Worker class is selected by routing policy.
-4. Deterministic activity executes.
-5. `ActivityError` triggers rewrite reroute.
-6. Deterministic replay validates corrected script.
-7. Completion commits and emits immutable audit checkpoints.
-
-## Policy and Boundaries
-
-- No file-based task trackers.
-- No non-deterministic state updates outside persisted checkpoints.
-- No plain-PII paths into cloud activity workers.
-- Git usage remains limited to Algorithmic Crystallization PRs and Cold Audit Snapshots.
-
-## Operational Notes
+## 🚀 Operational Notes
 
 - Build: `make build`
 - Test: `make test`
-- Lint: `make lint`
 - Execute: `./chum --config <path> --dev`
 
-- Validate health through status endpoints and workflow histories before scaling worker count.
-- Use cold snapshots for incident replay.
-
-## Documentation
+## 📖 Documentation
 
 - `docs/architecture/ARCHITECTURE.md`
 - `docs/architecture/CONFIG.md`
-- `docs/architecture/CHUM_BACKLOG.md`
-- `docs/api/api-security.md`
+- `docs/architecture/CHUM_OVERVIEW.md`
 
 ## License
-
 MIT — see [LICENSE](LICENSE).

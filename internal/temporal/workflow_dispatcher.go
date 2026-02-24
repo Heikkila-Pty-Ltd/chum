@@ -11,12 +11,13 @@ import (
 
 	enumspb "go.temporal.io/api/enums/v1"
 	"go.temporal.io/api/workflowservice/v1"
-	"go.temporal.io/sdk/client"
+	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
 
 	"github.com/antigravity-dev/chum/internal/config"
 	"github.com/antigravity-dev/chum/internal/graph"
+	"github.com/antigravity-dev/chum/internal/store"
 )
 
 // DispatcherWorkflow scans for ready tasks and dispatches ChumAgentWorkflow
@@ -41,14 +42,21 @@ func DispatcherWorkflow(ctx workflow.Context, _ struct{}) error {
 		return fmt.Errorf("scan candidates: %w", err)
 	}
 
+	if result.Throttled {
+		logger.Info(SharkPrefix+" ⏸️  Dispatcher: throttled", "reason", result.ThrottleReason)
+		return nil
+	}
+
 	if len(result.Candidates) == 0 {
 		logger.Debug(SharkPrefix+" Dispatcher: nothing to dispatch", "running", result.Running)
 		return nil
 	}
 
-	// Agent rotation — distribute load across available CLI agents.
-	// This prevents burning through any single provider's weekly quota.
-	availableAgents := []string{"claude", "codex", "gemini"}
+	// Agent rotation — use enabled agents from the scan result.
+	availableAgents := result.AvailableAgents
+	if len(availableAgents) == 0 {
+		availableAgents = []string{"codex"} // fallback
+	}
 
 	// Start child workflows for each candidate.
 	dispatched := 0
@@ -56,13 +64,16 @@ func DispatcherWorkflow(ctx workflow.Context, _ struct{}) error {
 		c := &result.Candidates[i]
 		timeout := workflowTimeout(c.EstimateMinutes)
 
+		// Each dispatch is a fresh organism — unique workflow ID per attempt.
+		// If it fails, the task dies and a new one is born from its ashes.
+		wfID := fmt.Sprintf("%s-%d", c.TaskID, workflow.Now(ctx).Unix())
 		childOpts := workflow.ChildWorkflowOptions{
-			WorkflowID:               c.TaskID,
+			WorkflowID:               wfID,
 			TaskQueue:                DefaultTaskQueue,
 			WorkflowExecutionTimeout: timeout,
-			// ALLOW_DUPLICATE_FAILED_ONLY allows retry after failure/termination
-			// but rejects if a workflow with this task ID is currently running.
-			WorkflowIDReusePolicy: enumspb.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE_FAILED_ONLY,
+			// ALLOW_DUPLICATE — every dispatch attempt is a unique organism.
+			// No task ID ever persists. Failed tasks die; new ones are born.
+			WorkflowIDReusePolicy: enumspb.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE,
 			// ABANDON keeps child workflows alive after the dispatcher parent completes.
 			ParentClosePolicy: enumspb.PARENT_CLOSE_POLICY_ABANDON,
 		}
@@ -79,17 +90,43 @@ func DispatcherWorkflow(ctx workflow.Context, _ struct{}) error {
 		req := TaskRequest{
 			TaskID:            c.TaskID,
 			Project:           c.Project,
+			TaskTitle:         c.TaskTitle,
 			Prompt:            c.Prompt,
 			Agent:             agent,
 			WorkDir:           c.WorkDir,
 			Provider:          c.Provider,
 			DoDChecks:         c.DoDChecks,
 			SlowStepThreshold: slowStep,
+			Priority:          clampTaskPriority(c.Priority),
+			EscalationChain:   result.EscalationTiers,
+			PreviousErrors:    c.PreviousErrors,
 		}
 
-		// Fire-and-forget — we don't wait for the child to complete.
-		// The dispatcher's job is to START workflows, not babysit them.
-		future := workflow.ExecuteChildWorkflow(childCtx, ChumAgentWorkflow, req)
+		// 3-lane dispatcher routing:
+		// 1. Familiar (Gen > 0) -> direct assign (ChumAgentWorkflow)
+		// 2. Unfamiliar (Gen 0) -> Cambrian Explosion (CambrianExplosionWorkflow)
+		// 3. Complex (Score > 70) -> turtle ceremony (AutonomousPlanningCeremonyWorkflow)
+		var future workflow.ChildWorkflowFuture
+		if c.Complexity > 70 {
+			// Lane 3: Complex -> Turtle Ceremony 🐢
+			// Multi-agent deliberation to decompose complex tasks before implementation.
+			turtleReq := TurtlePlanningRequest{
+				TaskID:      c.TaskID,
+				Project:     c.Project,
+				WorkDir:     c.WorkDir,
+				Description: c.Prompt,
+				Tier:        "premium", // turtle ceremonies use top-tier models for planning
+			}
+			future = workflow.ExecuteChildWorkflow(childCtx, AutonomousPlanningCeremonyWorkflow, turtleReq)
+		} else if c.Generation == 0 && len(result.EscalationTiers) > 1 {
+			// Lane 2: Unfamiliar -> Cambrian Explosion 🌋
+			// Parallel exploration of new task types to find the fittest provider.
+			future = workflow.ExecuteChildWorkflow(childCtx, CambrianExplosionWorkflow, req, result.EscalationTiers)
+		} else {
+			// Lane 1: Familiar/Simple -> Direct Assign 🦈
+			// Standard single-agent execution loop.
+			future = workflow.ExecuteChildWorkflow(childCtx, ChumAgentWorkflow, req)
+		}
 
 		// Wait for the child to actually start (avoid ABANDON killing it).
 		var childExec workflow.Execution
@@ -148,17 +185,75 @@ func workflowTimeout(estimateMinutes int) time.Duration {
 // Temporal client for listing workflows — things the regular activities don't need.
 type DispatchActivities struct {
 	CfgMgr config.ConfigManager
-	TC     client.Client
+	TC     workflowListClient
 	DAG    *graph.DAG
+	Store  *store.Store
+}
+
+type workflowListClient interface {
+	ListWorkflow(context.Context, *workflowservice.ListWorkflowExecutionsRequest) (*workflowservice.ListWorkflowExecutionsResponse, error)
 }
 
 // ScanCandidatesActivity does all the I/O-heavy work of discovering ready tasks.
 // This is the domain logic from the old scheduler.tick(), wrapped in an activity.
 func (da *DispatchActivities) ScanCandidatesActivity(ctx context.Context) (*ScanCandidatesResult, error) {
 	cfg := da.CfgMgr.Get()
+	logger := activity.GetLogger(ctx)
+
+	// --- Token budget gate ---
+	// Check rolling 5h window and weekly cap before dispatching.
+	if da.Store != nil {
+		now := time.Now()
+
+		// 5-hour rolling window check (output tokens — the scarce resource on auth plans).
+		if cap5h := cfg.RateLimits.Window5hCap; cap5h > 0 {
+			burn, err := da.Store.TokenBurnSince("claude", now.Add(-5*time.Hour))
+			if err != nil {
+				logger.Warn(SharkPrefix+" Dispatcher: token burn query failed", "error", err)
+			} else {
+				used := burn.OutputTokens
+				pct := float64(used) * 100 / float64(cap5h)
+				if used >= int64(cap5h) {
+					logger.Info(SharkPrefix+" ⏸️  Dispatcher: 5h token ceiling hit — cooling",
+						"used", used, "cap", cap5h, "pct", fmt.Sprintf("%.0f%%", pct))
+					return &ScanCandidatesResult{Throttled: true, ThrottleReason: fmt.Sprintf("5h claude output ceiling: %d/%d (%.0f%%)", used, cap5h, pct)}, nil
+				}
+				if pct > 80 {
+					logger.Info(SharkPrefix+" ⚠️  Dispatcher: 5h token budget at "+fmt.Sprintf("%.0f%%", pct),
+						"used", used, "cap", cap5h)
+				}
+			}
+		}
+
+		// Weekly cap check (total output tokens since the configured reset day).
+		if weeklyCap := cfg.RateLimits.WeeklyCap; weeklyCap > 0 {
+			weekStart := lastWeeklyReset(now)
+			burn, err := da.Store.TokenBurnSince("claude", weekStart)
+			if err != nil {
+				logger.Warn(SharkPrefix+" Dispatcher: weekly burn query failed", "error", err)
+			} else {
+				used := burn.OutputTokens
+				pct := float64(used) * 100 / float64(weeklyCap)
+				headroom := cfg.RateLimits.WeeklyHeadroomPct
+				if headroom <= 0 {
+					headroom = 20 // default 20% reserved for human use
+				}
+				ceiling := float64(weeklyCap) * float64(100-headroom) / 100
+				if float64(used) >= ceiling {
+					logger.Info(SharkPrefix+" ⏸️  Dispatcher: weekly token ceiling hit — cooling",
+						"used", used, "cap", weeklyCap, "headroom_pct", headroom, "pct", fmt.Sprintf("%.0f%%", pct))
+					return &ScanCandidatesResult{Throttled: true, ThrottleReason: fmt.Sprintf("weekly claude ceiling: %d/%d (%.0f%%, %d%% headroom reserved)", used, weeklyCap, pct, headroom)}, nil
+				}
+				if pct > 50 {
+					logger.Info(SharkPrefix+" 📊 Dispatcher: weekly token budget at "+fmt.Sprintf("%.0f%%", pct),
+						"used", used, "cap", weeklyCap)
+				}
+			}
+		}
+	}
 
 	// --- List open workflows ---
-	openWFs, err := listOpenAgentWorkflows(ctx, da.TC)
+	openWFs, err := listOpenAgentWorkflowsForAgent(ctx, da.TC, "", "")
 	if err != nil {
 		return nil, fmt.Errorf("list open workflows: %w", err)
 	}
@@ -181,13 +276,26 @@ func (da *DispatchActivities) ScanCandidatesActivity(ctx context.Context) (*Scan
 		slots = maxPerTick
 	}
 
-	// Build set of running workflow IDs to skip re-dispatch, and per-project counts.
+	// Build set of TASK IDs that are currently running (extract task ID from
+	// workflow IDs like "w1-1-1708654321" → "w1-1"). Skip re-dispatch for
+	// tasks with an active organism, but allow re-dispatch after death.
 	runningSet := make(map[string]struct{}, len(openWFs))
-	projectRunning := make(map[string]int)
 	for _, wf := range openWFs {
-		runningSet[wf.workflowID] = struct{}{}
-		if idx := strings.LastIndex(wf.workflowID, "-"); idx > 0 {
-			projectRunning[wf.workflowID[:idx]]++
+		// Extract task ID from workflow ID (strip timestamp suffix)
+		taskID := extractTaskIDFromWorkflowID(wf.workflowID)
+		runningSet[taskID] = struct{}{}
+	}
+
+	// Also check for running CambrianExplosionWorkflow instances.
+	// The dispatcher spawns CambrianExplosionWorkflow (not ChumAgentWorkflow directly),
+	// so we must include these to prevent re-dispatching tasks with in-flight explosions.
+	explosionWFs, err := listOpenExplosionWorkflows(ctx, da.TC)
+	if err != nil {
+		logger.Warn(SharkPrefix+" Dispatcher: failed to list explosion workflows", "error", err)
+	} else {
+		for _, wf := range explosionWFs {
+			taskID := extractTaskIDFromWorkflowID(wf.workflowID)
+			runningSet[taskID] = struct{}{}
 		}
 	}
 
@@ -195,6 +303,7 @@ func (da *DispatchActivities) ScanCandidatesActivity(ctx context.Context) (*Scan
 	if maxPerProject <= 0 {
 		maxPerProject = 3
 	}
+	projectRunning := make(map[string]int)
 
 	// --- Gather ready tasks across all enabled projects ---
 	type candidate struct {
@@ -210,6 +319,14 @@ func (da *DispatchActivities) ScanCandidatesActivity(ctx context.Context) (*Scan
 		if !proj.Enabled {
 			continue
 		}
+
+		projectOpenWFs, err := listOpenAgentWorkflowsForAgent(ctx, da.TC, name, "")
+		if err != nil {
+			logger.Warn(SharkPrefix+" Dispatcher: failed to count project running workflows", "project", name, "error", err)
+			projectOpenWFs = nil
+		}
+		projectRunning[name] = len(projectOpenWFs)
+
 		if projectRunning[name] >= maxPerProject {
 			continue
 		}
@@ -288,31 +405,53 @@ func (da *DispatchActivities) ScanCandidatesActivity(ctx context.Context) (*Scan
 			slowStepThreshold = defaultSlowStepThreshold
 		}
 
+		prompt := buildPrompt(c.task)
+		species := classifySpecies(c.task.ID, prompt, nil) // no plan files yet
+
+		var generation int
+		// Check hibernation (skip if hibernating unless it's the golf project per user override)
+		if genome, err := da.Store.GetGenome(species); err == nil {
+			if c.project != "golf-directory" && genome.Hibernating {
+				// Species is hibernating — skip dispatching this organism.
+				continue
+			}
+			generation = genome.Generation
+		}
+
 		result = append(result, DispatchCandidate{
 			TaskID:            c.task.ID,
 			Title:             c.task.Title,
+			TaskTitle:         c.task.Title,
 			Project:           c.project,
 			WorkDir:           c.workDir,
-			Prompt:            buildPrompt(c.task),
+			Prompt:            prompt,
 			Provider:          resolveProvider(cfg),
 			DoDChecks:         dodChecks,
 			SlowStepThreshold: slowStepThreshold,
+			Priority:          clampTaskPriority(c.task.Priority),
 			EstimateMinutes:   c.task.EstimateMinutes,
+			PreviousErrors:    strings.Split(c.task.ErrorLog, "\n---\n"),
+			Generation:        generation,
+			Complexity:        ScoreTaskComplexity(c.task.Title, prompt, c.task.Acceptance, c.task.EstimateMinutes),
 		})
 		projectRunning[c.project]++
 	}
 
 	return &ScanCandidatesResult{
-		Candidates: result,
-		Running:    running,
-		MaxTotal:   maxTotal,
+		Candidates:      result,
+		Running:         running,
+		MaxTotal:        maxTotal,
+		AvailableAgents: enabledCLIAgents(cfg),
+		EscalationTiers: buildEscalationTiers(cfg),
 	}, nil
 }
 
 // listOpenAgentWorkflows returns all currently running ChumAgentWorkflow
 // executions. Extracted from the old scheduler for reuse in the activity.
-func listOpenAgentWorkflows(ctx context.Context, tc client.Client) ([]openWorkflowExecution, error) {
-	query := `WorkflowType = 'ChumAgentWorkflow' AND ExecutionStatus = 'Running'`
+// listOpenAgentWorkflowsForAgent returns running Chum workflows filtered by project
+// and optional agent. It is future-ready for targeted drain/review batches.
+func listOpenAgentWorkflowsForAgent(ctx context.Context, tc workflowListClient, project, agent string) ([]openWorkflowExecution, error) {
+	query := buildOpenAgentWorkflowQueryForAgent(project, agent)
 
 	var pageToken []byte
 	executions := make([]openWorkflowExecution, 0, 200)
@@ -357,6 +496,108 @@ func listOpenAgentWorkflows(ctx context.Context, tc client.Client) ([]openWorkfl
 	return executions, nil
 }
 
+func listOpenAgentWorkflows(ctx context.Context, tc workflowListClient, project string) ([]openWorkflowExecution, error) {
+	return listOpenAgentWorkflowsForAgent(ctx, tc, project, "")
+}
+
+// listOpenExplosionWorkflows returns all currently running CambrianExplosionWorkflow
+// instances. The dispatcher must check these to prevent re-dispatching tasks that
+// already have an in-flight explosion (which spawns child ChumAgentWorkflows).
+func listOpenExplosionWorkflows(ctx context.Context, tc workflowListClient) ([]openWorkflowExecution, error) {
+	query := "WorkflowType = 'CambrianExplosionWorkflow' AND ExecutionStatus = 'Running'"
+
+	var pageToken []byte
+	executions := make([]openWorkflowExecution, 0, 50)
+	for {
+		resp, err := tc.ListWorkflow(ctx, &workflowservice.ListWorkflowExecutionsRequest{
+			Query:         query,
+			PageSize:      200,
+			NextPageToken: pageToken,
+		})
+		if err != nil {
+			return nil, err
+		}
+		if resp == nil {
+			return nil, fmt.Errorf("temporal list workflow returned nil response")
+		}
+
+		for _, exec := range resp.Executions {
+			execInfo := exec.GetExecution()
+			if execInfo == nil {
+				continue
+			}
+			wfID := execInfo.GetWorkflowId()
+			if wfID == "" {
+				continue
+			}
+			startTime := time.Time{}
+			if exec.StartTime != nil {
+				startTime = exec.StartTime.AsTime()
+			}
+			executions = append(executions, openWorkflowExecution{
+				workflowID: wfID,
+				runID:      execInfo.GetRunId(),
+				startTime:  startTime,
+			})
+		}
+
+		if len(resp.NextPageToken) == 0 {
+			break
+		}
+		pageToken = resp.NextPageToken
+	}
+	return executions, nil
+}
+
+func buildOpenAgentWorkflowQuery(project string) string {
+	return ChumAgentRunningVisibilityQueryForProject(project)
+}
+
+func buildOpenAgentWorkflowQueryForAgent(project, agent string) string {
+	return ChumAgentRunningVisibilityQueryForProjectAndAgent(project, agent)
+}
+
+// listRecentlyCompletedWorkflows returns IDs of ChumAgentWorkflows that
+// completed in the last 24 hours. The dispatcher skips these to avoid
+// re-dispatching tasks that already succeeded.
+func listRecentlyCompletedWorkflows(ctx context.Context, tc workflowListClient) (map[string]struct{}, error) {
+	cutoff := time.Now().Add(-24 * time.Hour).Format(time.RFC3339)
+	query := fmt.Sprintf(
+		`WorkflowType = 'ChumAgentWorkflow' AND ExecutionStatus = 'Completed' AND CloseTime > '%s'`,
+		cutoff,
+	)
+
+	result := make(map[string]struct{})
+	var pageToken []byte
+	for {
+		resp, err := tc.ListWorkflow(ctx, &workflowservice.ListWorkflowExecutionsRequest{
+			Query:         query,
+			PageSize:      200,
+			NextPageToken: pageToken,
+		})
+		if err != nil {
+			return nil, err
+		}
+		if resp == nil {
+			break
+		}
+		for _, exec := range resp.Executions {
+			if wfID := exec.GetExecution().GetWorkflowId(); wfID != "" {
+				result[wfID] = struct{}{}
+			}
+		}
+		if len(resp.NextPageToken) == 0 {
+			break
+		}
+		pageToken = resp.NextPageToken
+	}
+	return result, nil
+}
+
+func clampTaskPriority(priority int) int {
+	return normalizePriority(priority)
+}
+
 // openWorkflowExecution is metadata about a running workflow. Kept package-private.
 type openWorkflowExecution struct {
 	workflowID string
@@ -364,6 +605,78 @@ type openWorkflowExecution struct {
 	startTime  time.Time
 }
 
+// extractTaskIDFromWorkflowID strips the unix timestamp suffix from a workflow ID
+// to recover the original task ID. E.g. "w1-1-1708654321" → "w1-1".
+// Falls back to the full workflow ID if no timestamp suffix is found.
+func extractTaskIDFromWorkflowID(wfID string) string {
+	// Find the last dash — if the part after it is all digits, strip it.
+	idx := strings.LastIndex(wfID, "-")
+	if idx <= 0 {
+		return wfID
+	}
+	suffix := wfID[idx+1:]
+	for _, ch := range suffix {
+		if ch < '0' || ch > '9' {
+			return wfID // not a timestamp suffix
+		}
+	}
+	if len(suffix) < 8 {
+		return wfID // too short to be a unix timestamp
+	}
+	return wfID[:idx]
+}
+
+func buildEscalationTiers(cfg *config.Config) []EscalationTier {
+	chain := EscalationChain(cfg.Tiers, "fast")
+	tiers := make([]EscalationTier, 0, len(chain))
+	for i, providerKey := range chain {
+		cli, model := ResolveProviderCLI(cfg.Providers, providerKey)
+		prov, exists := cfg.Providers[providerKey]
+		enabled := true
+		if exists {
+			enabled = prov.IsEnabled()
+		}
+		tiers = append(tiers, EscalationTier{
+			ProviderKey: providerKey,
+			CLI:         cli,
+			Model:       model,
+			Tier:        tierForIndex(i),
+			Enabled:     enabled,
+		})
+	}
+	return tiers
+}
+
+// enabledCLIAgents returns deduplicated CLI agent names from enabled providers.
+func enabledCLIAgents(cfg *config.Config) []string {
+	seen := make(map[string]bool)
+	var agents []string
+	for _, prov := range cfg.Providers {
+		if !prov.IsEnabled() {
+			continue
+		}
+		cli := prov.CLI
+		if cli == "" {
+			continue
+		}
+		if !seen[cli] {
+			seen[cli] = true
+			agents = append(agents, cli)
+		}
+	}
+	return agents
+}
+
+// lastWeeklyReset returns the most recent Friday 14:00 local time (when Claude Max resets).
+func lastWeeklyReset(now time.Time) time.Time {
+	// Walk back to the most recent Friday.
+	daysBack := int(now.Weekday()-time.Friday+7) % 7
+	if daysBack == 0 && now.Hour() < 14 {
+		daysBack = 7 // before 2pm Friday = use previous Friday
+	}
+	friday := now.AddDate(0, 0, -daysBack)
+	return time.Date(friday.Year(), friday.Month(), friday.Day(), 14, 0, 0, 0, now.Location())
+}
 
 // isStrategicDeferredTask checks whether the task has the strategic deferred label.
 func isStrategicDeferredTask(t graph.Task) bool {

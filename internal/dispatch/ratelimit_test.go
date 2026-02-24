@@ -53,7 +53,7 @@ func TestCanDispatchAuthed_5hCapReached(t *testing.T) {
 	rl := NewRateLimiter(s, config.RateLimits{Window5hCap: 3, WeeklyCap: 200, WeeklyHeadroomPct: 80})
 
 	for i := 0; i < 3; i++ {
-		if _, err := s.RecordProviderUsage("claude", "agent", "bead"); err != nil {
+		if _, err := s.RecordProviderUsage("claude", "agent", "morsel"); err != nil {
 			t.Fatalf("record provider usage: %v", err)
 		}
 	}
@@ -69,7 +69,7 @@ func TestCanDispatchAuthed_WeeklyCapReached(t *testing.T) {
 	rl := NewRateLimiter(s, config.RateLimits{Window5hCap: 100, WeeklyCap: 5, WeeklyHeadroomPct: 80})
 
 	for i := 0; i < 5; i++ {
-		if _, err := s.RecordProviderUsage("claude", "agent", "bead"); err != nil {
+		if _, err := s.RecordProviderUsage("claude", "agent", "morsel"); err != nil {
 			t.Fatalf("record provider usage: %v", err)
 		}
 	}
@@ -86,7 +86,7 @@ func TestHeadroomWarning(t *testing.T) {
 
 	// 8 out of 10 = 80% -> should trigger
 	for i := 0; i < 8; i++ {
-		if _, err := s.RecordProviderUsage("claude", "agent", "bead"); err != nil {
+		if _, err := s.RecordProviderUsage("claude", "agent", "morsel"); err != nil {
 			t.Fatalf("record provider usage: %v", err)
 		}
 	}
@@ -101,45 +101,63 @@ func TestHeadroomWarning(t *testing.T) {
 	}
 }
 
-func TestPickProvider_FastTier(t *testing.T) {
+func TestPickAndReserveProvider_FastTier(t *testing.T) {
 	s := tempStore(t)
 	rl := NewRateLimiter(s, config.RateLimits{Window5hCap: 0, WeeklyCap: 0, WeeklyHeadroomPct: 80})
 
 	// Even with zero caps (authed blocked), fast tier should work (free providers)
-	p := rl.PickProvider("fast", testProviders(), testTiers())
+	p, _, cleanup, err := rl.PickAndReserveProvider("fast", testProviders(), testTiers(), "agent", "morsel")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if p == nil {
 		t.Fatal("should return a free-tier provider")
 	}
 	if p.Authed {
 		t.Error("fast tier should return free provider")
 	}
+	if cleanup != nil {
+		cleanup()
+	}
 }
 
-func TestPickProvider_AuthedBlocked(t *testing.T) {
+func TestPickAndReserveProvider_AuthedBlocked(t *testing.T) {
 	s := tempStore(t)
 	// Set caps to 0 to block all authed
 	rl := NewRateLimiter(s, config.RateLimits{Window5hCap: 0, WeeklyCap: 0, WeeklyHeadroomPct: 80})
 
-	p := rl.PickProvider("balanced", testProviders(), testTiers())
+	p, _, cleanup, err := rl.PickAndReserveProvider("balanced", testProviders(), testTiers(), "agent", "morsel")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if p != nil {
 		t.Error("should return nil when authed is blocked")
 	}
+	if cleanup != nil {
+		cleanup()
+	}
 }
 
-func TestPickProvider_AuthedAllowed(t *testing.T) {
+func TestPickAndReserveProvider_AuthedAllowed(t *testing.T) {
 	s := tempStore(t)
 	rl := NewRateLimiter(s, config.RateLimits{Window5hCap: 20, WeeklyCap: 200, WeeklyHeadroomPct: 80})
 
-	p := rl.PickProvider("balanced", testProviders(), testTiers())
+	p, _, cleanup, err := rl.PickAndReserveProvider("balanced", testProviders(), testTiers(), "agent", "morsel")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if p == nil {
 		t.Fatal("should return an authed provider")
 	}
 	if !p.Authed {
 		t.Error("balanced tier should return authed provider")
 	}
+	if cleanup != nil {
+		cleanup()
+	}
 }
 
-func TestPickProvider_ParallelDispatchAttempts(t *testing.T) {
+func TestPickAndReserveProvider_ParallelDispatchAttempts(t *testing.T) {
 	s := tempStore(t)
 	rl := NewRateLimiter(s, config.RateLimits{Window5hCap: 2, WeeklyCap: 2, WeeklyHeadroomPct: 80})
 
@@ -155,18 +173,13 @@ func TestPickProvider_ParallelDispatchAttempts(t *testing.T) {
 		go func() {
 			defer wg.Done()
 
-			p := rl.PickProvider("balanced", testProviders(), testTiers())
-			if p == nil {
+			p, _, cleanup, err := rl.PickAndReserveProvider("balanced", testProviders(), testTiers(), "agent", fmt.Sprintf("morsel-%d", i))
+			if err != nil || p == nil {
 				results <- result{allowed: false}
 				return
 			}
-
-			_, err := rl.RecordAuthedDispatch(p.Model, "agent", fmt.Sprintf("bead-%d", i))
-			if err != nil {
-				results <- result{allowed: false}
-				return
-			}
-
+			// Don't release — we want to see if two can pass
+			_ = cleanup
 			results <- result{allowed: true}
 		}()
 	}
@@ -215,7 +228,7 @@ func TestPickAndReserveProviderFromCandidates_FreeProvider(t *testing.T) {
 	rl := NewRateLimiter(s, config.RateLimits{Window5hCap: 0, WeeklyCap: 0, WeeklyHeadroomPct: 80})
 
 	candidates := []string{"cerebras", "groq"}
-	p, name, usageID, cleanup, err := rl.PickAndReserveProviderFromCandidates(candidates, testProviders(), nil, "agent", "bead")
+	p, name, usageID, cleanup, err := rl.PickAndReserveProviderFromCandidates(candidates, testProviders(), nil, "agent", "morsel")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -241,7 +254,7 @@ func TestPickAndReserveProviderFromCandidates_AuthedWithReservation(t *testing.T
 	rl := NewRateLimiter(s, config.RateLimits{Window5hCap: 20, WeeklyCap: 200, WeeklyHeadroomPct: 80})
 
 	candidates := []string{"claude-max20"}
-	p, name, usageID, cleanup, err := rl.PickAndReserveProviderFromCandidates(candidates, testProviders(), nil, "agent", "bead")
+	p, name, usageID, cleanup, err := rl.PickAndReserveProviderFromCandidates(candidates, testProviders(), nil, "agent", "morsel")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -283,7 +296,7 @@ func TestPickAndReserveProviderFromCandidates_ExcludeModel(t *testing.T) {
 	excludeModels := map[string]bool{"claude": true}
 	candidates := []string{"claude-max20", "google-pro"}
 
-	p, name, _, cleanup, err := rl.PickAndReserveProviderFromCandidates(candidates, testProviders(), excludeModels, "agent", "bead")
+	p, name, _, cleanup, err := rl.PickAndReserveProviderFromCandidates(candidates, testProviders(), excludeModels, "agent", "morsel")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -309,7 +322,7 @@ func TestPickAndReserveProviderFromCandidates_RateLimitExceeded(t *testing.T) {
 	candidates := []string{"claude-max20"}
 
 	// First reservation should succeed (count: 0 -> 1)
-	p1, _, _, cleanup1, err := rl.PickAndReserveProviderFromCandidates(candidates, testProviders(), nil, "agent1", "bead1")
+	p1, _, _, cleanup1, err := rl.PickAndReserveProviderFromCandidates(candidates, testProviders(), nil, "agent1", "morsel1")
 	if err != nil {
 		t.Fatalf("first reservation failed: %v", err)
 	}
@@ -319,7 +332,7 @@ func TestPickAndReserveProviderFromCandidates_RateLimitExceeded(t *testing.T) {
 	defer cleanup1()
 
 	// Second reservation should succeed (count: 1 -> 2)
-	p2, _, _, cleanup2, err := rl.PickAndReserveProviderFromCandidates(candidates, testProviders(), nil, "agent2", "bead2")
+	p2, _, _, cleanup2, err := rl.PickAndReserveProviderFromCandidates(candidates, testProviders(), nil, "agent2", "morsel2")
 	if err != nil {
 		t.Fatalf("second reservation failed: %v", err)
 	}
@@ -331,7 +344,7 @@ func TestPickAndReserveProviderFromCandidates_RateLimitExceeded(t *testing.T) {
 	// Third reservation should succeed (count: 2 -> 3, then double-check passes since 3 < 3 is false but 3 >= 3 is true, blocks)
 	// Actually with cap=3, the third one will fail because after insert count=3, and 3 >= 3 blocks
 	// So we can only get 2 successful with cap=3
-	p3, name3, usageID3, cleanup3, err := rl.PickAndReserveProviderFromCandidates(candidates, testProviders(), nil, "agent3", "bead3")
+	p3, name3, usageID3, cleanup3, err := rl.PickAndReserveProviderFromCandidates(candidates, testProviders(), nil, "agent3", "morsel3")
 	if err == nil {
 		t.Error("third reservation should fail due to rate limit")
 		if cleanup3 != nil {
@@ -354,7 +367,7 @@ func TestPickAndReserveProviderFromCandidates_EmptyCandidates(t *testing.T) {
 	rl := NewRateLimiter(s, config.RateLimits{Window5hCap: 20, WeeklyCap: 200, WeeklyHeadroomPct: 80})
 
 	candidates := []string{}
-	p, name, usageID, cleanup, err := rl.PickAndReserveProviderFromCandidates(candidates, testProviders(), nil, "agent", "bead")
+	p, name, usageID, cleanup, err := rl.PickAndReserveProviderFromCandidates(candidates, testProviders(), nil, "agent", "morsel")
 	if err != nil {
 		t.Errorf("should not error on empty candidates: %v", err)
 	}

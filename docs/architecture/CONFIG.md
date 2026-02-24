@@ -16,7 +16,7 @@ tick_interval = "60s"
 
 [projects.my-project]
 enabled = true
-beads_dir = ".beads"
+morsels_dir = ".morsels"
 workspace = "/home/user/my-project"
 
 [providers.claude]
@@ -42,7 +42,7 @@ premium  = ["claude"]
 | `max_retries` | int | `3` | Global retry limit for failed dispatches |
 | `retry_backoff_base` | Duration | `5m` | Base delay for exponential backoff |
 | `retry_max_delay` | Duration | `30m` | Maximum backoff delay cap |
-| `dispatch_cooldown` | Duration | `5m` | Minimum time between re-dispatching the same bead |
+| `dispatch_cooldown` | Duration | `5m` | Minimum time between re-dispatching the same morsel |
 | `log_level` | string | `info` | Logging verbosity (`debug`, `info`, `warn`, `error`) |
 | `state_db` | string | — | Path to SQLite state database |
 | `lock_file` | string | — | Filesystem lock to prevent duplicate schedulers |
@@ -56,27 +56,27 @@ CHUM runs a janitor pass at the start of every scheduler tick to reclaim concurr
 
 Cleanup rules:
 
-- `bead_closed` — terminate when bead status is `closed`.
-- `bead_deferred` — terminate when bead status is `deferred`.
+- `morsel_closed` — terminate when morsel status is `closed`.
+- `morsel_deferred` — terminate when morsel status is `deferred`.
 - `stuck_timeout` — terminate when execution `start_time` is older than `stuck_timeout`. Applies to both known-open and unknown workflows when all project inventory succeeded. Set `stuck_timeout = "0s"` to disable timeout-based termination entirely.
 
 Partial failure handling:
 
-When some enabled projects fail to list beads, the janitor operates in partial-data mode. Unknown workflows (not found in any successful project listing) are conservatively retained:
+When some enabled projects fail to list morsels, the janitor operates in partial-data mode. Unknown workflows (not found in any successful project listing) are conservatively retained:
 
-- no status-based cleanup (`bead_closed`/`bead_deferred`) is applied;
+- no status-based cleanup (`morsel_closed`/`morsel_deferred`) is applied;
 - no timeout cleanup is applied.
 
-If **all** projects fail to list beads, the janitor aborts and returns all running workflows unchanged. This prevents unsafe termination when bead inventory is incomplete.
+If **all** projects fail to list morsels, the janitor aborts and returns all running workflows unchanged. This prevents unsafe termination when morsel inventory is incomplete.
 
-Project lookup is performed deterministically (sorted enabled projects), and bead statuses are normalized (`open`, `closed`, `deferred`) before classification.
+Project lookup is performed deterministically (sorted enabled projects), and morsel statuses are normalized (`open`, `closed`, `deferred`) before classification.
 
 Per-termination log fields:
 
 - `workflow_id`
 - `run_id`
-- `bead_id`
-- `reason` (`bead_closed`, `bead_deferred`, `stuck_timeout`)
+- `morsel_id`
+- `reason` (`morsel_closed`, `morsel_deferred`, `stuck_timeout`)
 - `age` (present for timeout decisions)
 
 Manual verification:
@@ -121,13 +121,13 @@ Each project is a top-level key under `[projects]`.
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `enabled` | bool | `false` | Enable this project for scheduling |
-| `beads_dir` | string | — | Path to beads directory (relative to workspace) |
+| `morsels_dir` | string | — | Path to morsels directory (relative to workspace) |
 | `workspace` | string | — | Absolute path to project root |
 | `priority` | int | `0` | Scheduling priority (lower = higher priority) |
 | `matrix_room` | string | — | Matrix room for project notifications |
 | `base_branch` | string | `main` | Branch to create features from |
 | `branch_prefix` | string | `feat/` | Prefix for auto-created feature branches |
-| `use_branches` | bool | `false` | Enable branch-per-bead workflow |
+| `use_branches` | bool | `false` | Enable branch-per-morsel workflow |
 | `merge_method` | string | `squash` | PR merge method (`squash`, `merge`, `rebase`) |
 | `post_merge_checks` | []string | — | Commands to run after PR merge |
 | `auto_revert_on_failure` | bool | `true` | Auto-revert merge if post-merge checks fail |
@@ -149,8 +149,8 @@ Sprint planning is opt-in. Without these fields, the project runs in continuous 
 [projects.my-project.dod]
 checks             = ["go build ./...", "go test ./...", "go vet ./..."]
 coverage_min       = 0          # optional coverage floor (%)
-require_estimate   = false      # bead must have estimated_minutes > 0
-require_acceptance = false      # bead must have acceptance criteria
+require_estimate   = false      # morsel must have estimated_minutes > 0
+require_acceptance = false      # morsel must have acceptance criteria
 ```
 
 ### Per-Project Retry Policy
@@ -250,11 +250,11 @@ approval_flags = ["--full-auto"]
 
 ```toml
 [dispatch.routing]
-fast_backend     = "headless_cli"     # "headless_cli" or "tmux"
-balanced_backend = "tmux"
-premium_backend  = "tmux"
+fast_backend     = "headless_cli"
+balanced_backend = "headless_cli"
+premium_backend  = "headless_cli"
 comms_backend    = "headless_cli"     # for Matrix/comms tasks
-retry_backend    = "tmux"
+retry_backend    = "headless_cli"
 ```
 
 ### `[dispatch.timeouts]` — Per-Tier Execution Limits
@@ -276,14 +276,6 @@ merge_strategy             = "squash"      # "merge", "squash", "rebase"
 max_concurrent_per_project = 3             # max parallel branches per project
 ```
 
-### `[dispatch.tmux]` — Tmux Session Management
-
-```toml
-[dispatch.tmux]
-history_limit  = 50000                     # scrollback buffer per session
-session_prefix = "chum-"                 # prefix for tmux session names
-```
-
 ### `[dispatch.cost_control]` — Cost and Churn Guards
 
 ```toml
@@ -296,8 +288,8 @@ risky_review_labels          = ["risk:high", "security", "migration", "breaking-
 
 # Budget enforcement
 daily_cost_cap_usd           = 0           # 0 = unlimited
-per_bead_cost_cap_usd        = 0           # 0 = unlimited
-per_bead_stage_attempt_limit = 0           # max attempts per stage per bead
+per_morsel_cost_cap_usd        = 0           # 0 = unlimited
+per_morsel_stage_attempt_limit = 0           # max attempts per stage per morsel
 stage_attempt_window         = "6h"        # window for attempt counting
 stage_cooldown               = "45m"       # cooldown between stage retries
 force_spark_at_weekly_usage_pct = 0        # force fast tier above this weekly budget %
@@ -449,7 +441,7 @@ See [api-security.md](../api/api-security.md) for full security documentation.
 
 ## `[workflows]` — Stage-Based Workflows
 
-Define multi-stage execution pipelines triggered by bead labels or types.
+Define multi-stage execution pipelines triggered by morsel labels or types.
 
 ```toml
 [workflows.security-review]
@@ -502,7 +494,7 @@ timezone          = "Australia/Brisbane"
 
 [projects.chum]
 enabled       = true
-beads_dir     = ".beads"
+morsels_dir     = ".morsels"
 workspace     = "/home/user/projects/chum"
 priority      = 1
 matrix_room   = "#chum-dev"
@@ -549,10 +541,10 @@ premium  = ["opus"]
 
 [dispatch.routing]
 fast_backend     = "headless_cli"
-balanced_backend = "tmux"
-premium_backend  = "tmux"
+balanced_backend = "headless_cli"
+premium_backend  = "headless_cli"
 comms_backend    = "headless_cli"
-retry_backend    = "tmux"
+retry_backend    = "headless_cli"
 
 [dispatch.timeouts]
 fast     = "15m"
@@ -565,15 +557,11 @@ branch_cleanup_days        = 7
 merge_strategy             = "squash"
 max_concurrent_per_project = 3
 
-[dispatch.tmux]
-history_limit  = 50000
-session_prefix = "chum-"
-
 [dispatch.cost_control]
 enabled                  = true
 spark_first              = true
 daily_cost_cap_usd       = 50.0
-per_bead_cost_cap_usd    = 10.0
+per_morsel_cost_cap_usd    = 10.0
 pause_on_churn           = true
 churn_pause_window       = "60m"
 churn_pause_failure_threshold = 12

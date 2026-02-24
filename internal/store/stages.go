@@ -6,8 +6,7 @@ import (
 	"time"
 )
 
-
-// StageHistoryEntry tracks per-stage lifecycle for a bead workflow.
+// StageHistoryEntry tracks per-stage lifecycle for a morsel workflow.
 type StageHistoryEntry struct {
 	Stage       string     `json:"stage"`
 	Status      string     `json:"status"`
@@ -16,11 +15,11 @@ type StageHistoryEntry struct {
 	DispatchID  int64      `json:"dispatch_id,omitempty"`
 }
 
-// BeadStage is the persisted workflow stage state for a bead in a project.
-type BeadStage struct {
+// MorselStage is the persisted workflow stage state for a morsel in a project.
+type MorselStage struct {
 	ID           int64
 	Project      string
-	BeadID       string
+	MorselID     string
 	Workflow     string
 	CurrentStage string
 	StageIndex   int
@@ -29,28 +28,29 @@ type BeadStage struct {
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 }
-// GetBeadStage retrieves the stage state for a specific bead in a project.
-func (s *Store) GetBeadStage(project, beadID string) (*BeadStage, error) {
-	var stage BeadStage
+
+// GetMorselStage retrieves the stage state for a specific morsel in a project.
+func (s *Store) GetMorselStage(project, morselID string) (*MorselStage, error) {
+	var stage MorselStage
 	var historyJSON string
 
 	err := s.db.QueryRow(`
-		SELECT id, project, bead_id, workflow, current_stage, stage_index, 
+		SELECT id, project, morsel_id, workflow, current_stage, stage_index, 
 		       total_stages, stage_history, created_at, updated_at 
-		FROM bead_stages 
-		WHERE project = ? AND bead_id = ?`,
-		project, beadID,
+		FROM morsel_stages 
+		WHERE project = ? AND morsel_id = ?`,
+		project, morselID,
 	).Scan(
-		&stage.ID, &stage.Project, &stage.BeadID, &stage.Workflow,
+		&stage.ID, &stage.Project, &stage.MorselID, &stage.Workflow,
 		&stage.CurrentStage, &stage.StageIndex, &stage.TotalStages,
 		&historyJSON, &stage.CreatedAt, &stage.UpdatedAt,
 	)
 
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("store: bead stage not found for project=%s, bead=%s", project, beadID)
+			return nil, fmt.Errorf("store: morsel stage not found for project=%s, morsel=%s", project, morselID)
 		}
-		return nil, fmt.Errorf("store: get bead stage: %w", err)
+		return nil, fmt.Errorf("store: get morsel stage: %w", err)
 	}
 
 	// Parse stage history JSON
@@ -62,96 +62,96 @@ func (s *Store) GetBeadStage(project, beadID string) (*BeadStage, error) {
 	return &stage, nil
 }
 
-// UpsertBeadStage creates or updates a bead stage using composite project+bead_id key.
-func (s *Store) UpsertBeadStage(stage *BeadStage) error {
+// UpsertMorselStage creates or updates a morsel stage using composite project+morsel_id key.
+func (s *Store) UpsertMorselStage(stage *MorselStage) error {
 	historyJSON := "[]" // Placeholder for stage history JSON serialization
 
 	_, err := s.db.Exec(`
-		INSERT INTO bead_stages (project, bead_id, workflow, current_stage, stage_index, 
+		INSERT INTO morsel_stages (project, morsel_id, workflow, current_stage, stage_index, 
 		                        total_stages, stage_history, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
-		ON CONFLICT (project, bead_id) DO UPDATE SET
+		ON CONFLICT (project, morsel_id) DO UPDATE SET
 			workflow = excluded.workflow,
 			current_stage = excluded.current_stage,
 			stage_index = excluded.stage_index,
 			total_stages = excluded.total_stages,
 			stage_history = excluded.stage_history,
 			updated_at = datetime('now')`,
-		stage.Project, stage.BeadID, stage.Workflow, stage.CurrentStage,
+		stage.Project, stage.MorselID, stage.Workflow, stage.CurrentStage,
 		stage.StageIndex, stage.TotalStages, historyJSON,
 	)
 
 	if err != nil {
-		return fmt.Errorf("store: upsert bead stage: %w", err)
+		return fmt.Errorf("store: upsert morsel stage: %w", err)
 	}
 
 	return nil
 }
 
-// UpdateBeadStageProgress advances a bead to the next stage in its workflow.
-func (s *Store) UpdateBeadStageProgress(project, beadID, newStage string, stageIndex, totalStages int, dispatchID int64) error {
+// UpdateMorselStageProgress advances a morsel to the next stage in its workflow.
+func (s *Store) UpdateMorselStageProgress(project, morselID, newStage string, stageIndex, totalStages int, dispatchID int64) error {
 	_, err := s.db.Exec(`
-		UPDATE bead_stages 
+		UPDATE morsel_stages 
 		SET current_stage = ?, stage_index = ?, total_stages = ?, updated_at = datetime('now')
-		WHERE project = ? AND bead_id = ?`,
-		newStage, stageIndex, totalStages, project, beadID,
+		WHERE project = ? AND morsel_id = ?`,
+		newStage, stageIndex, totalStages, project, morselID,
 	)
 
 	if err != nil {
-		return fmt.Errorf("store: update bead stage progress: %w", err)
+		return fmt.Errorf("store: update morsel stage progress: %w", err)
 	}
 
 	return nil
 }
 
-// ListBeadStagesForProject retrieves all bead stages for a specific project.
-func (s *Store) ListBeadStagesForProject(project string) ([]*BeadStage, error) {
+// ListMorselStagesForProject retrieves all morsel stages for a specific project.
+func (s *Store) ListMorselStagesForProject(project string) ([]*MorselStage, error) {
 	rows, err := s.db.Query(`
-		SELECT id, project, bead_id, workflow, current_stage, stage_index, 
+		SELECT id, project, morsel_id, workflow, current_stage, stage_index, 
 		       total_stages, stage_history, created_at, updated_at 
-		FROM bead_stages 
+		FROM morsel_stages 
 		WHERE project = ?
 		ORDER BY updated_at DESC`,
 		project,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("store: list bead stages for project: %w", err)
+		return nil, fmt.Errorf("store: list morsel stages for project: %w", err)
 	}
 	defer rows.Close()
 
-	var stages []*BeadStage
+	var stages []*MorselStage
 	for rows.Next() {
-		var stage BeadStage
+		var stage MorselStage
 		var historyJSON string
 
 		err := rows.Scan(
-			&stage.ID, &stage.Project, &stage.BeadID, &stage.Workflow,
+			&stage.ID, &stage.Project, &stage.MorselID, &stage.Workflow,
 			&stage.CurrentStage, &stage.StageIndex, &stage.TotalStages,
 			&historyJSON, &stage.CreatedAt, &stage.UpdatedAt,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("store: scan bead stage: %w", err)
+			return nil, fmt.Errorf("store: scan morsel stage: %w", err)
 		}
 
 		stages = append(stages, &stage)
 	}
 
 	if err = rows.Err(); err != nil {
-		return nil, fmt.Errorf("store: list bead stages rows: %w", err)
+		return nil, fmt.Errorf("store: list morsel stages rows: %w", err)
 	}
 
 	return stages, nil
 }
 
-// DeleteBeadStage removes a bead stage record for a specific project and bead.
-func (s *Store) DeleteBeadStage(project, beadID string) error {
+// DeleteMorselStage removes a morsel stage record for a specific project and morsel.
+func (s *Store) DeleteMorselStage(project, morselID string) error {
 	result, err := s.db.Exec(`
-		DELETE FROM bead_stages 
-		WHERE project = ? AND bead_id = ?`,
-		project, beadID,
+		DELETE FROM morsel_stages 
+		WHERE project = ? AND morsel_id = ?`,
+		project, morselID,
 	)
 	if err != nil {
-		return fmt.Errorf("store: delete bead stage: %w", err)
+		return fmt.Errorf("store: delete morsel stage: %w", err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
@@ -160,41 +160,41 @@ func (s *Store) DeleteBeadStage(project, beadID string) error {
 	}
 
 	if rowsAffected == 0 {
-		return fmt.Errorf("store: bead stage not found for project=%s, bead=%s", project, beadID)
+		return fmt.Errorf("store: morsel stage not found for project=%s, morsel=%s", project, morselID)
 	}
 
 	return nil
 }
 
-// GetBeadStagesByBeadIDOnly is a legacy method that checks for cross-project ambiguity.
-// Returns an error if multiple projects have the same bead_id to prevent accidental overwrites.
-func (s *Store) GetBeadStagesByBeadIDOnly(beadID string) ([]*BeadStage, error) {
+// GetMorselStagesByMorselIDOnly is a legacy method that checks for cross-project ambiguity.
+// Returns an error if multiple projects have the same morsel_id to prevent accidental overwrites.
+func (s *Store) GetMorselStagesByMorselIDOnly(morselID string) ([]*MorselStage, error) {
 	rows, err := s.db.Query(`
-		SELECT id, project, bead_id, workflow, current_stage, stage_index, 
+		SELECT id, project, morsel_id, workflow, current_stage, stage_index, 
 		       total_stages, stage_history, created_at, updated_at 
-		FROM bead_stages 
-		WHERE bead_id = ?`,
-		beadID,
+		FROM morsel_stages 
+		WHERE morsel_id = ?`,
+		morselID,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("store: get bead stages by bead_id: %w", err)
+		return nil, fmt.Errorf("store: get morsel stages by morsel_id: %w", err)
 	}
 	defer rows.Close()
 
-	var stages []*BeadStage
+	var stages []*MorselStage
 	projectsSeen := make(map[string]bool)
 
 	for rows.Next() {
-		var stage BeadStage
+		var stage MorselStage
 		var historyJSON string
 
 		err := rows.Scan(
-			&stage.ID, &stage.Project, &stage.BeadID, &stage.Workflow,
+			&stage.ID, &stage.Project, &stage.MorselID, &stage.Workflow,
 			&stage.CurrentStage, &stage.StageIndex, &stage.TotalStages,
 			&historyJSON, &stage.CreatedAt, &stage.UpdatedAt,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("store: scan bead stage: %w", err)
+			return nil, fmt.Errorf("store: scan morsel stage: %w", err)
 		}
 
 		projectsSeen[stage.Project] = true
@@ -202,7 +202,7 @@ func (s *Store) GetBeadStagesByBeadIDOnly(beadID string) ([]*BeadStage, error) {
 	}
 
 	if err = rows.Err(); err != nil {
-		return nil, fmt.Errorf("store: get bead stages by bead_id rows: %w", err)
+		return nil, fmt.Errorf("store: get morsel stages by morsel_id rows: %w", err)
 	}
 
 	// Check for cross-project ambiguity
@@ -211,7 +211,7 @@ func (s *Store) GetBeadStagesByBeadIDOnly(beadID string) ([]*BeadStage, error) {
 		for project := range projectsSeen {
 			projects = append(projects, project)
 		}
-		return nil, fmt.Errorf("store: ambiguous bead_id=%s found in multiple projects: %v. Use project-specific lookup to avoid collisions", beadID, projects)
+		return nil, fmt.Errorf("store: ambiguous morsel_id=%s found in multiple projects: %v. Use project-specific lookup to avoid collisions", morselID, projects)
 	}
 
 	return stages, nil

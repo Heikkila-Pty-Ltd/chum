@@ -1,16 +1,17 @@
 package temporal
 
 import (
+	"fmt"
 	"time"
 
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
 )
 
-// ContinuousLearnerWorkflow runs after every bead completion to extract and store lessons.
+// ContinuousLearnerWorkflow runs after every morsel completion to extract and store lessons.
 // Spawned as a fire-and-forget child workflow (ParentClosePolicy: ABANDON).
 //
-// Pipeline: ExtractLessons -> StoreLessons -> GenerateSemgrepRules
+// Pipeline: ExtractLessons -> StoreLessons -> GenerateSemgrepRules -> SynthesizeCLAUDE.md -> CalcifyPattern
 //
 // All steps are non-fatal. Learner failure never blocks the main execution loop.
 func ContinuousLearnerWorkflow(ctx workflow.Context, req LearnerRequest) error {
@@ -23,14 +24,14 @@ func ContinuousLearnerWorkflow(ctx workflow.Context, req LearnerRequest) error {
 
 	var a *Activities
 
-	// Step 1: Extract lessons from the completed bead
+	// Step 1: Extract lessons from the completed morsel
 	extractOpts := workflow.ActivityOptions{
 		StartToCloseTimeout: 3 * time.Minute,
 		RetryPolicy: &temporal.RetryPolicy{
-			MaximumAttempts:        2,
-			InitialInterval:       5 * time.Second,
-			BackoffCoefficient:    2.0,
-			MaximumInterval:       30 * time.Second,
+			MaximumAttempts:    2,
+			InitialInterval:    5 * time.Second,
+			BackoffCoefficient: 2.0,
+			MaximumInterval:    30 * time.Second,
 		},
 	}
 	extractCtx := workflow.WithActivityOptions(ctx, extractOpts)
@@ -80,10 +81,49 @@ func ContinuousLearnerWorkflow(ctx workflow.Context, req LearnerRequest) error {
 		logger.Warn(OctopusPrefix+" CLAUDE.md synthesis failed (non-fatal)", "error", err)
 	}
 
+	// Step 5: Calcify Repeated Patterns into Deterministic Scripts (Margin Protection)
+	// If the LLM has successfully solved this morsel's type enough consecutive times,
+	// generate a hardcoded script to bypass the LLM entirely on the next run.
+	// This is the stochastic→deterministic migration: we fire the LLM.
+	calcifyOpts := workflow.ActivityOptions{
+		StartToCloseTimeout: 3 * time.Minute,
+		RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 1},
+	}
+	calcifyCtx := workflow.WithActivityOptions(ctx, calcifyOpts)
+	var calcified bool
+	if err := workflow.ExecuteActivity(calcifyCtx, a.CalcifyPatternActivity, req).Get(ctx, &calcified); err != nil {
+		logger.Warn(OctopusPrefix+" Pattern calcification failed (non-fatal)", "error", err)
+	} else if calcified {
+		logger.Info(OctopusPrefix+" Pattern calcified into shadow script", "TaskID", req.TaskID)
+	}
+
+	// Step 6: Commit and Push all learner outputs
+	// Without this, the learning is ephemeral and gets wiped out on the next checkout.
+	commitOpts := workflow.ActivityOptions{
+		StartToCloseTimeout: 1 * time.Minute,
+		RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 3},
+	}
+	commitCtx := workflow.WithActivityOptions(ctx, commitOpts)
+	if err := workflow.ExecuteActivity(commitCtx, a.CommitAndPushLearnerOutputsActivity, req.WorkDir, req.TaskID).Get(ctx, nil); err != nil {
+		logger.Warn(OctopusPrefix+" Failed to commit and push learner outputs", "error", err)
+	}
+
 	logger.Info(OctopusPrefix+" ContinuousLearner complete",
 		"TaskID", req.TaskID,
 		"Lessons", len(lessons),
 		"Rules", len(rules),
 	)
+
+	// Fire-and-forget notification.
+	notifyOpts := workflow.ActivityOptions{
+		StartToCloseTimeout: 5 * time.Second,
+		RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 1},
+	}
+	nCtx := workflow.WithActivityOptions(ctx, notifyOpts)
+	_ = workflow.ExecuteActivity(nCtx, a.NotifyActivity, NotifyRequest{
+		Event: "learner", TaskID: req.TaskID,
+		Extra: map[string]string{"lessons": fmt.Sprintf("%d", len(lessons))},
+	}).Get(ctx, nil)
+
 	return nil
 }

@@ -2,6 +2,8 @@
 
 This guide is for LLM agents operating CHUM safely and effectively.
 
+Use [`docs/api/ENDPOINTS.md`](./ENDPOINTS.md) for the current active API route matrix before issuing any control-plane calls.
+
 ## Goal
 
 Use CHUM as the orchestration control plane for development work:
@@ -10,14 +12,14 @@ Use CHUM as the orchestration control plane for development work:
 2. Control scheduler behavior.
 3. Inspect and triage dispatches.
 4. Trigger retries/cancellations when appropriate.
-5. Feed findings back into Beads.
+5. Feed findings back into Morsels.
 
 ## Operating Model
 
 Treat CHUM as:
 
 - Source of execution truth: dispatch and health state in SQLite/API.
-- Not source of product truth: requirements and backlog remain in Beads.
+- Not source of product truth: requirements and backlog remain in Morsels.
 - Policy executor: selection and retries are scheduler-managed.
 
 ## Fast Start
@@ -67,10 +69,10 @@ Resume:
 curl -s -X POST http://127.0.0.1:8900/scheduler/resume
 ```
 
-## B) Investigate a Bead Execution
+## B) Investigate a Morsel Execution
 
 ```bash
-curl -s http://127.0.0.1:8900/dispatches/<bead_id>
+curl -s http://127.0.0.1:8900/dispatches/<morsel_id>
 ```
 
 Inspect:
@@ -79,10 +81,10 @@ Inspect:
 - `failure_category`, `failure_summary`
 - `output_tail`
 
-Then correlate with Beads:
+Then correlate with Morsels:
 
 ```bash
-bd show <bead_id>
+bd show <morsel_id>
 ```
 
 ## C) Retry a Failed Dispatch
@@ -121,7 +123,7 @@ Use recommendations as decision support, not auto-apply authority.
 1. Prefer `observe -> diagnose -> act` sequence.
 2. Do not repeatedly retry the same failure without new evidence.
 3. Pause scheduler before disruptive operations.
-4. Keep Beads as canonical work narrative; log triage findings there.
+4. Keep Morsels as canonical work narrative; log triage findings there.
 5. Respect ownership locks and in-progress assignments.
 6. Escalate instead of forcing through persistent unknown failures.
 
@@ -134,7 +136,7 @@ Use recommendations as decision support, not auto-apply authority.
 - `rate_limited`:
   - let scheduler/provider fallback handle it; avoid manual churn.
 - `timeout`:
-  - inspect prompt scope and backend; split bead if oversized.
+  - inspect prompt scope and backend; split morsel if oversized.
 - `session_disappeared` / unknown exit:
   - treat as infra issue first, not task-completion.
 
@@ -151,14 +153,14 @@ curl -s -X POST http://127.0.0.1:8900/scheduler/pause
 curl -s -X POST http://127.0.0.1:8900/scheduler/resume
 
 # Dispatch triage
-curl -s http://127.0.0.1:8900/dispatches/<bead_id>
+curl -s http://127.0.0.1:8900/dispatches/<morsel_id>
 curl -s -X POST http://127.0.0.1:8900/dispatches/<dispatch_id>/retry
 curl -s -X POST http://127.0.0.1:8900/dispatches/<dispatch_id>/cancel
 
-# Beads context
+# Morsels context
 bd ready
-bd show <bead_id>
-bd update <bead_id> --notes "triage findings"
+bd show <morsel_id>
+bd update <morsel_id> --notes "triage findings"
 ```
 
 ## Prompting Guidance for External LLM Controllers
@@ -168,7 +170,7 @@ When directing an LLM to operate CHUM, use explicit constraints:
 - State objective and time horizon.
 - Require API evidence before each action.
 - Require a rollback/safe-state step (`pause`/`resume` discipline).
-- Require Beads note updates for every intervention.
+- Require Morsels note updates for every intervention.
 - Disallow blind retry loops.
 
 Example control prompt:
@@ -177,7 +179,7 @@ Example control prompt:
 Operate CHUM for 30 minutes as reliability steward.
 Every action must cite current API evidence.
 Pause scheduler before risky changes.
-Update bead notes for all interventions.
+Update morsel notes for all interventions.
 Never retry the same failed dispatch more than once without new evidence.
 ```
 
@@ -189,4 +191,3 @@ When packaging CHUM for broader use:
 2. Add a stable API version policy.
 3. Add authn/authz in front of control endpoints.
 4. Publish incident response runbooks aligned with these playbooks.
-

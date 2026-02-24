@@ -28,7 +28,7 @@ func TestAllocationDecision(t *testing.T) {
 				AllocatedCapacity: 60,
 				CapacityPercent:   60.0,
 				ProviderTier:      "premium",
-				PriorityBeads:     []string{"bead-1", "bead-2"},
+				PriorityMorsels:   []string{"morsel-1", "morsel-2"},
 				Notes:             "Critical deadline",
 			},
 			"project-b": {
@@ -36,7 +36,7 @@ func TestAllocationDecision(t *testing.T) {
 				AllocatedCapacity: 40,
 				CapacityPercent:   40.0,
 				ProviderTier:      "balanced",
-				PriorityBeads:     []string{"bead-3"},
+				PriorityMorsels:   []string{"morsel-3"},
 				Notes:             "Maintenance work",
 			},
 		},
@@ -44,7 +44,7 @@ func TestAllocationDecision(t *testing.T) {
 			{
 				FromProject: "project-b",
 				ToProject:   "project-a",
-				BeadID:      "bead-1",
+				MorselID:    "morsel-1",
 				Priority:    "critical",
 				Description: "Needs API endpoint",
 			},
@@ -146,7 +146,7 @@ func TestAllocationDecision(t *testing.T) {
 	// Test listing allocations
 	start := now.Add(-1 * time.Hour)
 	end := now.Add(1 * time.Hour)
-	
+
 	allocations, err := store.ListAllocationDecisions(start, end)
 	if err != nil {
 		t.Fatalf("failed to list allocations: %v", err)

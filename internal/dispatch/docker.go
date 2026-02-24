@@ -131,7 +131,6 @@ func (d *DockerDispatcher) Dispatch(ctx context.Context, agent string, prompt st
 	d.metadata[sessionName] = fmt.Sprintf("agent=%s,provider=%s", agent, provider)
 	d.mu.Unlock()
 
-
 	return handle, nil
 }
 
@@ -140,12 +139,16 @@ func (d *DockerDispatcher) IsAlive(handle int) bool {
 	d.mu.Lock()
 	sessionName, ok := d.sessions[handle]
 	d.mu.Unlock()
-	if !ok || sessionName == "" { return false }
+	if !ok || sessionName == "" {
+		return false
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	inspect, err := d.cli.ContainerInspect(ctx, sessionName)
-	if err != nil { return false }
+	if err != nil {
+		return false
+	}
 	return inspect.State.Running
 }
 
@@ -154,7 +157,9 @@ func (d *DockerDispatcher) Kill(handle int) error {
 	d.mu.Lock()
 	sessionName, ok := d.sessions[handle]
 	d.mu.Unlock()
-	if !ok || sessionName == "" { return fmt.Errorf("invalid handle") }
+	if !ok || sessionName == "" {
+		return fmt.Errorf("invalid handle")
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -184,12 +189,16 @@ func (d *DockerDispatcher) GetProcessState(handle int) ProcessState {
 	d.mu.Lock()
 	sessionName, ok := d.sessions[handle]
 	d.mu.Unlock()
-	if !ok || sessionName == "" { return ProcessState{State: "unknown", ExitCode: -1} }
+	if !ok || sessionName == "" {
+		return ProcessState{State: "unknown", ExitCode: -1}
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	inspect, err := d.cli.ContainerInspect(ctx, sessionName)
-	if err != nil { return ProcessState{State: "unknown", ExitCode: -1} }
+	if err != nil {
+		return ProcessState{State: "unknown", ExitCode: -1}
+	}
 
 	state := ProcessState{ExitCode: inspect.State.ExitCode}
 	if inspect.State.Running {
@@ -205,12 +214,16 @@ func (d *DockerDispatcher) GetProcessState(handle int) ProcessState {
 // CaptureOutput retrieves combined stdout/stderr logs from a named container.
 func CaptureOutput(sessionName string) (string, error) {
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
-	if err != nil { return "", err }
+	if err != nil {
+		return "", err
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	logs, err := cli.ContainerLogs(ctx, sessionName, container.LogsOptions{ShowStdout: true, ShowStderr: true})
-	if err != nil { return "", err }
+	if err != nil {
+		return "", err
+	}
 	defer logs.Close()
 
 	var stdout, stderr bytes.Buffer
@@ -221,7 +234,9 @@ func CaptureOutput(sessionName string) (string, error) {
 // CleanDeadSessions removes all stopped chum-agent containers and their context dirs.
 func CleanDeadSessions() int {
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
-	if err != nil { return 0 }
+	if err != nil {
+		return 0
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -230,13 +245,18 @@ func CleanDeadSessions() int {
 	for _, c := range containers {
 		isChum := false
 		for _, name := range c.Names {
-			if strings.HasPrefix(name, "/chum-agent-") { isChum = true; break }
+			if strings.HasPrefix(name, "/chum-agent-") {
+				isChum = true
+				break
+			}
 		}
 		if isChum && c.State != "running" {
 			cli.ContainerRemove(ctx, c.ID, container.RemoveOptions{Force: true, RemoveVolumes: true})
 			killed++
 			for _, name := range c.Names {
-				if strings.HasPrefix(name, "/") { os.RemoveAll(filepath.Join(os.TempDir(), fmt.Sprintf("chum-ctx-%s", name[1:]))) }
+				if strings.HasPrefix(name, "/") {
+					os.RemoveAll(filepath.Join(os.TempDir(), fmt.Sprintf("chum-ctx-%s", name[1:])))
+				}
 			}
 		}
 	}

@@ -18,6 +18,7 @@ type SafetyBlock struct {
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 }
+
 // GetBlock returns a persisted safety block by scope and block type.
 func (s *Store) GetBlock(scope, blockType string) (*SafetyBlock, error) {
 	scope = strings.TrimSpace(scope)
@@ -188,11 +189,11 @@ func (s *Store) GetBlockCountsByType() (map[string]int, error) {
 	return counts, nil
 }
 
-// IsBeadValidating returns whether a bead is currently marked validating.
-func (s *Store) IsBeadValidating(beadID string) (bool, error) {
-	block, err := s.GetBlock(strings.TrimSpace(beadID), "bead_validating")
+// IsMorselValidating returns whether a morsel is currently marked validating.
+func (s *Store) IsMorselValidating(morselID string) (bool, error) {
+	block, err := s.GetBlock(strings.TrimSpace(morselID), "morsel_validating")
 	if err != nil {
-		return false, fmt.Errorf("store: check bead validating: %w", err)
+		return false, fmt.Errorf("store: check morsel validating: %w", err)
 	}
 	if block == nil {
 		return false, nil
@@ -200,12 +201,12 @@ func (s *Store) IsBeadValidating(beadID string) (bool, error) {
 	return time.Now().Before(block.BlockedUntil), nil
 }
 
-// SetBeadValidating sets a validating block for the given bead until the provided time.
-func (s *Store) SetBeadValidating(beadID string, until time.Time) error {
-	return s.SetBlock(strings.TrimSpace(beadID), "bead_validating", until, "bead validating")
+// SetMorselValidating sets a validating block for the given morsel until the provided time.
+func (s *Store) SetMorselValidating(morselID string, until time.Time) error {
+	return s.SetBlock(strings.TrimSpace(morselID), "morsel_validating", until, "morsel validating")
 }
 
-// ClearBeadValidating removes the validating block for the given bead.
-func (s *Store) ClearBeadValidating(beadID string) error {
-	return s.RemoveBlock(strings.TrimSpace(beadID), "bead_validating")
+// ClearMorselValidating removes the validating block for the given morsel.
+func (s *Store) ClearMorselValidating(morselID string) error {
+	return s.RemoveBlock(strings.TrimSpace(morselID), "morsel_validating")
 }

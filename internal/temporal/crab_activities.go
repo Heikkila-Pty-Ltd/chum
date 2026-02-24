@@ -34,7 +34,7 @@ func (a *Activities) ParsePlanActivity(ctx context.Context, req CrabDecompositio
 // ClarifyGapsActivity performs 3-tier clarification to resolve ambiguities
 // in the plan before decomposition.
 //
-// Tier 1 — Self-answer: query lessons DB and existing beads for context.
+// Tier 1 — Self-answer: query lessons DB and existing morsels for context.
 // Tier 2 — Ask Chief: use LLM to resolve remaining gaps.
 // Tier 3 — Escalate: flag questions that need human input.
 func (a *Activities) ClarifyGapsActivity(ctx context.Context, req CrabDecompositionRequest, plan ParsedPlan) (*ClarificationResult, error) {
@@ -43,10 +43,10 @@ func (a *Activities) ClarifyGapsActivity(ctx context.Context, req CrabDecomposit
 
 	result := &ClarificationResult{}
 
-	// --- Tier 1: Self-answer from lessons DB and existing beads ---
+	// --- Tier 1: Self-answer from lessons DB and existing morsels ---
 	activity.RecordHeartbeat(ctx, "tier-1-self-answer")
 
-	var existingBeadsSummary strings.Builder
+	var existingMorselsSummary strings.Builder
 	if a.DAG != nil {
 		allTasks, err := a.DAG.ListTasks(ctx, req.Project)
 		if err != nil {
@@ -55,7 +55,7 @@ func (a *Activities) ClarifyGapsActivity(ctx context.Context, req CrabDecomposit
 			for i := range allTasks {
 				t := &allTasks[i]
 				if t.Status == "open" {
-					existingBeadsSummary.WriteString(fmt.Sprintf("- [%s] %s: %s\n", t.Type, t.ID, t.Title))
+					existingMorselsSummary.WriteString(fmt.Sprintf("- [%s] %s: %s\n", t.Type, t.ID, t.Title))
 				}
 			}
 		}
@@ -122,14 +122,14 @@ CONTEXT: %s
 ALREADY RESOLVED:
 %s
 
-EXISTING BEADS IN PROJECT:
+EXISTING MORSELS IN PROJECT:
 %s
 
 UNRESOLVED SCOPE ITEMS (need clarification):
 %s
 
 For each unresolved item, either:
-1. Provide a clear answer based on context, resolved items, and existing beads
+1. Provide a clear answer based on context, resolved items, and existing morsels
 2. If you cannot answer, respond with "NEEDS_HUMAN: <specific question>"
 
 Respond with ONLY a JSON array:
@@ -143,7 +143,7 @@ Respond with ONLY a JSON array:
 		plan.Title,
 		truncate(plan.Context, 2000),
 		resolvedContext.String(),
-		truncate(existingBeadsSummary.String(), 2000),
+		truncate(existingMorselsSummary.String(), 2000),
 		ambiguityList.String(),
 	)
 
@@ -233,8 +233,8 @@ func (a *Activities) DecomposeActivity(ctx context.Context, req CrabDecompositio
 		clarificationContext.WriteString(fmt.Sprintf("\nHuman clarifications:\n%s\n", clarifications.HumanAnswers))
 	}
 
-	// Build existing beads summary.
-	var existingBeads strings.Builder
+	// Build existing morsels summary.
+	var existingMorsels strings.Builder
 	if a.DAG != nil {
 		allTasks, err := a.DAG.ListTasks(ctx, req.Project)
 		if err != nil {
@@ -244,10 +244,10 @@ func (a *Activities) DecomposeActivity(ctx context.Context, req CrabDecompositio
 			for i := range allTasks {
 				t := &allTasks[i]
 				if t.Status == "open" {
-					existingBeads.WriteString(fmt.Sprintf("- [%s|P%d] %s: %s\n", t.Type, t.Priority, t.ID, t.Title))
+					existingMorsels.WriteString(fmt.Sprintf("- [%s|P%d] %s: %s\n", t.Type, t.Priority, t.ID, t.Title))
 					openCount++
 					if openCount >= 30 {
-						existingBeads.WriteString(fmt.Sprintf("... and more open tasks\n"))
+						existingMorsels.WriteString(fmt.Sprintf("... and more open tasks\n"))
 						break
 					}
 				}
@@ -284,7 +284,7 @@ OUT OF SCOPE:
 CLARIFICATIONS:
 %s
 
-EXISTING BEADS IN PROJECT:
+EXISTING MORSELS IN PROJECT:
 %s
 
 Rules:
@@ -293,7 +293,7 @@ Rules:
 3. Morsels should be 15-120 minutes of work
 4. Include file hints where possible
 5. Specify dependencies between morsels (by index)
-6. Do NOT duplicate work already covered by existing beads
+6. Do NOT duplicate work already covered by existing morsels
 
 Respond with ONLY a JSON array of whales:
 [
@@ -322,7 +322,7 @@ Respond with ONLY a JSON array of whales:
 		acList.String(),
 		oosList.String(),
 		clarificationContext.String(),
-		truncate(existingBeads.String(), 2000),
+		truncate(existingMorsels.String(), 2000),
 	)
 
 	activity.RecordHeartbeat(ctx, "calling-llm-decompose")
@@ -338,9 +338,10 @@ Respond with ONLY a JSON array of whales:
 		return nil, fmt.Errorf("decomposition did not produce valid JSON. Output:\n%s", truncate(cliResult.Output, 500))
 	}
 
+	sanitized := sanitizeLLMJSON(jsonStr)
 	var whales []CandidateWhale
-	if err := json.Unmarshal([]byte(jsonStr), &whales); err != nil {
-		return nil, fmt.Errorf("failed to parse decomposition JSON: %w\nRaw: %s", err, truncate(jsonStr, 500))
+	if err := json.Unmarshal([]byte(sanitized), &whales); err != nil {
+		return nil, fmt.Errorf("failed to parse decomposition JSON: %w\nRaw: %s", err, truncate(sanitized, 500))
 	}
 
 	if len(whales) == 0 {

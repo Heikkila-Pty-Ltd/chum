@@ -264,8 +264,8 @@ func TestParseScrumCommandRecognizesSupportedCommands(t *testing.T) {
 	if priorityCmd.priority != 2 {
 		t.Fatalf("priority = %d, want 2", priorityCmd.priority)
 	}
-	if priorityCmd.beadID != "chum-1" {
-		t.Fatalf("beadID = %q, want chum-1", priorityCmd.beadID)
+	if priorityCmd.morselID != "chum-1" {
+		t.Fatalf("morselID = %q, want chum-1", priorityCmd.morselID)
 	}
 
 	if _, isCommand, err = parseScrumCommand("create task \"Refine docs\" \"Add docs for matrix\""); !isCommand || err != nil {
@@ -287,7 +287,7 @@ func TestParseScrumCommandReturnsSpecificGuidance(t *testing.T) {
 		want    string
 	}{
 		{"status now", "Usage: status"},
-		{"priority chum-1", "Usage: priority <bead-id> <p0|p1|p2|p3|p4>"},
+		{"priority chum-1", "Usage: priority <morsel-id> <p0|p1|p2|p3|p4>"},
 		{"cancel bad", "positive dispatch id"},
 		{"create task \"Only title\"", "create task command requires quoted title and description"},
 	}
@@ -310,11 +310,11 @@ func TestPollOnceRoutesScrumStatusCommandToMatrixSender(t *testing.T) {
 	sender := &fakeSender{}
 	store := &fakeStore{
 		running: []store.Dispatch{
-			{Project: "project-a", BeadID: "chum-1"},
+			{Project: "project-a", MorselID: "chum-1"},
 		},
 		completed: []store.Dispatch{
-			{BeadID: "chum-2", DispatchedAt: time.Now().UTC().Add(-time.Minute)},
-			{BeadID: "chum-3", DispatchedAt: time.Now().UTC().Add(-2 * time.Minute)},
+			{MorselID: "chum-2", DispatchedAt: time.Now().UTC().Add(-time.Minute)},
+			{MorselID: "chum-3", DispatchedAt: time.Now().UTC().Add(-2 * time.Minute)},
 		},
 	}
 

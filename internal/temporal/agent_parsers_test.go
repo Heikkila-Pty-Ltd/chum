@@ -160,9 +160,9 @@ func TestParseGeminiOutput_MultipleModels(t *testing.T) {
 	}`
 
 	result := parseGeminiOutput(raw)
-	require.Equal(t, 1300, result.Tokens.InputTokens)      // 500 + 800
-	require.Equal(t, 950, result.Tokens.OutputTokens)       // (300+20) + (600+30)
-	require.Equal(t, 300, result.Tokens.CacheReadTokens)    // 100 + 200
+	require.Equal(t, 1300, result.Tokens.InputTokens)    // 500 + 800
+	require.Equal(t, 950, result.Tokens.OutputTokens)    // (300+20) + (600+30)
+	require.Equal(t, 300, result.Tokens.CacheReadTokens) // 100 + 200
 }
 
 func TestParseGeminiOutput_NoModels(t *testing.T) {

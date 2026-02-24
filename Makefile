@@ -43,8 +43,9 @@ OPS_SCRIPTS := $(SCRIPT_DIR)/ops
 
 # Source files
 SRC_FILES := $(shell find . -type f -name '*.go' -not -path './vendor/*')
+PRE_DEPLOY_WORKFLOW_QUERY := WorkflowType = 'ChumAgentWorkflow' AND ExecutionStatus = 'Running'
 
-.PHONY: all help build build-all install clean test test-race test-race-ci lint fmt vet
+.PHONY: all help build build-all install clean test test-race test-race-ci lint fmt vet pre-deploy
 .PHONY: service-install service-start service-stop service-logs
 .PHONY: release snapshot docker
 
@@ -59,6 +60,11 @@ help: ## Display this help message
 
 build: $(SRC_FILES) ## Build chum binary
 	$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BINARY_NAME) ./cmd/chum/
+	@# Compile tests too — 'go build' skips _test.go files, so signature
+	@# breaks in tests are invisible until DoD. This adds ~2s but prevents
+	@# the entire pipeline from blocking on a broken test fixture.
+	$(GO) test -run=^$$ -count=1 ./... >/dev/null 2>&1 || \
+		(echo "⚠️  Tests failed to compile — check _test.go files" && exit 1)
 
 build-all: ## Build all binaries (chum + tools)
 	$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BINARY_NAME) ./cmd/chum/
@@ -136,7 +142,10 @@ service-logs: ## View systemd service logs
 
 ##@ Release
 
-release: ## Create a new release (requires VERSION)
+pre-deploy: build ## Terminate running agent workflows before deployment
+	@./$(BINARY_NAME) admin terminate --query "$(PRE_DEPLOY_WORKFLOW_QUERY)"
+
+release: pre-deploy ## Create a new release (requires VERSION)
 ifndef VERSION
 	$(error VERSION is required. Usage: make release VERSION=x.y.z)
 endif

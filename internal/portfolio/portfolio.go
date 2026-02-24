@@ -13,32 +13,32 @@ import (
 
 // ProjectBacklog represents the backlog for a single project
 type ProjectBacklog struct {
-	ProjectName     string       `json:"project_name"`
-	Workspace       string       `json:"workspace"`
-	Priority        int          `json:"priority"`
-	UnrefinedBeads  []graph.Task `json:"unrefined_beads"`
-	RefinedBeads    []graph.Task `json:"refined_beads"`
-	AllBeads        []graph.Task `json:"all_beads"`
-	ReadyToWork     []graph.Task `json:"ready_to_work"`
-	TotalEstimate   int          `json:"total_estimate_minutes"`
-	CapacityPercent int          `json:"capacity_percent"`
+	ProjectName      string       `json:"project_name"`
+	Workspace        string       `json:"workspace"`
+	Priority         int          `json:"priority"`
+	UnrefinedMorsels []graph.Task `json:"unrefined_morsels"`
+	RefinedMorsels   []graph.Task `json:"refined_morsels"`
+	AllMorsels       []graph.Task `json:"all_morsels"`
+	ReadyToWork      []graph.Task `json:"ready_to_work"`
+	TotalEstimate    int          `json:"total_estimate_minutes"`
+	CapacityPercent  int          `json:"capacity_percent"`
 }
 
 // CrossProjectDependency represents a dependency between projects
 type CrossProjectDependency struct {
-	SourceProject string `json:"source_project"`
-	SourceBeadID  string `json:"source_bead_id"`
-	TargetProject string `json:"target_project"`
-	TargetBeadID  string `json:"target_bead_id"`
-	BeadTitle     string `json:"bead_title"`
-	IsResolved    bool   `json:"is_resolved"`
+	SourceProject  string `json:"source_project"`
+	SourceMorselID string `json:"source_morsel_id"`
+	TargetProject  string `json:"target_project"`
+	TargetMorselID string `json:"target_morsel_id"`
+	MorselTitle    string `json:"morsel_title"`
+	IsResolved     bool   `json:"is_resolved"`
 }
 
 // PortfolioBacklog aggregates backlogs from all projects for multi-team sprint planning
 type PortfolioBacklog struct {
 	ProjectBacklogs      map[string]ProjectBacklog `json:"project_backlogs"`
 	CrossProjectDeps     []CrossProjectDependency  `json:"cross_project_deps"`
-	TotalBeadCount       int                       `json:"total_bead_count"`
+	TotalMorselCount     int                       `json:"total_morsel_count"`
 	TotalEstimateMinutes int                       `json:"total_estimate_minutes"`
 	CapacityBudgets      map[string]int            `json:"capacity_budgets"`
 	Summary              PortfolioSummary          `json:"summary"`
@@ -46,13 +46,13 @@ type PortfolioBacklog struct {
 
 // PortfolioSummary provides high-level statistics about the portfolio
 type PortfolioSummary struct {
-	ActiveProjects       int      `json:"active_projects"`
-	TotalOpenBeads       int      `json:"total_open_beads"`
-	TotalRefinedBeads    int      `json:"total_refined_beads"`
-	TotalUnrefinedBeads  int      `json:"total_unrefined_beads"`
-	TotalReadyToWork     int      `json:"total_ready_to_work"`
-	CrossProjectBlockers int      `json:"cross_project_blockers"`
-	ProjectsByPriority   []string `json:"projects_by_priority"`
+	ActiveProjects        int      `json:"active_projects"`
+	TotalOpenMorsels      int      `json:"total_open_morsels"`
+	TotalRefinedMorsels   int      `json:"total_refined_morsels"`
+	TotalUnrefinedMorsels int      `json:"total_unrefined_morsels"`
+	TotalReadyToWork      int      `json:"total_ready_to_work"`
+	CrossProjectBlockers  int      `json:"cross_project_blockers"`
+	ProjectsByPriority    []string `json:"projects_by_priority"`
 }
 
 // GatherPortfolioBacklogs collects backlog data from all enabled projects for multi-team sprint planning
@@ -104,7 +104,7 @@ func GatherPortfolioBacklogs(ctx context.Context, cfg *config.Config, dag *graph
 		}
 
 		portfolio.ProjectBacklogs[name] = *backlog
-		portfolio.TotalBeadCount += len(backlog.AllBeads)
+		portfolio.TotalMorselCount += len(backlog.AllMorsels)
 		portfolio.TotalEstimateMinutes += backlog.TotalEstimate
 	}
 
@@ -116,7 +116,7 @@ func GatherPortfolioBacklogs(ctx context.Context, cfg *config.Config, dag *graph
 
 	logger.Info("portfolio backlog gathering complete",
 		"active_projects", len(portfolio.ProjectBacklogs),
-		"total_beads", portfolio.TotalBeadCount,
+		"total_morsels", portfolio.TotalMorselCount,
 		"cross_project_deps", len(portfolio.CrossProjectDeps))
 
 	return portfolio, nil
@@ -137,27 +137,27 @@ func gatherProjectBacklog(ctx context.Context, projectName string, project confi
 		ProjectName:     projectName,
 		Workspace:       config.ExpandHome(project.Workspace),
 		Priority:        project.Priority,
-		AllBeads:        filterOpenTasks(allTasks),
+		AllMorsels:      filterOpenTasks(allTasks),
 		CapacityPercent: 0, // Will be set from rate limits budget if available
 	}
 
 	// Categorize tasks
-	backlog.RefinedBeads = filterRefinedTasks(backlog.AllBeads)
-	backlog.UnrefinedBeads = filterUnrefinedTasks(backlog.AllBeads)
+	backlog.RefinedMorsels = filterRefinedTasks(backlog.AllMorsels)
+	backlog.UnrefinedMorsels = filterUnrefinedTasks(backlog.AllMorsels)
 
 	// Find tasks ready to work (unblocked by dependencies)
-	backlog.ReadyToWork = graph.FilterUnblockedCrossProject(backlog.AllBeads, localGraph, crossGraph)
+	backlog.ReadyToWork = graph.FilterUnblockedCrossProject(backlog.AllMorsels, localGraph, crossGraph)
 
 	// Calculate total estimate
-	for _, task := range backlog.AllBeads {
+	for _, task := range backlog.AllMorsels {
 		backlog.TotalEstimate += task.EstimateMinutes
 	}
 
 	logger.Debug("project backlog gathered",
 		"project", projectName,
-		"total_tasks", len(backlog.AllBeads),
-		"refined", len(backlog.RefinedBeads),
-		"unrefined", len(backlog.UnrefinedBeads),
+		"total_tasks", len(backlog.AllMorsels),
+		"refined", len(backlog.RefinedMorsels),
+		"unrefined", len(backlog.UnrefinedMorsels),
 		"ready_to_work", len(backlog.ReadyToWork),
 		"total_estimate_minutes", backlog.TotalEstimate)
 
@@ -208,26 +208,26 @@ func extractCrossProjectDependencies(crossGraph *graph.CrossProjectGraph) []Cros
 			}
 
 			for _, depID := range task.DependsOn {
-				targetProject, targetBeadID, isCross := graph.ParseCrossDep(depID)
+				targetProject, targetMorselID, isCross := graph.ParseCrossDep(depID)
 				if !isCross {
 					continue // Skip local dependencies
 				}
 
 				// Get the target task title if possible
-				var beadTitle string
+				var morselTitle string
 				if targetProjectTasks, exists := crossGraph.Projects[targetProject]; exists {
-					if targetTask, exists := targetProjectTasks[targetBeadID]; exists {
-						beadTitle = targetTask.Title
+					if targetTask, exists := targetProjectTasks[targetMorselID]; exists {
+						morselTitle = targetTask.Title
 					}
 				}
 
 				dep := CrossProjectDependency{
-					SourceProject: projectName,
-					SourceBeadID:  task.ID,
-					TargetProject: targetProject,
-					TargetBeadID:  targetBeadID,
-					BeadTitle:     beadTitle,
-					IsResolved:    crossGraph.IsCrossDepResolved(targetProject, targetBeadID),
+					SourceProject:  projectName,
+					SourceMorselID: task.ID,
+					TargetProject:  targetProject,
+					TargetMorselID: targetMorselID,
+					MorselTitle:    morselTitle,
+					IsResolved:     crossGraph.IsCrossDepResolved(targetProject, targetMorselID),
 				}
 
 				deps = append(deps, dep)
@@ -243,7 +243,7 @@ func extractCrossProjectDependencies(crossGraph *graph.CrossProjectGraph) []Cros
 		if deps[i].TargetProject != deps[j].TargetProject {
 			return deps[i].TargetProject < deps[j].TargetProject
 		}
-		return deps[i].SourceBeadID < deps[j].SourceBeadID
+		return deps[i].SourceMorselID < deps[j].SourceMorselID
 	})
 
 	return deps
@@ -265,9 +265,9 @@ func generatePortfolioSummary(portfolio *PortfolioBacklog) PortfolioSummary {
 
 	for name, backlog := range portfolio.ProjectBacklogs {
 		projects = append(projects, projectPrio{name: name, priority: backlog.Priority})
-		summary.TotalOpenBeads += len(backlog.AllBeads)
-		summary.TotalRefinedBeads += len(backlog.RefinedBeads)
-		summary.TotalUnrefinedBeads += len(backlog.UnrefinedBeads)
+		summary.TotalOpenMorsels += len(backlog.AllMorsels)
+		summary.TotalRefinedMorsels += len(backlog.RefinedMorsels)
+		summary.TotalUnrefinedMorsels += len(backlog.UnrefinedMorsels)
 		summary.TotalReadyToWork += len(backlog.ReadyToWork)
 	}
 

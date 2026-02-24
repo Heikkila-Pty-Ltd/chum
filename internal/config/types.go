@@ -42,6 +42,7 @@ type Config struct {
 	Dispatch   Dispatch                  `toml:"dispatch"`
 	Chief      Chief                     `toml:"chief"`
 	Crab       Crab                      `toml:"crab"`
+	Calcifier  Calcifier                 `toml:"calcifier"`
 }
 
 // General holds top-level scheduler settings (tick interval, retries, concurrency caps).
@@ -76,7 +77,7 @@ type Cadence struct {
 // Project configures a single managed project (workspace, branching, DoD).
 type Project struct {
 	Enabled      bool   `toml:"enabled"`
-	BeadsDir     string `toml:"beads_dir"`
+	MorselsDir   string `toml:"morsels_dir"`
 	Workspace    string `toml:"workspace"`
 	Priority     int    `toml:"priority"`
 	MatrixRoom   string `toml:"matrix_room"`   // project-specific Matrix room (optional)
@@ -113,8 +114,8 @@ type RetryPolicy struct {
 type DoDConfig struct {
 	Checks            []string `toml:"checks"`             // commands to run (e.g. "go test ./...", "go vet ./...")
 	CoverageMin       int      `toml:"coverage_min"`       // optional: fail if coverage < N%
-	RequireEstimate   bool     `toml:"require_estimate"`   // bead must have estimate before closing
-	RequireAcceptance bool     `toml:"require_acceptance"` // bead must have acceptance criteria
+	RequireEstimate   bool     `toml:"require_estimate"`   // morsel must have estimate before closing
+	RequireAcceptance bool     `toml:"require_acceptance"` // morsel must have acceptance criteria
 }
 
 // RateLimits configures rolling-window and weekly dispatch caps.
@@ -129,10 +130,19 @@ type RateLimits struct {
 type Provider struct {
 	Tier              string  `toml:"tier"`
 	Authed            bool    `toml:"authed"`
+	Enabled           *bool   `toml:"enabled"` // nil = enabled (default true for backward compat)
 	Model             string  `toml:"model"`
 	CLI               string  `toml:"cli"`
 	CostInputPerMtok  float64 `toml:"cost_input_per_mtok"`
 	CostOutputPerMtok float64 `toml:"cost_output_per_mtok"`
+}
+
+// IsEnabled returns true if the provider is enabled (defaults to true if not set).
+func (p Provider) IsEnabled() bool {
+	if p.Enabled == nil {
+		return true
+	}
+	return *p.Enabled
 }
 
 // Tiers maps provider names into fast/balanced/premium groups.
@@ -170,6 +180,8 @@ type Reporter struct {
 	AgentID          string `toml:"agent_id"`
 	MatrixBotAccount string `toml:"matrix_bot_account"` // optional OpenClaw matrix account id for direct reporting
 	DefaultRoom      string `toml:"default_room"`       // fallback Matrix room when project has no explicit room
+	AdminRoom        string `toml:"admin_room"`         // direct message room for critical escalations
+	TurtleRoom       string `toml:"turtle_room"`        // 3-agent deliberation channel
 	DailyDigestTime  string `toml:"daily_digest_time"`
 	WeeklyRetroDay   string `toml:"weekly_retro_day"`
 }
@@ -210,7 +222,6 @@ type Dispatch struct {
 	Routing          DispatchRouting      `toml:"routing"`
 	Timeouts         DispatchTimeouts     `toml:"timeouts"`
 	Git              DispatchGit          `toml:"git"`
-	Tmux             DispatchTmux         `toml:"tmux"`
 	CostControl      DispatchCostControl  `toml:"cost_control"`
 	LogDir           string               `toml:"log_dir"`
 	LogRetentionDays int                  `toml:"log_retention_days"`
@@ -227,7 +238,7 @@ type CLIConfig struct {
 
 // DispatchRouting maps provider tiers to dispatch backends.
 type DispatchRouting struct {
-	FastBackend     string `toml:"fast_backend"` // "headless_cli", "tmux"
+	FastBackend     string `toml:"fast_backend"` // "headless_cli", "openclaw"
 	BalancedBackend string `toml:"balanced_backend"`
 	PremiumBackend  string `toml:"premium_backend"`
 	CommsBackend    string `toml:"comms_backend"`
@@ -249,12 +260,6 @@ type DispatchGit struct {
 	MaxConcurrentPerProject int    `toml:"max_concurrent_per_project"` // default 3
 }
 
-// DispatchTmux configures tmux session parameters for dispatch.
-type DispatchTmux struct {
-	HistoryLimit  int    `toml:"history_limit"`  // default 50000
-	SessionPrefix string `toml:"session_prefix"` // default "chum-"
-}
-
 // DispatchCostControl defines configurable dispatch policies to reduce expensive usage/churn.
 type DispatchCostControl struct {
 	Enabled                     bool     `toml:"enabled"`
@@ -264,8 +269,8 @@ type DispatchCostControl struct {
 	RiskyReviewLabels           []string `toml:"risky_review_labels"`
 	ForceSparkAtWeeklyUsagePct  float64  `toml:"force_spark_at_weekly_usage_pct"`
 	DailyCostCapUSD             float64  `toml:"daily_cost_cap_usd"`
-	PerBeadCostCapUSD           float64  `toml:"per_bead_cost_cap_usd"`
-	PerBeadStageAttemptLimit    int      `toml:"per_bead_stage_attempt_limit"`
+	PerMorselCostCapUSD         float64  `toml:"per_morsel_cost_cap_usd"`
+	PerMorselStageAttemptLimit  int      `toml:"per_morsel_stage_attempt_limit"`
 	StageAttemptWindow          Duration `toml:"stage_attempt_window"`
 	StageCooldown               Duration `toml:"stage_cooldown"`
 
@@ -298,4 +303,39 @@ type Crab struct {
 	MaxMorselsPerPlan int    `toml:"max_morsels_per_plan"` // Maximum morsels emitted per plan (default 20)
 	MaxScopeItems     int    `toml:"max_scope_items"`      // Maximum scope items accepted in a plan (default 10)
 	AutoApprove       bool   `toml:"auto_approve"`         // Phase 2: auto-approve high-confidence decompositions (default false)
+}
+
+// Calcifier configures the stochastic→deterministic calcification pipeline.
+// When a morsel type is repeatedly solved by the LLM, the calcifier generates
+// a deterministic script to replace the LLM call entirely.
+type Calcifier struct {
+	Enabled             bool   `toml:"enabled"`
+	CalcifiedDir        string `toml:"calcified_dir"`         // directory for calcified scripts (default ".cortex/calcified")
+	CompileThreshold    int    `toml:"compile_threshold"`     // consecutive successes before compilation (default 10)
+	PromoteThreshold    int    `toml:"promote_threshold"`     // shadow matches before promotion (default 3)
+	RiskMultiplier      int    `toml:"risk_multiplier"`       // multiplier for risky morsel types (default 3)
+	QuarantineOnNonzero bool   `toml:"quarantine_on_nonzero"` // quarantine scripts on non-zero exit
+	CompileModel        string `toml:"compile_model"`         // LLM model used to generate scripts (default "gemini-pro")
+}
+
+// EffectiveThreshold returns the compile threshold adjusted for risk.
+// Morsels carrying risky labels (security, migration, etc.) require
+// CompileThreshold × RiskMultiplier consecutive successes.
+func (c Calcifier) EffectiveThreshold(labels []string, riskyLabels []string) int {
+	threshold := c.CompileThreshold
+	if threshold == 0 {
+		threshold = 10
+	}
+	multiplier := c.RiskMultiplier
+	if multiplier == 0 {
+		multiplier = 3
+	}
+	for _, l := range labels {
+		for _, r := range riskyLabels {
+			if l == r {
+				return threshold * multiplier
+			}
+		}
+	}
+	return threshold
 }

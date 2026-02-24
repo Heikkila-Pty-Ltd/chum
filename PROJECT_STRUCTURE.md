@@ -7,7 +7,7 @@ chum/
 ├── cmd/                          # Application entry points
 │   ├── chum/                     # Main binary (API + Temporal worker + cron)
 │   │   ├── main.go               #   Entrypoint, config loading, worker/API bootstrap
-│   │   └── admin.go              #   Admin CLI commands (disable-anthropic, normalize-beads)
+│   │   └── admin.go              #   Admin CLI commands (disable-anthropic, normalize-morsels)
 │   ├── db-backup/                # Database backup utility
 │   └── db-restore/               # Database restore utility
 │
@@ -30,12 +30,12 @@ chum/
 │   │   ├── store.go              #   Store struct, schema, Open, migrate, Close
 │   │   ├── dispatches.go         #   Dispatch CRUD, overflow queue, provider usage
 │   │   ├── safety.go             #   Safety blocks (throttling + coordination guards)
-│   │   ├── claims.go             #   Claim leases (bead ownership locks)
-│   │   ├── stages.go             #   BeadStage CRUD (workflow stage tracking)
+│   │   ├── claims.go             #   Claim leases (morsel ownership locks)
+│   │   ├── stages.go             #   MorselStage CRUD (workflow stage tracking)
 │   │   ├── metrics.go            #   Health events, tick metrics, quality scores, token usage
 │   │   └── store_test.go         #   Store tests
 │   ├── api/                      # HTTP API server
-│   ├── beads/                    # Beads DAG integration (CRUD, deps, queries)
+│   ├── morsels/                    # Morsels DAG integration (CRUD, deps, queries)
 │   ├── config/                   # TOML config with hot-reload (SIGHUP)
 │   ├── dispatch/                 # Agent dispatch, rate limiting, cost control
 │   ├── git/                      # Git operations + DoD post-merge checks
@@ -71,7 +71,7 @@ chum/
 │   └── package/                  #   Container images
 │       ├── Dockerfile            #     Main container image
 │       └── Dockerfile.agent      #     Agent container image
-├── .beads/                       # Beads issue tracker data (gitignored runtime data)
+├── .morsels/                       # Morsels issue tracker data (gitignored runtime data)
 ├── .openclaw/                    # OpenClaw agent personality files
 │
 ├── Makefile                      # Build automation
@@ -89,7 +89,7 @@ chum/
 | Decision | Rationale |
 |----------|-----------|
 | **Temporal over in-process scheduler** | Durable execution: if CHUM crashes mid-workflow, Temporal replays from exactly where it left off |
-| **Beads over Jira/Linear** | Git-backed, local-first, dependency-aware DAG. No external service dependency |
+| **Morsels over Jira/Linear** | Git-backed, local-first, dependency-aware DAG. No external service dependency |
 | **Cross-model review** | Claude reviews Codex, Codex reviews Claude. Catches model-specific blind spots |
 | **CHUM as child workflows** | Fire-and-forget with `PARENT_CLOSE_POLICY_ABANDON`. Learning never blocks execution |
 | **SQLite FTS5 for lessons** | Full-text search over accumulated lessons. No external search infrastructure |

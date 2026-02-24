@@ -1,0 +1,32 @@
+# CHUM — Archived Stale Configuration Sections
+#
+# These sections were removed from the active chum.toml because they are
+# disabled or no longer in use. They are preserved here for historical
+# reference only.
+
+# --- Removed dispatch backend (tmux) ---
+# Removed in commit ad537eb9; replaced by headless CLI dispatch.
+
+[dispatch.tmux]
+history_limit = 50000
+session_prefix = "chum-"
+
+# --- Disabled projects ---
+# These projects were configured but never enabled in production.
+
+[projects.hg-website]
+enabled = false
+morsels_dir = "~/projects/hg-website/.morsels"
+workspace = "~/projects/hg-website"
+priority = 1
+
+[projects.hunter-galloway]
+enabled = false
+morsels_dir = "/home/ubuntu/.openclaw/workspace-main/.morsels"
+workspace = "/home/ubuntu/obsidian-vault"
+priority = 1
+matrix_room = "!adJhqAxLcYqQuYraGf:vmi3041112.contaboserver.net"
+
+[projects.hunter-galloway.dod]
+require_estimate = true
+require_acceptance = true

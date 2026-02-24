@@ -12,40 +12,40 @@ import (
 // TestPIDDispatcherZeroExit tests that a process exiting with code 0 is marked as completed.
 func TestPIDDispatcherZeroExit(t *testing.T) {
 	d := NewDispatcher()
-	
+
 	// Create a simple script that exits with code 0
 	tmpDir := t.TempDir()
 	scriptPath := filepath.Join(tmpDir, "success.sh")
 	scriptContent := `#!/bin/bash
 echo "Task completed successfully"
 exit 0`
-	
+
 	if err := os.WriteFile(scriptPath, []byte(scriptContent), 0755); err != nil {
 		t.Fatalf("Failed to write test script: %v", err)
 	}
-	
+
 	ctx := context.Background()
-	
+
 	// Override the openclaw command to run our test script instead
 	pid, err := d.dispatchTestProcess(ctx, scriptPath)
 	if err != nil {
 		t.Fatalf("Failed to dispatch test process: %v", err)
 	}
-	
+
 	// Wait for process to complete
 	waitForProcessCompletion(t, d, pid, 5*time.Second)
-	
+
 	// Check process state
 	state := d.GetProcessState(pid)
-	
+
 	if state.State != "exited" {
 		t.Errorf("Expected state 'exited', got '%s'", state.State)
 	}
-	
+
 	if state.ExitCode != 0 {
 		t.Errorf("Expected exit code 0, got %d", state.ExitCode)
 	}
-	
+
 	// Verify output was captured
 	if state.OutputPath == "" {
 		t.Error("Expected output path to be set")
@@ -57,7 +57,7 @@ exit 0`
 			t.Errorf("Expected output to contain success message, got: %s", string(output))
 		}
 	}
-	
+
 	// Clean up
 	d.CleanupProcess(pid)
 }
@@ -65,7 +65,7 @@ exit 0`
 // TestPIDDispatcherNonZeroExit tests that a process exiting with non-zero code is marked as failed.
 func TestPIDDispatcherNonZeroExit(t *testing.T) {
 	d := NewDispatcher()
-	
+
 	// Create a script that exits with code 42
 	tmpDir := t.TempDir()
 	scriptPath := filepath.Join(tmpDir, "failure.sh")
@@ -73,32 +73,32 @@ func TestPIDDispatcherNonZeroExit(t *testing.T) {
 echo "Task failed with error"
 echo "Error details on stderr" >&2
 exit 42`
-	
+
 	if err := os.WriteFile(scriptPath, []byte(scriptContent), 0755); err != nil {
 		t.Fatalf("Failed to write test script: %v", err)
 	}
-	
+
 	ctx := context.Background()
-	
+
 	pid, err := d.dispatchTestProcess(ctx, scriptPath)
 	if err != nil {
 		t.Fatalf("Failed to dispatch test process: %v", err)
 	}
-	
+
 	// Wait for process to complete
 	waitForProcessCompletion(t, d, pid, 5*time.Second)
-	
+
 	// Check process state
 	state := d.GetProcessState(pid)
-	
+
 	if state.State != "exited" {
 		t.Errorf("Expected state 'exited', got '%s'", state.State)
 	}
-	
+
 	if state.ExitCode != 42 {
 		t.Errorf("Expected exit code 42, got %d", state.ExitCode)
 	}
-	
+
 	// Verify output was captured (both stdout and stderr)
 	if state.OutputPath != "" {
 		output, err := os.ReadFile(state.OutputPath)
@@ -114,7 +114,7 @@ exit 42`
 			}
 		}
 	}
-	
+
 	// Clean up
 	d.CleanupProcess(pid)
 }
@@ -122,7 +122,7 @@ exit 42`
 // TestPIDDispatcherKilledProcess tests that a killed process is marked as failed.
 func TestPIDDispatcherKilledProcess(t *testing.T) {
 	d := NewDispatcher()
-	
+
 	// Create a long-running script that can be killed
 	tmpDir := t.TempDir()
 	scriptPath := filepath.Join(tmpDir, "longrunning.sh")
@@ -132,45 +132,45 @@ echo "Starting long task"
 sleep 30
 echo "This should not be reached"
 exit 0`
-	
+
 	if err := os.WriteFile(scriptPath, []byte(scriptContent), 0755); err != nil {
 		t.Fatalf("Failed to write test script: %v", err)
 	}
-	
+
 	ctx := context.Background()
-	
+
 	pid, err := d.dispatchTestProcess(ctx, scriptPath)
 	if err != nil {
 		t.Fatalf("Failed to dispatch test process: %v", err)
 	}
-	
+
 	// Wait a moment for the process to start
 	time.Sleep(100 * time.Millisecond)
-	
+
 	// Verify process is running
 	if !d.IsAlive(pid) {
 		t.Fatal("Process should be alive before killing")
 	}
-	
+
 	// Kill the process
 	if err := d.Kill(pid); err != nil {
 		t.Fatalf("Failed to kill process: %v", err)
 	}
-	
+
 	// Wait for process death to be registered
 	waitForProcessCompletion(t, d, pid, 5*time.Second)
-	
+
 	// Check process state
 	state := d.GetProcessState(pid)
-	
+
 	if state.State != "exited" {
 		t.Errorf("Expected state 'exited', got '%s'", state.State)
 	}
-	
+
 	if state.ExitCode != -1 {
 		t.Errorf("Expected exit code -1 for killed process, got %d", state.ExitCode)
 	}
-	
+
 	// Clean up
 	d.CleanupProcess(pid)
 }
@@ -178,19 +178,19 @@ exit 0`
 // TestPIDDispatcherProcessNotTracked tests handling of processes that aren't being tracked.
 func TestPIDDispatcherProcessNotTracked(t *testing.T) {
 	d := NewDispatcher()
-	
+
 	// Test getting state of non-existent PID
 	nonExistentPID := 999999 // Very unlikely to exist
 	state := d.GetProcessState(nonExistentPID)
-	
+
 	if state.State != "unknown" {
 		t.Errorf("Expected state 'unknown' for non-existent PID, got '%s'", state.State)
 	}
-	
+
 	if state.ExitCode != -1 {
 		t.Errorf("Expected exit code -1 for non-existent PID, got %d", state.ExitCode)
 	}
-	
+
 	if state.OutputPath != "" {
 		t.Errorf("Expected empty output path for non-existent PID, got '%s'", state.OutputPath)
 	}
@@ -199,7 +199,7 @@ func TestPIDDispatcherProcessNotTracked(t *testing.T) {
 // TestPIDDispatcherOutputCapture tests that process output is properly captured.
 func TestPIDDispatcherOutputCapture(t *testing.T) {
 	d := NewDispatcher()
-	
+
 	// Create a script with specific output
 	tmpDir := t.TempDir()
 	scriptPath := filepath.Join(tmpDir, "output.sh")
@@ -208,51 +208,51 @@ echo "Line 1: stdout message"
 echo "Line 2: stderr message" >&2
 echo "Line 3: more stdout"
 exit 5`
-	
+
 	if err := os.WriteFile(scriptPath, []byte(scriptContent), 0755); err != nil {
 		t.Fatalf("Failed to write test script: %v", err)
 	}
-	
+
 	ctx := context.Background()
-	
+
 	pid, err := d.dispatchTestProcess(ctx, scriptPath)
 	if err != nil {
 		t.Fatalf("Failed to dispatch test process: %v", err)
 	}
-	
+
 	// Wait for process to complete
 	waitForProcessCompletion(t, d, pid, 5*time.Second)
-	
+
 	// Check that output was captured
 	state := d.GetProcessState(pid)
-	
+
 	if state.OutputPath == "" {
 		t.Fatal("Expected output path to be set")
 	}
-	
+
 	output, err := os.ReadFile(state.OutputPath)
 	if err != nil {
 		t.Fatalf("Failed to read output file: %v", err)
 	}
-	
+
 	outputStr := string(output)
 	expectedStrings := []string{
 		"Line 1: stdout message",
-		"Line 2: stderr message", 
+		"Line 2: stderr message",
 		"Line 3: more stdout",
 	}
-	
+
 	for _, expected := range expectedStrings {
 		if !containsString(outputStr, expected) {
 			t.Errorf("Expected output to contain '%s', got: %s", expected, outputStr)
 		}
 	}
-	
+
 	// Verify exit code
 	if state.ExitCode != 5 {
 		t.Errorf("Expected exit code 5, got %d", state.ExitCode)
 	}
-	
+
 	// Clean up
 	d.CleanupProcess(pid)
 }
@@ -287,19 +287,19 @@ func (d *Dispatcher) dispatchTestProcess(ctx context.Context, scriptPath string)
 		os.Remove(outputPath)
 		return 0, err
 	}
-	
+
 	outputFile.Close()
 	pid := cmd.Process.Pid
-	
+
 	// Store process info like the real Dispatch method
 	d.mu.Lock()
 	d.processes[pid] = &processInfo{
-		cmd:       cmd,
-		startedAt: time.Now(),
-		state:     "running",
-		exitCode:  -1,
+		cmd:        cmd,
+		startedAt:  time.Now(),
+		state:      "running",
+		exitCode:   -1,
 		outputPath: outputPath,
-		tmpPath:   tmpPath,
+		tmpPath:    tmpPath,
 	}
 	d.mu.Unlock()
 
@@ -312,7 +312,7 @@ func (d *Dispatcher) dispatchTestProcess(ctx context.Context, scriptPath string)
 // waitForProcessCompletion waits for a process to complete with a timeout.
 func waitForProcessCompletion(t *testing.T, d *Dispatcher, pid int, timeout time.Duration) {
 	t.Helper()
-	
+
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		state := d.GetProcessState(pid)
@@ -321,7 +321,7 @@ func waitForProcessCompletion(t *testing.T, d *Dispatcher, pid int, timeout time
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	
+
 	t.Fatalf("Process %d did not complete within %v", pid, timeout)
 }
 

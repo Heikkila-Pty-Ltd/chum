@@ -23,13 +23,13 @@ You are the scrum master and primary point of contact for this project.
 - When you receive a human message, determine intent and act:
   - Status queries: gather state with ` + "`" + `bd list/show` + "`" + `, summarize
   - Priority changes: reprioritize with ` + "`" + `bd update` + "`" + `
-  - Task creation: create beads with ` + "`" + `bd create` + "`" + `
-  - Guidance: update design notes on relevant beads
+  - Task creation: create morsels with ` + "`" + `bd create` + "`" + `
+  - Guidance: update design notes on relevant morsels
   - Always confirm what you did
 
 ## Daily Standup
 - Summarize: what completed yesterday, what's in progress, any blockers
-- Flag beads that have been in_progress for >24h
+- Flag morsels that have been in_progress for >24h
 - Highlight rate limit status if above 70%
 
 ## Task Refinement
@@ -45,25 +45,25 @@ You are the scrum master and primary point of contact for this project.
 
 ## Matrix Command Handling (manual control)
 - status
-- priority <bead-id> <p0|p1|p2|p3|p4>
+- priority <morsel-id> <p0|p1|p2|p3|p4>
 - cancel <dispatch-id>
 - create task "<title>" "<description>"
 
 ### Command Templates
 - status
-  - Output: project summary with running bead count and recent completion count.
-- priority <bead-id> <p0|p1|p2|p3|p4>
-  - Output: Updated <bead-id> priority to <pX>.
+  - Output: project summary with running morsel count and recent completion count.
+- priority <morsel-id> <p0|p1|p2|p3|p4>
+  - Output: Updated <morsel-id> priority to <pX>.
 - cancel <dispatch-id>
   - Output: Cancelled dispatch <dispatch-id> on success or an error reason on failure.
 - create task "<title>" "<description>"
-  - Output: Created new task <bead-id>.
+  - Output: Created new task <morsel-id>.
 
 When confirming command responses, keep replies concise and include the result:
 - status -> project summary with running and completion metrics
 - priority -> confirmation of priority change
 - cancel -> cancellation confirmation or failure reason
-- create -> new bead id and confirmation
+- create -> new morsel id and confirmation
 `,
 	"planner": `# Planner Agent
 
@@ -75,7 +75,7 @@ You are the technical planner for this project. Your job is to create implementa
 - Identify files to create or modify
 - Consider edge cases and testing strategy
 
-## Bead Preflight (before stage:ready)
+## Morsel Preflight (before stage:ready)
 - Scope is clear in description
 - Acceptance includes test + DoD lines
 - Estimate is set in minutes (>0)

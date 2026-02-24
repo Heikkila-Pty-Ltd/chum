@@ -1,6 +1,6 @@
 # CHUM Strategic Overview & Backlog
 
-*This is a strategic, 10,000-foot view of the battlefield for CHUM, the distributed, asynchronous, self-healing execution engine using a Git-backed DAG (`beads`) and a deterministic durability layer (Temporal).*
+*This is a strategic, 10,000-foot view of the battlefield for CHUM, the distributed, asynchronous, self-healing execution engine using a Git-backed DAG (`morsels`) and a deterministic durability layer (Temporal).*
 
 ## 1. The Battlefield: Who Else is Doing This?
 
@@ -11,7 +11,7 @@ These are the VC darlings trying to build an "AI Software Engineer in a box."
 
 * *How they do it:* They rely on massive compute, 100M+ token context windows, and proprietary IDEs. You give them a ticket, dump the entire codebase into their brain, and let them run wild in a sandbox for an hour.
 * *Are they doing it better?* They have incredible UI/UX and massive capital. But they suffer from **Trajectory Drift**. If Devin takes a wrong turn at minute 5, it hallucinates for 55 minutes and you pay for the compute.
-* *Why CHUM wins:* You pulled the planning *out* of the LLM's context window and put it on your hard drive via Steve Yegge's `beads`. By forcing the architecture into explicit, dependency-mapped micro-tasks *before* execution, your Sharks only execute perfectly scoped chum. It’s mathematically cleaner and prevents drift.
+* *Why CHUM wins:* You pulled the planning *out* of the LLM's context window and put it on your hard drive via Steve Yegge's `morsels`. By forcing the architecture into explicit, dependency-mapped micro-tasks *before* execution, your Sharks only execute perfectly scoped chum. It’s mathematically cleaner and prevents drift.
 
 **The Frameworks (LangGraph, CrewAI, AutoGen)**
 This is what 90% of open-source developers are building with.
@@ -31,10 +31,10 @@ If you want to know who is going to snipe you, look at who already owns the thre
 
 To stay ahead of the snipers, you need to steal the best ideas from the bleeding edge and bolt them onto the factory floor.
 
-* **Test-Time Compute (Monte Carlo Execution):** Steal this from the OpenAI o-series methodology. Compute is cheap. Instead of *one* Shark writing the code and *one* Codex reviewing it, have Temporal spawn **3 parallel Sharks** to write 3 different implementations of the same Bead simultaneously. Run all 3 through Semgrep and your test suite. The one that passes the fastest/cleanest gets merged; the other two are killed. Temporal excels at this "fan-out/fan-in" pattern.
+* **Test-Time Compute (Monte Carlo Execution):** Steal this from the OpenAI o-series methodology. Compute is cheap. Instead of *one* Shark writing the code and *one* Codex reviewing it, have Temporal spawn **3 parallel Sharks** to write 3 different implementations of the same Morsel simultaneously. Run all 3 through Semgrep and your test suite. The one that passes the fastest/cleanest gets merged; the other two are killed. Temporal excels at this "fan-out/fan-in" pattern.
 * **Model Context Protocol (MCP):** This is Anthropic's open-source "USB-C of AI." Do not write custom API integrations for your Sharks. Embed an open-source MCP client in your Temporal Worker. Instantly, your Sharks can natively and securely read Jira, query AWS S3 buckets, pull from Figma, or run SQL on your production database using standardized servers.
-* **Ephemeral Sandboxing (Firecracker microVMs):** OpenClaw is dangerous because it runs on a host machine. If a Shark hallucinates and runs `rm -rf /`, you are dead. Temporal must spawn a temporary Docker container or AWS Firecracker microVM for each Bead, mount the codebase, execute the Shark, extract the diff, and instantly incinerate the container. Total blast-radius containment.
-* **AST-Driven Radar (Tree-sitter):** The Groombot shouldn't just read the `beads` JSON. It should use `tree-sitter` to generate a highly compressed, mathematical map of every function and class in your codebase (an AST Repo Map). This gives the Groombot spatial awareness of *where* the dependencies lie without burning tokens reading the actual logic.
+* **Ephemeral Sandboxing (Firecracker microVMs):** OpenClaw is dangerous because it runs on a host machine. If a Shark hallucinates and runs `rm -rf /`, you are dead. Temporal must spawn a temporary Docker container or AWS Firecracker microVM for each Morsel, mount the codebase, execute the Shark, extract the diff, and instantly incinerate the container. Total blast-radius containment.
+* **AST-Driven Radar (Tree-sitter):** The Groombot shouldn't just read the `morsels` JSON. It should use `tree-sitter` to generate a highly compressed, mathematical map of every function and class in your codebase (an AST Repo Map). This gives the Groombot spatial awareness of *where* the dependencies lie without burning tokens reading the actual logic.
 
 ## 4. Blue Sky & Blue Ocean: Beyond Software
 
@@ -49,7 +49,7 @@ Software development is just the easiest place to test it because code is determ
 
 * **B2B Enterprise RFPs / Grant Writing (Your wheelhouse):**
   * *The Epic:* "Answer this 300-question technical RFP from a Fortune 500 bank."
-  * *The Process:* Groombot parses the PDF, slices it into 300 Beads. Sharks query your company's internal Confluence/Codebase via MCP to answer each question. The Checker Shark enforces the company's "voice" and compliance rules. A 3-week human headache is solved in 14 minutes.
+  * *The Process:* Groombot parses the PDF, slices it into 300 Morsels. Sharks query your company's internal Confluence/Codebase via MCP to answer each question. The Checker Shark enforces the company's "voice" and compliance rules. A 3-week human headache is solved in 14 minutes.
 
 * **Self-Healing IT / Cyber Ops:**
   * *The Epic:* A CrowdStrike or Sentry alert fires in production.

@@ -15,7 +15,7 @@ state_db = "~/.local/share/chum/chum.db"
 # Define one or more projects for CHUM to manage.
 [projects.my-project]
 enabled = true
-beads_dir = "~/projects/my-project/.beads"
+morsels_dir = "~/projects/my-project/.morsels"
 workspace = "~/projects/my-project"
 priority = 1
 

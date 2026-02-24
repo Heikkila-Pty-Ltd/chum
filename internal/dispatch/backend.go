@@ -16,7 +16,7 @@ func BuildDispatchCommand(provider, model, prompt string, flags []string) ([]str
 type Handle struct {
 	PID         int
 	SessionName string
-	Backend     string // "headless_cli", "tmux", "openclaw"
+	Backend     string // "headless_cli", "openclaw"
 }
 
 // DispatchOpts holds parameters for a new dispatch.

@@ -113,7 +113,7 @@ func TestSafetyMetrics(t *testing.T) {
 	if err := s.SetBlock("proj-b", "churn_block", time.Now().Add(5*time.Minute), "high failure rate b"); err != nil {
 		t.Fatalf("SetBlock churn 2: %v", err)
 	}
-	if err := s.SetBlock("bead-xyz", "quarantine", time.Now().Add(10*time.Minute), "consecutive failures"); err != nil {
+	if err := s.SetBlock("morsel-xyz", "quarantine", time.Now().Add(10*time.Minute), "consecutive failures"); err != nil {
 		t.Fatalf("SetBlock quarantine: %v", err)
 	}
 	if err := s.SetBlockWithMetadata("system", "circuit_breaker", time.Now().Add(15*time.Minute), "gateway tripped", map[string]interface{}{
@@ -181,31 +181,31 @@ func TestSafetyMetrics(t *testing.T) {
 	}
 }
 
-func TestBeadValidatingRoundTrip(t *testing.T) {
+func TestMorselValidatingRoundTrip(t *testing.T) {
 	s := tempSafetyStore(t)
-	beadID := "bead-validate"
+	morselID := "morsel-validate"
 
-	if err := s.SetBeadValidating(beadID, time.Now().Add(2*time.Minute)); err != nil {
-		t.Fatalf("SetBeadValidating failed: %v", err)
+	if err := s.SetMorselValidating(morselID, time.Now().Add(2*time.Minute)); err != nil {
+		t.Fatalf("SetMorselValidating failed: %v", err)
 	}
 
-	validating, err := s.IsBeadValidating(beadID)
+	validating, err := s.IsMorselValidating(morselID)
 	if err != nil {
-		t.Fatalf("IsBeadValidating failed: %v", err)
+		t.Fatalf("IsMorselValidating failed: %v", err)
 	}
 	if !validating {
-		t.Fatalf("expected bead to be validating")
+		t.Fatalf("expected morsel to be validating")
 	}
 
-	if err := s.ClearBeadValidating(beadID); err != nil {
-		t.Fatalf("ClearBeadValidating failed: %v", err)
+	if err := s.ClearMorselValidating(morselID); err != nil {
+		t.Fatalf("ClearMorselValidating failed: %v", err)
 	}
 
-	validating, err = s.IsBeadValidating(beadID)
+	validating, err = s.IsMorselValidating(morselID)
 	if err != nil {
-		t.Fatalf("IsBeadValidating after clear failed: %v", err)
+		t.Fatalf("IsMorselValidating after clear failed: %v", err)
 	}
 	if validating {
-		t.Fatalf("expected bead to be not validating after clear")
+		t.Fatalf("expected morsel to be not validating after clear")
 	}
 }

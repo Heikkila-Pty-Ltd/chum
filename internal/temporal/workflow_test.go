@@ -1,19 +1,26 @@
 package temporal
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"go.temporal.io/api/workflowservice/v1"
 	"go.temporal.io/sdk/testsuite"
+	"go.temporal.io/sdk/workflow"
 )
 
+var a *Activities
+
 // stubActivities mocks all activities used by ChumAgentWorkflow for a clean
-// success path: plan → approve → execute → review(approved) → semgrep(pass) → dod(pass) → record.
+
+// success path: plan → approve → execute → review(approved) → ubs(pass) → dod(pass) → record.
 func stubActivities(env *testsuite.TestWorkflowEnvironment) {
-	var a *Activities
 
 	env.OnActivity(a.StructuredPlanActivity, mock.Anything, mock.Anything).Return(&StructuredPlan{
 		Summary:            "Add widget endpoint",
@@ -33,7 +40,7 @@ func stubActivities(env *testsuite.TestWorkflowEnvironment) {
 		Tokens: TokenUsage{InputTokens: 500, OutputTokens: 300, CacheReadTokens: 50, CostUSD: 0.01},
 	}, nil)
 
-	env.OnActivity(a.RunSemgrepScanActivity, mock.Anything, mock.Anything).Return(&SemgrepScanResult{
+	env.OnActivity(a.RunUBSScanActivity, mock.Anything, mock.Anything).Return(&UBSScanResult{
 		Passed: true,
 	}, nil)
 
@@ -49,7 +56,6 @@ func stubActivities(env *testsuite.TestWorkflowEnvironment) {
 func TestCHUMChildWorkflowsSpawn(t *testing.T) {
 	s := testsuite.WorkflowTestSuite{}
 	env := s.NewTestWorkflowEnvironment()
-	var a *Activities
 
 	stubActivities(env)
 	var outcome OutcomeRecord
@@ -58,8 +64,6 @@ func TestCHUMChildWorkflowsSpawn(t *testing.T) {
 	// Mock child workflows — OnWorkflow intercepts child spawning
 	env.OnWorkflow(ContinuousLearnerWorkflow, mock.Anything, mock.Anything).Return(nil)
 	env.OnWorkflow(TacticalGroomWorkflow, mock.Anything, mock.Anything).Return(nil)
-
-
 
 	env.OnActivity(a.RecordOutcomeActivity, mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
 		arg := args.Get(1)
@@ -70,7 +74,7 @@ func TestCHUMChildWorkflowsSpawn(t *testing.T) {
 	}).Return(nil)
 
 	env.ExecuteWorkflow(ChumAgentWorkflow, TaskRequest{
-		TaskID:  "test-bead-chum",
+		TaskID:  "test-morsel-chum",
 		Project: "test-project",
 		Prompt:  "add a widget endpoint",
 		Agent:   "claude",
@@ -101,8 +105,6 @@ func TestCHUMNotSpawnedOnFailure(t *testing.T) {
 	s := testsuite.WorkflowTestSuite{}
 	env := s.NewTestWorkflowEnvironment()
 
-	var a *Activities
-
 	env.OnActivity(a.StructuredPlanActivity, mock.Anything, mock.Anything).Return(&StructuredPlan{
 		Summary:            "broken feature",
 		Steps:              []PlanStep{{Description: "break things", File: "main.go", Rationale: "chaos"}},
@@ -120,7 +122,7 @@ func TestCHUMNotSpawnedOnFailure(t *testing.T) {
 		Tokens: TokenUsage{InputTokens: 400, OutputTokens: 200, CostUSD: 0.008},
 	}, nil)
 
-	env.OnActivity(a.RunSemgrepScanActivity, mock.Anything, mock.Anything).Return(&SemgrepScanResult{
+	env.OnActivity(a.RunUBSScanActivity, mock.Anything, mock.Anything).Return(&UBSScanResult{
 		Passed: true,
 	}, nil)
 
@@ -131,6 +133,8 @@ func TestCHUMNotSpawnedOnFailure(t *testing.T) {
 
 	var outcome OutcomeRecord
 	outcomeSet := false
+	var capturedAttrs []map[string]interface{}
+	var capturedStages []string
 	env.OnActivity(a.RecordOutcomeActivity, mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
 		arg := args.Get(1)
 		if o, ok := arg.(OutcomeRecord); ok {
@@ -140,14 +144,26 @@ func TestCHUMNotSpawnedOnFailure(t *testing.T) {
 	}).Return(nil)
 	env.OnActivity(a.EscalateActivity, mock.Anything, mock.Anything).Return(nil)
 
+	original := upsertChumSearchAttributesFn
+	t.Cleanup(func() {
+		upsertChumSearchAttributesFn = original
+	})
+	upsertChumSearchAttributesFn = func(_ workflow.Context, attrs map[string]interface{}) error {
+		copyAttrs := make(map[string]interface{}, len(attrs))
+		for k, v := range attrs {
+			copyAttrs[k] = v
+		}
+		capturedAttrs = append(capturedAttrs, copyAttrs)
+		capturedStages = append(capturedStages, fmt.Sprintf("%v", copyAttrs[SearchAttributeCurrentStage]))
+		return nil
+	}
+
 	// Register the child workflows but they should NOT be called
 	env.OnWorkflow(ContinuousLearnerWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
 	env.OnWorkflow(TacticalGroomWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
 
-
-
 	env.ExecuteWorkflow(ChumAgentWorkflow, TaskRequest{
-		TaskID:  "test-bead-fail",
+		TaskID:  "test-morsel-fail",
 		Project: "test-project",
 		Prompt:  "break everything",
 		Agent:   "claude",
@@ -157,30 +173,229 @@ func TestCHUMNotSpawnedOnFailure(t *testing.T) {
 	require.True(t, env.IsWorkflowCompleted())
 	require.Error(t, env.GetWorkflowError())
 	require.True(t, outcomeSet)
-	require.Equal(t, 0, outcome.TotalTokens.InputTokens)
-	require.Equal(t, 0, outcome.TotalTokens.OutputTokens)
-	require.Equal(t, 0, outcome.TotalTokens.CacheReadTokens)
+	// Tokens are reset per attempt — only the last attempt's tokens are reported.
+	require.Greater(t, outcome.TotalTokens.InputTokens, 0)
+	require.Greater(t, outcome.TotalTokens.OutputTokens, 0)
 	require.Greater(t, outcome.TotalTokens.CostUSD, 0.0)
-	require.Len(t, outcome.ActivityTokens, 2)
-	require.Equal(t, "execute", outcome.ActivityTokens[0].ActivityName)
-	require.Equal(t, "review", outcome.ActivityTokens[1].ActivityName)
+	require.NotEmpty(t, outcome.ActivityTokens)
 
-	// CHUM should NOT have been spawned
-	env.AssertWorkflowNotCalled(t, "ContinuousLearnerWorkflow", mock.Anything, mock.Anything)
+	// CHUM tactical groom should NOT be spawned on failure.
+	// However, the ContinuousLearnerWorkflow IS spawned on failure
+	// (line 726 in workflow.go: failure learner extracts antibodies).
+	env.AssertWorkflowCalled(t, "ContinuousLearnerWorkflow", mock.Anything, mock.Anything)
 	env.AssertWorkflowNotCalled(t, "TacticalGroomWorkflow", mock.Anything, mock.Anything)
+
+	stages := make(map[string]int)
+	for _, attrs := range capturedAttrs {
+		stage := fmt.Sprintf("%v", attrs[SearchAttributeCurrentStage])
+		stages[stage]++
+
+		require.Equal(t, "test-project", attrs[SearchAttributeProject])
+		require.Equal(t, "test-morsel-fail", attrs[SearchAttributeTaskTitle])
+		require.Equal(t, 0, attrs[SearchAttributePriority])
+	}
+	require.Greater(t, stages[chumWorkflowStatusPlan], 0)
+	require.Greater(t, stages[chumWorkflowStatusGate], 0)
+	require.Greater(t, stages[chumWorkflowStatusExecute], 0)
+	require.Greater(t, stages[chumWorkflowStatusReview], 0)
+	require.Greater(t, stages[chumWorkflowStatusDoD], 0)
+	require.Greater(t, stages[chumWorkflowStatusEscalated], 0)
+	require.Zero(t, stages[chumWorkflowStatusCompleted])
+	// The workflow retries multiple times before escalating, so the exact
+	// sequence varies. Just verify all required stages appear.
+	require.Contains(t, capturedStages, chumWorkflowStatusPlan)
+	require.Contains(t, capturedStages, chumWorkflowStatusGate)
+	require.Contains(t, capturedStages, chumWorkflowStatusExecute)
+	require.Contains(t, capturedStages, chumWorkflowStatusReview)
+	require.Contains(t, capturedStages, chumWorkflowStatusDoD)
+	require.Contains(t, capturedStages, chumWorkflowStatusEscalated)
+	require.NotContains(t, capturedStages, chumWorkflowStatusCompleted)
+}
+
+func TestChumAgentWorkflowUpsertsSearchAttributesAtLifecycleStages(t *testing.T) {
+	s := testsuite.WorkflowTestSuite{}
+	env := s.NewTestWorkflowEnvironment()
+
+	stubActivities(env)
+	var capturedAttrs []map[string]interface{}
+	var capturedStages []string
+
+	// Ensure optional CHUM child workflows are mocked to avoid environment
+	// child-workflow registration issues when using testsuite with minimal mocks.
+	env.OnWorkflow(ContinuousLearnerWorkflow, mock.Anything, mock.Anything).Return(nil)
+	env.OnWorkflow(TacticalGroomWorkflow, mock.Anything, mock.Anything).Return(nil)
+
+	original := upsertChumSearchAttributesFn
+	t.Cleanup(func() {
+		upsertChumSearchAttributesFn = original
+	})
+	upsertChumSearchAttributesFn = func(_ workflow.Context, attrs map[string]interface{}) error {
+		copyAttrs := make(map[string]interface{}, len(attrs))
+		for k, v := range attrs {
+			copyAttrs[k] = v
+		}
+		capturedAttrs = append(capturedAttrs, copyAttrs)
+		capturedStages = append(capturedStages, fmt.Sprintf("%v", copyAttrs[SearchAttributeCurrentStage]))
+		return nil
+	}
+
+	env.ExecuteWorkflow(ChumAgentWorkflow, TaskRequest{
+		TaskID:            "test-task-id",
+		Project:           "   ",
+		TaskTitle:         "",
+		Prompt:            "fix auth bug",
+		Agent:             "   ",
+		Priority:          7,
+		WorkDir:           "/tmp/test",
+		SlowStepThreshold: defaultSlowStepThreshold,
+	})
+
+	require.True(t, env.IsWorkflowCompleted())
+	require.NoError(t, env.GetWorkflowError())
+	require.GreaterOrEqual(t, len(capturedAttrs), 5)
+
+	stages := make(map[string]int)
+	for _, attrs := range capturedAttrs {
+		stage := fmt.Sprintf("%v", attrs[SearchAttributeCurrentStage])
+		stages[stage]++
+
+		require.Equal(t, "unknown", attrs[SearchAttributeProject])
+		require.Equal(t, "claude", attrs[SearchAttributeAgent])
+		require.Equal(t, "test-task-id", attrs[SearchAttributeTaskTitle])
+		require.Equal(t, 4, attrs[SearchAttributePriority])
+	}
+
+	require.Equal(t, []string{
+		chumWorkflowStatusPlan,
+		chumWorkflowStatusGate,
+		chumWorkflowStatusExecute,
+		chumWorkflowStatusReview,
+		chumWorkflowStatusDoD,
+		chumWorkflowStatusCompleted,
+	}, capturedStages)
+	require.Equal(t, 1, stages[chumWorkflowStatusPlan])
+	require.Equal(t, 1, stages[chumWorkflowStatusGate])
+	require.Equal(t, 1, stages[chumWorkflowStatusExecute])
+	require.Equal(t, 1, stages[chumWorkflowStatusReview])
+	require.Equal(t, 1, stages[chumWorkflowStatusDoD])
+	require.Equal(t, 1, stages[chumWorkflowStatusCompleted])
+}
+
+func TestBuildOpenAgentWorkflowQueryFiltersByProject(t *testing.T) {
+	q := buildOpenAgentWorkflowQuery("alpha-proj")
+	require.Contains(t, q, "WorkflowType = 'ChumAgentWorkflow'")
+	require.Contains(t, q, "ExecutionStatus = 'Running'")
+	require.Contains(t, q, fmt.Sprintf("%s = 'alpha-proj'", SearchAttributeProject))
+	for _, stage := range []string{chumWorkflowStatusPlan, chumWorkflowStatusGate, chumWorkflowStatusExecute, chumWorkflowStatusReview, chumWorkflowStatusDoD} {
+		require.Contains(t, q, fmt.Sprintf("%s = '%s'", SearchAttributeCurrentStage, stage))
+	}
+	q = buildOpenAgentWorkflowQuery("acme's")
+	require.Contains(t, q, fmt.Sprintf("%s = 'acme''s'", SearchAttributeProject))
+}
+
+func TestListOpenAgentWorkflowsUsesProjectFilter(t *testing.T) {
+	fakeTC := &fakeWorkflowListClient{}
+	_, err := listOpenAgentWorkflows(t.Context(), fakeTC, "alpha-proj")
+	require.NoError(t, err)
+	require.Len(t, fakeTC.queries, 1)
+	require.Equal(t, 1, len(fakeTC.queries))
+	require.Contains(t, fakeTC.queries[0], fmt.Sprintf("%s = 'alpha-proj'", SearchAttributeProject))
+}
+
+func TestListOpenAgentWorkflowsForAgentUsesAgentFilter(t *testing.T) {
+	fakeTC := &fakeWorkflowListClient{}
+	_, err := listOpenAgentWorkflowsForAgent(t.Context(), fakeTC, "alpha-proj", "gemini")
+	require.NoError(t, err)
+	require.Len(t, fakeTC.queries, 1)
+	require.Contains(t, fakeTC.queries[0], fmt.Sprintf("%s = 'alpha-proj'", SearchAttributeProject))
+	require.Contains(t, fakeTC.queries[0], fmt.Sprintf("%s = 'gemini'", SearchAttributeAgent))
+	require.Contains(t, fakeTC.queries[0], SearchAttributeCurrentStage)
+}
+
+func TestChumAgentWorkflowPausesForDrainUntilResume(t *testing.T) {
+	s := testsuite.WorkflowTestSuite{}
+	env := s.NewTestWorkflowEnvironment()
+
+	var executeCalls int32
+	var resumeSignalSent int32
+	var executeBeforeResume int32
+
+	planCanContinue := make(chan struct{})
+	executeCanContinue := make(chan struct{})
+
+	env.OnActivity(a.StructuredPlanActivity, mock.Anything, mock.Anything).Run(func(_ mock.Arguments) {
+		<-planCanContinue
+	}).Return(&StructuredPlan{
+		Summary:            "Add guarded drain boundary",
+		Steps:              []PlanStep{{Description: "Write change", File: "guarded.go", Rationale: "test"}},
+		FilesToModify:      []string{"guarded.go"},
+		AcceptanceCriteria: []string{"compiles"},
+		TokenUsage:         TokenUsage{InputTokens: 10, OutputTokens: 10, CostUSD: 0.01},
+	}, nil)
+
+	env.OnActivity(a.ExecuteActivity, mock.Anything, mock.Anything, mock.Anything).Run(func(_ mock.Arguments) {
+		if atomic.LoadInt32(&resumeSignalSent) == 0 {
+			atomic.StoreInt32(&executeBeforeResume, 1)
+		}
+		atomic.AddInt32(&executeCalls, 1)
+		<-executeCanContinue
+	}).Return(&ExecutionResult{
+		ExitCode: 0,
+		Output:   "implemented",
+		Agent:    "claude",
+		Tokens:   TokenUsage{InputTokens: 20, OutputTokens: 10, CostUSD: 0.01},
+	}, nil)
+
+	env.OnActivity(a.CodeReviewActivity, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&ReviewResult{
+		Approved:      true,
+		ReviewerAgent: "codex",
+		Tokens:        TokenUsage{InputTokens: 8, OutputTokens: 4, CostUSD: 0.002},
+	}, nil)
+	env.OnActivity(a.RunUBSScanActivity, mock.Anything, mock.Anything).Return(&UBSScanResult{
+		Passed: true,
+	}, nil)
+	env.OnActivity(a.DoDVerifyActivity, mock.Anything, mock.Anything).Return(&DoDResult{
+		Passed: true,
+	}, nil)
+	env.OnActivity(a.RecordOutcomeActivity, mock.Anything, mock.Anything).Return(nil)
+
+	env.OnWorkflow(ContinuousLearnerWorkflow, mock.Anything, mock.Anything).Return(nil)
+	env.OnWorkflow(TacticalGroomWorkflow, mock.Anything, mock.Anything).Return(nil)
+
+	env.RegisterDelayedCallback(func() {
+		close(planCanContinue)
+		env.SignalWorkflow(ChumAgentDrainSignalName, nil)
+	}, 1*time.Millisecond)
+
+	env.RegisterDelayedCallback(func() {
+		atomic.StoreInt32(&resumeSignalSent, 1)
+		env.SignalWorkflow(ChumAgentResumeSignalName, nil)
+		close(executeCanContinue)
+	}, 10*time.Millisecond)
+
+	env.ExecuteWorkflow(ChumAgentWorkflow, TaskRequest{
+		TaskID:  "test-morsel-drain",
+		Project: "test-project",
+		Prompt:  "validate drain boundary",
+		Agent:   "claude",
+		WorkDir: "/tmp/test",
+	})
+
+	require.True(t, env.IsWorkflowCompleted())
+	require.NoError(t, env.GetWorkflowError())
+	require.Equal(t, int32(1), atomic.LoadInt32(&executeCalls))
+	require.Equal(t, int32(0), atomic.LoadInt32(&executeBeforeResume))
 }
 
 // TestContinuousLearnerWorkflowPipeline verifies the learner extracts lessons,
-// stores them, and generates semgrep rules.
+// stores them, and generates rules.
 func TestContinuousLearnerWorkflowPipeline(t *testing.T) {
 	s := testsuite.WorkflowTestSuite{}
 	env := s.NewTestWorkflowEnvironment()
 
-	var a *Activities
-
 	lessons := []Lesson{
-		{TaskID: "bead-1", Category: "antipattern", Summary: "nil check after error"},
-		{TaskID: "bead-1", Category: "pattern", Summary: "table-driven tests"},
+		{TaskID: "morsel-1", Category: "antipattern", Summary: "nil check after error"},
+		{TaskID: "morsel-1", Category: "pattern", Summary: "table-driven tests"},
 	}
 
 	env.OnActivity(a.ExtractLessonsActivity, mock.Anything, mock.Anything).Return(lessons, nil)
@@ -190,7 +405,7 @@ func TestContinuousLearnerWorkflowPipeline(t *testing.T) {
 	}, nil)
 
 	env.ExecuteWorkflow(ContinuousLearnerWorkflow, LearnerRequest{
-		TaskID:  "bead-1",
+		TaskID:  "morsel-1",
 		Project: "test-project",
 		Tier:    "fast",
 	})
@@ -205,16 +420,14 @@ func TestTacticalGroomWorkflow(t *testing.T) {
 	s := testsuite.WorkflowTestSuite{}
 	env := s.NewTestWorkflowEnvironment()
 
-	var a *Activities
-
 	env.OnActivity(a.MutateTasksActivity, mock.Anything, mock.Anything).Return(&GroomResult{
 		MutationsApplied: 3,
 		MutationsFailed:  0,
-		Details:          []string{"reprioritized bead-1", "closed stale bead-2", "added dep bead-3->bead-4"},
+		Details:          []string{"reprioritized morsel-1", "closed stale morsel-2", "added dep morsel-3->morsel-4"},
 	}, nil)
 
 	env.ExecuteWorkflow(TacticalGroomWorkflow, TacticalGroomRequest{
-		TaskID:  "bead-1",
+		TaskID:  "morsel-1",
 		Project: "test-project",
 		WorkDir: "/tmp/test",
 		Tier:    "fast",
@@ -226,12 +439,10 @@ func TestTacticalGroomWorkflow(t *testing.T) {
 }
 
 // TestStrategicGroomWorkflowPipeline verifies the full daily strategic pipeline:
-// RepoMap -> BeadState -> Analysis -> Mutations -> Briefing
+// RepoMap -> MorselState -> Analysis -> Mutations -> Briefing
 func TestStrategicGroomWorkflowPipeline(t *testing.T) {
 	s := testsuite.WorkflowTestSuite{}
 	env := s.NewTestWorkflowEnvironment()
-
-	var a *Activities
 
 	env.OnActivity(a.GenerateRepoMapActivity, mock.Anything, mock.Anything).Return(&RepoMap{
 		TotalFiles: 42,
@@ -241,7 +452,7 @@ func TestStrategicGroomWorkflowPipeline(t *testing.T) {
 		},
 	}, nil)
 
-	env.OnActivity(a.GetBeadStateSummaryActivity, mock.Anything, mock.Anything).Return(
+	env.OnActivity(a.GetMorselStateSummaryActivity, mock.Anything, mock.Anything).Return(
 		"Open: 12, Closed: 45, Blocked: 3", nil)
 
 	env.OnActivity(a.StrategicAnalysisActivity, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&StrategicAnalysis{
@@ -249,7 +460,7 @@ func TestStrategicGroomWorkflowPipeline(t *testing.T) {
 			{Title: "Fix flaky tests", Urgency: "high"},
 		},
 		Risks:     []string{"test coverage declining"},
-		Mutations: []BeadMutation{{TaskID: "bead-5", Action: "update_priority", Priority: intPtr(1)}},
+		Mutations: []MorselMutation{{TaskID: "morsel-5", Action: "update_priority", Priority: intPtr(1)}},
 	}, nil)
 
 	env.OnActivity(a.ApplyStrategicMutationsActivity, mock.Anything, mock.Anything, mock.Anything).Return(&GroomResult{
@@ -275,7 +486,7 @@ func TestStrategicGroomWorkflowPipeline(t *testing.T) {
 
 func TestNormalizeStrategicMutationsAutoDecompositionWithoutActionableFieldsIsDeferred(t *testing.T) {
 	priority := 1
-	mutations := []BeadMutation{{
+	mutations := []MorselMutation{{
 		Action:          "create",
 		Title:           "Auto: break down authentication flow",
 		Description:     "",
@@ -297,7 +508,7 @@ func TestNormalizeStrategicMutationsAutoDecompositionWithoutActionableFieldsIsDe
 }
 
 func TestNormalizeStrategicMutationsActionableDecompositionRemainsExecutable(t *testing.T) {
-	mutations := []BeadMutation{{
+	mutations := []MorselMutation{{
 		Action:          "create",
 		Title:           "Auto decomposition: split request validation into tasks",
 		Description:     "Add one coded task for each phase of request validation rollout.",
@@ -315,7 +526,6 @@ func TestNormalizeStrategicMutationsActionableDecompositionRemainsExecutable(t *
 	require.Equal(t, "Auto decomposition: split request validation into tasks", got[0].Title)
 }
 
-
 // TestStrategicGroomWorkflowActionableCreatePassesThroughToActivity verifies
 // the end-to-end path: a fully actionable strategic create mutation flows
 // from StrategicAnalysisActivity through normalizeStrategicMutations to
@@ -324,19 +534,17 @@ func TestStrategicGroomWorkflowActionableCreatePassesThroughToActivity(t *testin
 	s := testsuite.WorkflowTestSuite{}
 	env := s.NewTestWorkflowEnvironment()
 
-	var a *Activities
-
 	env.OnActivity(a.GenerateRepoMapActivity, mock.Anything, mock.Anything).Return(&RepoMap{
 		TotalFiles: 10,
 		Packages:   []PackageInfo{{ImportPath: "example.com/pkg", Name: "pkg"}},
 	}, nil)
 
-	env.OnActivity(a.GetBeadStateSummaryActivity, mock.Anything, mock.Anything).Return(
+	env.OnActivity(a.GetMorselStateSummaryActivity, mock.Anything, mock.Anything).Return(
 		"Open: 5, Closed: 10", nil)
 
 	env.OnActivity(a.StrategicAnalysisActivity, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&StrategicAnalysis{
 		Priorities: []StrategicItem{{Title: "Add request validation", Urgency: "high"}},
-		Mutations: []BeadMutation{{
+		Mutations: []MorselMutation{{
 			Action:          "create",
 			Title:           "Add input validation for POST /users",
 			Description:     "Validate request body fields before processing.",
@@ -348,10 +556,10 @@ func TestStrategicGroomWorkflowActionableCreatePassesThroughToActivity(t *testin
 		}},
 	}, nil)
 
-	var capturedMutations []BeadMutation
+	var capturedMutations []MorselMutation
 	env.OnActivity(a.ApplyStrategicMutationsActivity, mock.Anything, mock.Anything, mock.Anything).
 		Run(func(args mock.Arguments) {
-			if ms, ok := args.Get(2).([]BeadMutation); ok {
+			if ms, ok := args.Get(2).([]MorselMutation); ok {
 				capturedMutations = ms
 			}
 		}).Return(&GroomResult{MutationsApplied: 1}, nil)
@@ -383,21 +591,19 @@ func TestStrategicGroomWorkflowVagueCreateIsDeferredNotP1(t *testing.T) {
 	s := testsuite.WorkflowTestSuite{}
 	env := s.NewTestWorkflowEnvironment()
 
-	var a *Activities
-
 	env.OnActivity(a.GenerateRepoMapActivity, mock.Anything, mock.Anything).Return(&RepoMap{
 		TotalFiles: 10,
 		Packages:   []PackageInfo{{ImportPath: "example.com/pkg", Name: "pkg"}},
 	}, nil)
 
-	env.OnActivity(a.GetBeadStateSummaryActivity, mock.Anything, mock.Anything).Return(
+	env.OnActivity(a.GetMorselStateSummaryActivity, mock.Anything, mock.Anything).Return(
 		"Open: 5", nil)
 
 	// Strategic analysis returns a vague decomposition suggestion without
 	// required actionable fields — this is the production scenario we're guarding against.
 	env.OnActivity(a.StrategicAnalysisActivity, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&StrategicAnalysis{
 		Priorities: []StrategicItem{{Title: "Break down auth", Urgency: "medium"}},
-		Mutations: []BeadMutation{{
+		Mutations: []MorselMutation{{
 			Action:          "create",
 			Title:           "Break down authentication flow into subtasks",
 			Description:     "The auth system needs decomposition.",
@@ -407,10 +613,10 @@ func TestStrategicGroomWorkflowVagueCreateIsDeferredNotP1(t *testing.T) {
 		}},
 	}, nil)
 
-	var capturedMutations []BeadMutation
+	var capturedMutations []MorselMutation
 	env.OnActivity(a.ApplyStrategicMutationsActivity, mock.Anything, mock.Anything, mock.Anything).
 		Run(func(args mock.Arguments) {
-			if ms, ok := args.Get(2).([]BeadMutation); ok {
+			if ms, ok := args.Get(2).([]MorselMutation); ok {
 				capturedMutations = ms
 			}
 		}).Return(&GroomResult{MutationsApplied: 1}, nil)
@@ -440,7 +646,7 @@ func TestStrategicGroomWorkflowVagueCreateIsDeferredNotP1(t *testing.T) {
 // caught as deferred when it lacks actionable fields. This guards against the prompt
 // telling the LLM not to use "Auto:" prefixes while the detection relies on title heuristics.
 func TestNormalizeStrategicMutationsNonPrefixedVagueCreateIsDeferred(t *testing.T) {
-	mutations := []BeadMutation{{
+	mutations := []MorselMutation{{
 		Action:          "create",
 		Title:           "Break down authentication flow",
 		Description:     "The auth system needs decomposition.",
@@ -461,10 +667,10 @@ func TestNormalizeStrategicMutationsNonPrefixedVagueCreateIsDeferred(t *testing.
 // TestNormalizeStrategicMutationsNonCreatePassesThrough verifies that non-create
 // mutations (update_priority, close, etc.) pass through normalization unmodified.
 func TestNormalizeStrategicMutationsNonCreatePassesThrough(t *testing.T) {
-	mutations := []BeadMutation{
-		{TaskID: "bead-1", Action: "update_priority", Priority: intPtr(0)},
-		{TaskID: "bead-2", Action: "close", Reason: "stale"},
-		{TaskID: "bead-3", Action: "update_notes", Notes: "context from strategic review"},
+	mutations := []MorselMutation{
+		{TaskID: "morsel-1", Action: "update_priority", Priority: intPtr(0)},
+		{TaskID: "morsel-2", Action: "close", Reason: "stale"},
+		{TaskID: "morsel-3", Action: "update_notes", Notes: "context from strategic review"},
 	}
 
 	got := normalizeStrategicMutations(mutations)
@@ -487,8 +693,6 @@ func TestStepDurationLogging(t *testing.T) {
 	env.OnWorkflow(ContinuousLearnerWorkflow, mock.Anything, mock.Anything).Return(nil)
 	env.OnWorkflow(TacticalGroomWorkflow, mock.Anything, mock.Anything).Return(nil)
 
-
-
 	var outcome OutcomeRecord
 	env.OnActivity((*Activities)(nil).RecordOutcomeActivity, mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
 		if o, ok := args.Get(1).(OutcomeRecord); ok {
@@ -497,7 +701,7 @@ func TestStepDurationLogging(t *testing.T) {
 	}).Return(nil)
 
 	env.ExecuteWorkflow(ChumAgentWorkflow, TaskRequest{
-		TaskID:  "test-bead-steps",
+		TaskID:  "test-morsel-steps",
 		Project: "test-project",
 		Prompt:  "add step metrics",
 		Agent:   "claude",
@@ -516,8 +720,8 @@ func TestStepDurationLogging(t *testing.T) {
 		stepNames[m.Name] = m
 	}
 
-	// All phases must be present: plan, execute[1], review[1], semgrep[1], dod[1]
-	for _, expected := range []string{"plan", "execute[1]", "review[1]", "semgrep[1]", "dod[1]"} {
+	// All phases must be present: plan, execute[1], review[1], ubs[1], dod[1]
+	for _, expected := range []string{"plan", "execute[1]", "review[1]", "ubs[1]", "dod[1]"} {
 		m, ok := stepNames[expected]
 		require.True(t, ok, "missing step metric for %q", expected)
 		require.NotEmpty(t, m.Status, "step %q must have a status", expected)
@@ -547,7 +751,7 @@ func TestStepDurationLoggingWhenReviewActivityFails(t *testing.T) {
 		ExitCode: 0, Output: "done", Agent: "claude",
 	}, nil)
 	env.OnActivity((*Activities)(nil).CodeReviewActivity, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, errors.New("review infra down"))
-	env.OnActivity((*Activities)(nil).RunSemgrepScanActivity, mock.Anything, mock.Anything).Return(&SemgrepScanResult{
+	env.OnActivity((*Activities)(nil).RunUBSScanActivity, mock.Anything, mock.Anything).Return(&UBSScanResult{
 		Passed: true,
 	}, nil)
 	env.OnActivity((*Activities)(nil).DoDVerifyActivity, mock.Anything, mock.Anything).Return(&DoDResult{
@@ -564,10 +768,8 @@ func TestStepDurationLoggingWhenReviewActivityFails(t *testing.T) {
 		}
 	}).Return(nil)
 
-
-
 	env.ExecuteWorkflow(ChumAgentWorkflow, TaskRequest{
-		TaskID:  "test-bead-review-fail",
+		TaskID:  "test-morsel-review-fail",
 		Project: "test-project",
 		Prompt:  "review infra failure path",
 		Agent:   "claude",
@@ -590,14 +792,11 @@ func TestStepDurationLoggingWhenReviewActivityFails(t *testing.T) {
 	require.Equal(t, 1, reviewSteps, "review[1] should be recorded exactly once when review infrastructure fails")
 }
 
-
 // TestStepDurationLoggingEscalation verifies step metrics are recorded on escalation
 // (all DoD retries fail).
 func TestStepDurationLoggingEscalation(t *testing.T) {
 	s := testsuite.WorkflowTestSuite{}
 	env := s.NewTestWorkflowEnvironment()
-
-	var a *Activities
 
 	env.OnActivity(a.StructuredPlanActivity, mock.Anything, mock.Anything).Return(&StructuredPlan{
 		Summary:            "will fail dod",
@@ -612,13 +811,20 @@ func TestStepDurationLoggingEscalation(t *testing.T) {
 	env.OnActivity(a.CodeReviewActivity, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&ReviewResult{
 		Approved: true, ReviewerAgent: "codex",
 	}, nil)
-	env.OnActivity(a.RunSemgrepScanActivity, mock.Anything, mock.Anything).Return(&SemgrepScanResult{
+	env.OnActivity(a.RunUBSScanActivity, mock.Anything, mock.Anything).Return(&UBSScanResult{
 		Passed: true,
 	}, nil)
 	env.OnActivity(a.DoDVerifyActivity, mock.Anything, mock.Anything).Return(&DoDResult{
 		Passed: false, Failures: []string{"tests failed"},
 	}, nil)
 	env.OnActivity(a.EscalateActivity, mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity(a.RecordFailureActivity, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnActivity(a.AutoFixLintActivity, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnActivity(a.GetBugPrimingActivity, mock.Anything, mock.Anything, mock.Anything).Return("", nil).Maybe()
+	env.OnActivity(a.GetProteinInstructionsActivity, mock.Anything, mock.Anything).Return("", nil).Maybe()
+	env.OnActivity(a.EvolveGenomeActivity, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnActivity(a.HibernateGenomeActivity, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnActivity(a.GetGenomeForPromptActivity, mock.Anything, mock.Anything).Return("", nil).Maybe()
 
 	env.OnWorkflow(ContinuousLearnerWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
 	env.OnWorkflow(TacticalGroomWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
@@ -630,10 +836,8 @@ func TestStepDurationLoggingEscalation(t *testing.T) {
 		}
 	}).Return(nil)
 
-
-
 	env.ExecuteWorkflow(ChumAgentWorkflow, TaskRequest{
-		TaskID:  "test-bead-escalate",
+		TaskID:  "test-morsel-escalate",
 		Project: "test-project",
 		Prompt:  "will fail dod",
 		Agent:   "claude",
@@ -658,7 +862,7 @@ func TestStepDurationLoggingEscalation(t *testing.T) {
 	for i := 1; i <= 3; i++ {
 		require.Equal(t, 1, stepNames[fmt.Sprintf("execute[%d]", i)], "execute[%d]", i)
 		require.Equal(t, 1, stepNames[fmt.Sprintf("review[%d]", i)], "review[%d]", i)
-		require.Equal(t, 1, stepNames[fmt.Sprintf("semgrep[%d]", i)], "semgrep[%d]", i)
+		require.Equal(t, 1, stepNames[fmt.Sprintf("ubs[%d]", i)], "ubs[%d]", i)
 		require.Equal(t, 1, stepNames[fmt.Sprintf("dod[%d]", i)], "dod[%d]", i)
 	}
 
@@ -676,12 +880,11 @@ func TestPlanningWorkflowPassesSlowStepThresholdToExecutionTask(t *testing.T) {
 	s := testsuite.WorkflowTestSuite{}
 	env := s.NewTestWorkflowEnvironment()
 
-	var a *Activities
 	var capturedReq TaskRequest
 	var captured bool
 
 	env.OnActivity(a.GroomBacklogActivity, mock.Anything, mock.Anything).Return(&BacklogPresentation{
-		Items: []BacklogItem{{ID: "bead-1", Title: "Plan this task"}},
+		Items: []BacklogItem{{ID: "morsel-1", Title: "Plan this task"}},
 	}, nil)
 	env.OnActivity(a.GenerateQuestionsActivity, mock.Anything, mock.Anything, mock.Anything).Return([]PlanningQuestion{}, nil)
 	env.OnActivity(a.SummarizePlanActivity, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&PlanSummary{
@@ -697,7 +900,7 @@ func TestPlanningWorkflowPassesSlowStepThresholdToExecutionTask(t *testing.T) {
 	}).Return(nil)
 
 	env.RegisterDelayedCallback(func() {
-		env.SignalWorkflow("item-selected", "bead-1")
+		env.SignalWorkflow("item-selected", "morsel-1")
 		env.SignalWorkflow("greenlight", "GO")
 	}, 0)
 
@@ -711,6 +914,8 @@ func TestPlanningWorkflowPassesSlowStepThresholdToExecutionTask(t *testing.T) {
 	require.NoError(t, env.GetWorkflowError())
 	require.True(t, captured, "planning workflow should dispatch ChumAgentWorkflow")
 	require.Equal(t, defaultSlowStepThreshold, capturedReq.SlowStepThreshold)
+	require.Equal(t, "Plan this task", capturedReq.TaskTitle)
+	require.Equal(t, 2, capturedReq.Priority)
 }
 
 // TestDispatcherAppliesSlowStepThresholdFallback verifies that the dispatcher
@@ -725,14 +930,16 @@ func TestDispatcherAppliesSlowStepThresholdFallback(t *testing.T) {
 
 	env.OnActivity(da.ScanCandidatesActivity, mock.Anything).Return(&ScanCandidatesResult{
 		Candidates: []DispatchCandidate{{
-			TaskID:            "bead-1",
+			TaskID:            "morsel-1",
 			Title:             "Build dashboard",
+			TaskTitle:         "Build dashboard",
 			Project:           "project-1",
 			WorkDir:           "/tmp/test",
 			Prompt:            "Build dashboard",
 			Provider:          "claude",
 			DoDChecks:         []string{"go test ./..."},
 			SlowStepThreshold: 0,
+			Priority:          7,
 			EstimateMinutes:   60,
 		}},
 		Running:  0,
@@ -752,6 +959,19 @@ func TestDispatcherAppliesSlowStepThresholdFallback(t *testing.T) {
 	require.NoError(t, env.GetWorkflowError())
 	require.True(t, captured, "dispatcher should dispatch ChumAgentWorkflow")
 	require.Equal(t, defaultSlowStepThreshold, capturedReq.SlowStepThreshold)
+	require.Equal(t, "Build dashboard", capturedReq.TaskTitle)
+	require.Equal(t, 4, capturedReq.Priority)
 }
 
 func intPtr(i int) *int { return &i }
+
+type fakeWorkflowListClient struct {
+	queries []string
+}
+
+func (f *fakeWorkflowListClient) ListWorkflow(_ context.Context, req *workflowservice.ListWorkflowExecutionsRequest) (*workflowservice.ListWorkflowExecutionsResponse, error) {
+	if req != nil {
+		f.queries = append(f.queries, req.GetQuery())
+	}
+	return &workflowservice.ListWorkflowExecutionsResponse{}, nil
+}

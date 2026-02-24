@@ -26,7 +26,7 @@ const (
 )
 
 const (
-	taskColumns = `id, title, description, status, priority, "type", assignee, labels, estimate_minutes, parent_id, acceptance, design, notes, project, created_at, updated_at`
+	taskColumns = `id, title, description, status, priority, "type", assignee, labels, estimate_minutes, parent_id, acceptance, design, notes, project, error_log, created_at, updated_at`
 )
 
 const (
@@ -45,6 +45,7 @@ const (
 		design TEXT NOT NULL DEFAULT '',
 		notes TEXT NOT NULL DEFAULT '',
 		project TEXT NOT NULL,
+		error_log TEXT NOT NULL DEFAULT '',
 		created_at DATETIME NOT NULL,
 		updated_at DATETIME NOT NULL
 	);`
@@ -74,9 +75,10 @@ const (
 		design,
 		notes,
 		project,
+		error_log,
 		created_at,
 		updated_at
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`
 
 	getTaskSQL = `SELECT ` + taskColumns + `
 		FROM tasks
@@ -100,10 +102,10 @@ const (
 		)
 		ORDER BY t.priority ASC, t.estimate_minutes ASC;`
 
-	insertEdgeSQL = `INSERT OR IGNORE INTO task_edges (from_task, to_task) VALUES (?, ?);`
-	deleteEdgeSQL = `DELETE FROM task_edges WHERE from_task = ? AND to_task = ?;`
+	insertEdgeSQL        = `INSERT OR IGNORE INTO task_edges (from_task, to_task) VALUES (?, ?);`
+	deleteEdgeSQL        = `DELETE FROM task_edges WHERE from_task = ? AND to_task = ?;`
 	selectTaskProjectSQL = `SELECT project FROM tasks WHERE id = ?;`
-	cycleCheckSQL = `
+	cycleCheckSQL        = `
 		WITH RECURSIVE reachable(task_id) AS (
 			SELECT to_task FROM task_edges WHERE from_task = ?
 			UNION ALL
@@ -133,6 +135,7 @@ var updatableColumns = map[string]struct{}{
 	"design":           {},
 	"notes":            {},
 	"project":          {},
+	"error_log":        {},
 }
 
 type rowScanner interface {
@@ -243,6 +246,7 @@ func (d *DAG) CreateTask(ctx context.Context, task Task) (string, error) {
 			task.Design,
 			task.Notes,
 			project,
+			task.ErrorLog,
 			now,
 			now,
 		)
@@ -399,6 +403,8 @@ func (d *DAG) UpdateTask(ctx context.Context, id string, fields map[string]any) 
 			assignments = append(assignments, updateField{column: "notes", value: coerceString(rawValue)})
 		case "project":
 			assignments = append(assignments, updateField{column: "project", value: coerceString(rawValue)})
+		case "error_log":
+			assignments = append(assignments, updateField{column: "error_log", value: coerceString(rawValue)})
 		}
 	}
 	if len(assignments) == 0 {
@@ -612,6 +618,7 @@ func scanTask(scanner rowScanner) (Task, error) {
 		&task.Design,
 		&task.Notes,
 		&task.Project,
+		&task.ErrorLog,
 		&task.CreatedAt,
 		&task.UpdatedAt,
 	); err != nil {

@@ -2,6 +2,7 @@ package temporal
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -31,13 +32,13 @@ func sanitizeForFilename(s string) string {
 	return strings.Trim(s, "-")
 }
 
-// ExtractLessonsActivity uses a fast LLM to analyze the completed bead's diff,
+// ExtractLessonsActivity uses a fast LLM to analyze the completed morsel's diff,
 // DoD results, and review feedback to extract reusable lessons.
 func (a *Activities) ExtractLessonsActivity(ctx context.Context, req LearnerRequest) ([]Lesson, error) {
 	logger := activity.GetLogger(ctx)
 	logger.Info(OctopusPrefix+" Extracting lessons", "TaskID", req.TaskID, "Tier", req.Tier)
 
-	// Build context from the bead's journey
+	// Build context from the morsel's journey
 	var contextParts []string
 	if req.DiffSummary != "" {
 		contextParts = append(contextParts, "DIFF:\n"+truncate(req.DiffSummary, 4000))
@@ -67,19 +68,38 @@ func (a *Activities) ExtractLessonsActivity(ctx context.Context, req LearnerRequ
 		}
 	}
 
-	prompt := fmt.Sprintf(`You are a code quality analyst. A bead (work item) just completed. Analyze the results and extract reusable lessons.
+	// Build failure-aware extraction prompt
+	var modeInstructions string
+	if req.DoDPassed {
+		modeInstructions = `This morsel SUCCEEDED. Extract reusable patterns:
+- What approach worked well and should be replicated?
+- What coding patterns or architectural decisions were effective?
+- What conventions should be documented for future tasks?`
+	} else {
+		modeInstructions = `This morsel FAILED. Extract ANTIBODIES — defensive knowledge for successor tasks:
+- What was the ROOT CAUSE of the failure?
+- Which files or code areas are RISKY and need extra care?
+- What defensive patterns should successor tasks carry?
+- What errors should the next attempt anticipate and guard against?
+- Was the failure a timeout, test failure, lint error, or logic bug?
+Prioritize actionable antibodies over general observations.`
+	}
 
-BEAD: %s (project: %s, agent: %s)
+	prompt := fmt.Sprintf(`You are a code quality analyst performing evolutionary analysis. A morsel (work item) just %s.
+
+MORSEL: %s (project: %s, agent: %s)
 DOD PASSED: %v
 
 %s
 
 %s
 
-Extract 1-3 lessons. Each lesson must be:
+%s
+
+Extract 1-5 lessons. Each lesson must be:
 - Specific and actionable (not generic advice)
-- Tied to concrete file paths or patterns
-- Categorized: "pattern" (good practice), "antipattern" (mistake to avoid), "rule" (enforceable via static analysis), "insight" (observation)
+- Tied to concrete file paths or patterns when possible
+- Categorized: "pattern" (good practice), "antipattern" (mistake to avoid), "rule" (enforceable), "insight" (observation)
 
 Respond with ONLY a JSON array:
 [{
@@ -91,7 +111,9 @@ Respond with ONLY a JSON array:
 }]
 
 If there are no meaningful lessons, return an empty array [].`,
+		map[bool]string{true: "completed successfully", false: "FAILED — extract antibodies"}[req.DoDPassed],
 		req.TaskID, req.Project, req.Agent, req.DoDPassed,
+		modeInstructions,
 		strings.Join(contextParts, "\n\n"),
 		existingContext,
 	)
@@ -108,13 +130,17 @@ If there are no meaningful lessons, return an empty array [].`,
 		return nil, nil
 	}
 
+	// Sanitize LLM JSON output — LLMs frequently emit raw backslashes
+	// (e.g. file paths like "internal\temporal") that break json.Unmarshal.
+	jsonStr = sanitizeLLMJSON(jsonStr)
+
 	var lessons []Lesson
 	if err := json.Unmarshal([]byte(jsonStr), &lessons); err != nil {
 		logger.Warn(OctopusPrefix+" Failed to parse lessons JSON", "error", err)
 		return nil, nil
 	}
 
-	// Stamp bead/project on each lesson
+	// Stamp morsel/project on each lesson
 	for i := range lessons {
 		lessons[i].TaskID = req.TaskID
 		lessons[i].Project = req.Project
@@ -129,7 +155,7 @@ If there are no meaningful lessons, return an empty array [].`,
 func (a *Activities) StoreLessonActivity(ctx context.Context, lessons []Lesson) error {
 	logger := activity.GetLogger(ctx)
 	if a.Store == nil {
-		logger.Warn(OctopusPrefix+" No store configured, skipping lesson storage")
+		logger.Warn(OctopusPrefix + " No store configured, skipping lesson storage")
 		return nil
 	}
 
@@ -137,9 +163,9 @@ func (a *Activities) StoreLessonActivity(ctx context.Context, lessons []Lesson) 
 	for i := range lessons {
 		lesson := &lessons[i]
 		// Idempotency: check if this exact lesson already exists
-		existing, existingErr := a.Store.GetLessonsByBead(lesson.TaskID)
+		existing, existingErr := a.Store.GetLessonsByMorsel(lesson.TaskID)
 		if existingErr != nil {
-			logger.Warn(OctopusPrefix+" Failed to check existing lessons", "bead", lesson.TaskID, "error", existingErr)
+			logger.Warn(OctopusPrefix+" Failed to check existing lessons", "morsel", lesson.TaskID, "error", existingErr)
 		}
 		isDuplicate := false
 		for j := range existing {
@@ -264,64 +290,6 @@ rules:
 	return rules, nil
 }
 
-// RunSemgrepScanActivity runs semgrep with custom .semgrep/ rules as a DoD pre-filter.
-// Gracefully degrades: semgrep not installed or no rules = pass.
-func (a *Activities) RunSemgrepScanActivity(ctx context.Context, workDir string) (*SemgrepScanResult, error) {
-	logger := activity.GetLogger(ctx)
-
-	// Check if semgrep is installed
-	if _, lookErr := exec.LookPath("semgrep"); lookErr != nil {
-		logger.Info(OctopusPrefix+" Semgrep not installed, skipping pre-filter")
-		return &SemgrepScanResult{Passed: true}, nil //nolint:nilerr // graceful degradation when semgrep not installed
-	}
-
-	// Check if .semgrep/ directory exists and has rules
-	semgrepDir := filepath.Join(workDir, ".semgrep")
-	entries, readDirErr := os.ReadDir(semgrepDir)
-	if readDirErr != nil || len(entries) == 0 {
-		logger.Info(OctopusPrefix+" No custom semgrep rules found, skipping")
-		return &SemgrepScanResult{Passed: true}, nil //nolint:nilerr // graceful degradation when no rules exist
-	}
-
-	cmd := exec.CommandContext(ctx, "semgrep", "scan",
-		"--json",
-		"--config="+semgrepDir,
-		"--error",
-		".",
-	)
-	cmd.Dir = workDir
-
-	output, err := cmd.CombinedOutput()
-	outStr := string(output)
-
-	if err == nil {
-		return &SemgrepScanResult{Passed: true, Output: truncate(outStr, 2000)}, nil
-	}
-
-	// Parse findings count from JSON output
-	var semgrepOutput struct {
-		Results []json.RawMessage `json:"results"`
-		Errors  []struct {
-			Message string `json:"message"`
-		} `json:"errors"`
-	}
-	findings := 0
-	var scanErrors []string
-	if jsonErr := json.Unmarshal(output, &semgrepOutput); jsonErr == nil {
-		findings = len(semgrepOutput.Results)
-		for _, e := range semgrepOutput.Errors {
-			scanErrors = append(scanErrors, e.Message)
-		}
-	}
-
-	logger.Warn(OctopusPrefix+" Semgrep found issues", "Findings", findings)
-	return &SemgrepScanResult{
-		Passed:   false,
-		Findings: findings,
-		Errors:   scanErrors,
-		Output:   truncate(outStr, 2000),
-	}, nil
-}
 
 // SynthesizeCLAUDEmdActivity reads ALL accumulated lessons from the knowledge base,
 // deduplicates and groups by category, and writes a CLAUDE.md file to the project root.
@@ -474,3 +442,198 @@ func (a *Activities) SynthesizeCLAUDEmdActivity(ctx context.Context, req Learner
 	return nil
 }
 
+// CalcifyPatternActivity detects whether the just-completed morsel's type has
+// been solved successfully enough times to warrant a deterministic replacement
+// script. If so, it generates a .shadow script via a premium LLM.
+//
+// This is Step 5 of the learner pipeline — the stochastic→deterministic migration.
+// The LLM is expensive and non-deterministic. Every repeated pattern that can be
+// replaced by a script is pure margin.
+func (a *Activities) CalcifyPatternActivity(ctx context.Context, req LearnerRequest) (bool, error) {
+	logger := activity.GetLogger(ctx)
+
+	// Only calcify successful completions
+	if !req.DoDPassed {
+		return false, nil
+	}
+	if a.Store == nil {
+		return false, nil
+	}
+
+	// Derive morsel type from task ID prefix (e.g., "parse-lead-form-001" → "parse")
+	morselType := req.TaskID
+	if idx := strings.Index(morselType, "-"); idx > 0 {
+		morselType = morselType[:idx]
+	}
+
+	// Skip if a script already exists for this type (active or shadow)
+	active, err := a.Store.GetActiveScriptForType(morselType)
+	if err != nil {
+		logger.Warn(OctopusPrefix+" Failed to read active calcified script", "type", morselType, "error", err)
+	} else if active != nil {
+		logger.Info(OctopusPrefix+" Active script already exists, skipping calcification", "type", morselType)
+		return false, nil
+	}
+
+	shadow, err := a.Store.GetShadowScriptForType(morselType)
+	if err != nil {
+		logger.Warn(OctopusPrefix+" Failed to read shadow calcified script", "type", morselType, "error", err)
+	} else if shadow != nil {
+		logger.Info(OctopusPrefix+" Shadow script already exists, skipping calcification", "type", morselType)
+		return false, nil
+	}
+
+	// Count consecutive successes for this morsel type
+	streak, err := a.Store.GetConsecutiveSuccessfulDispatches(morselType, req.Project)
+	if err != nil {
+		logger.Warn(OctopusPrefix+" Failed to count successes", "type", morselType, "error", err)
+		return false, nil
+	}
+
+	// Apply risk-weighted threshold
+	// Fetch labels for this morsel from the most recent dispatch
+	var labels string
+	scanErr := a.Store.DB().QueryRowContext(ctx,
+		`SELECT labels FROM dispatches WHERE morsel_id LIKE ? AND project = ? ORDER BY id DESC LIMIT 1`,
+		morselType+"%", req.Project,
+	).Scan(&labels)
+	if scanErr != nil && scanErr != sql.ErrNoRows {
+		logger.Warn(OctopusPrefix+" Failed to fetch labels for calcification", "type", morselType, "error", scanErr)
+	}
+
+	var labelList []string
+	if labels != "" {
+		labelList = strings.Split(labels, ",")
+	}
+
+	threshold := a.calcifierThreshold(labelList)
+	if streak < threshold {
+		logger.Info(OctopusPrefix+" Not enough consecutive successes for calcification",
+			"type", morselType, "streak", streak, "threshold", threshold)
+		return false, nil
+	}
+
+	logger.Info(OctopusPrefix+" Calcification threshold reached!",
+		"type", morselType, "streak", streak, "threshold", threshold)
+
+	// Gather recent successful prompts/outputs for context
+	rows, err := a.Store.DB().QueryContext(ctx,
+		`SELECT prompt FROM dispatches
+		 WHERE morsel_id LIKE ? AND project = ? AND status = 'completed'
+		 ORDER BY id DESC LIMIT 10`,
+		morselType+"%", req.Project,
+	)
+	if err != nil {
+		return false, fmt.Errorf("gather dispatch history: %w", err)
+	}
+	defer rows.Close()
+
+	var prompts []string
+	for rows.Next() {
+		var p string
+		scanErr := rows.Scan(&p)
+		if scanErr != nil {
+			logger.Warn(OctopusPrefix+" Failed to scan dispatch prompt", "type", morselType, "error", scanErr)
+			continue
+		}
+		if p != "" {
+			prompts = append(prompts, p)
+		}
+	}
+	if err = rows.Err(); err != nil {
+		return false, fmt.Errorf("scan dispatch history: %w", err)
+	}
+	if len(prompts) == 0 {
+		return false, nil
+	}
+
+	// Build compilation prompt and dispatch to premium model
+	compilationPrompt := buildCompilationPrompt(morselType, prompts)
+	agent := ResolveTierAgent(a.Tiers, "premium")
+	cliResult, err := runAgent(ctx, agent, compilationPrompt, req.WorkDir)
+	if err != nil {
+		logger.Warn(OctopusPrefix+" Calcification LLM failed", "error", err)
+		return false, nil // non-fatal
+	}
+
+	// Extract and validate script content
+	scriptContent := extractScriptContent(cliResult.Output)
+	if scriptContent == "" {
+		logger.Warn(OctopusPrefix + " LLM did not produce a valid script")
+		return false, nil
+	}
+
+	// Write the shadow script
+	_, ext := detectScriptLanguage(scriptContent)
+	calcifiedDir := filepath.Join(req.WorkDir, ".cortex", "calcified")
+	err = os.MkdirAll(calcifiedDir, 0o755)
+	if err != nil {
+		return false, fmt.Errorf("create calcified dir: %w", err)
+	}
+
+	scriptName := fmt.Sprintf("%s.%s.shadow", sanitizeForFilename(morselType), ext)
+	scriptPath := filepath.Join(calcifiedDir, scriptName)
+
+	err = os.WriteFile(scriptPath, []byte(scriptContent), 0o755)
+	if err != nil {
+		return false, fmt.Errorf("write shadow script: %w", err)
+	}
+
+	// Compute SHA-256 provenance hash
+	hash, err := hashFile(scriptPath)
+	if err != nil {
+		return false, fmt.Errorf("hash script: %w", err)
+	}
+
+	// Record in store
+	_, err = a.Store.RecordCalcifiedScript(morselType, req.Project, scriptPath, hash)
+	if err != nil {
+		return false, fmt.Errorf("record script: %w", err)
+	}
+
+	logger.Info(OctopusPrefix+" Pattern calcified into shadow script",
+		"type", morselType, "path", scriptPath, "sha256", hash[:12])
+	return true, nil
+}
+
+// CommitAndPushLearnerOutputsActivity commits and pushes the CLAUDE.md, .semgrep rules,
+// and .cortex/calcified scripts to the base repository so the learning is persistent.
+func (a *Activities) CommitAndPushLearnerOutputsActivity(ctx context.Context, workDir string, taskID string) error {
+	logger := activity.GetLogger(ctx)
+	logger.Info(OctopusPrefix+" Committing and pushing learner outputs", "WorkDir", workDir)
+
+	// Add files generated by the learner
+	addCmd := exec.CommandContext(ctx, "git", "add", "CLAUDE.md", ".semgrep/", ".cortex/calcified/")
+	addCmd.Dir = workDir
+	if err := addCmd.Run(); err != nil {
+		logger.Warn(OctopusPrefix+" git add failed (no files or error)", "error", err)
+		return nil // nothing to commit
+	}
+
+	// Check if there are actually staged changes
+	statusCmd := exec.CommandContext(ctx, "git", "diff", "--staged", "--quiet")
+	statusCmd.Dir = workDir
+	if err := statusCmd.Run(); err == nil {
+		// git diff --quiet returns 0 if NO changes
+		logger.Info(OctopusPrefix + " No new learner outputs to commit")
+		return nil
+	}
+
+	// Commit
+	commitMsg := fmt.Sprintf("chore: Octopus learning updates from task %s\n\n- Updated CLAUDE.md memory\n- Updated .semgrep rules\n- Calcified patterns (if any)", taskID)
+	commitCmd := exec.CommandContext(ctx, "git", "commit", "-m", commitMsg, "--no-verify")
+	commitCmd.Dir = workDir
+	if out, err := commitCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git commit failed: %w\n%s", err, string(out))
+	}
+
+	// Push
+	pushCmd := exec.CommandContext(ctx, "git", "push", "origin", "HEAD")
+	pushCmd.Dir = workDir
+	if out, err := pushCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git push origin HEAD failed: %w\n%s", err, string(out))
+	}
+
+	logger.Info(OctopusPrefix + " Learner outputs committed and pushed successfully")
+	return nil
+}

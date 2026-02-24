@@ -4,15 +4,30 @@ import "time"
 
 // TaskRequest is submitted via the API to start a workflow.
 type TaskRequest struct {
-	TaskID            string        `json:"task_id"`
-	Project           string        `json:"project"`
-	Prompt            string        `json:"prompt"`
-	Agent             string        `json:"agent"`              // primary coding agent (claude, codex)
-	Reviewer          string        `json:"reviewer"`           // review agent — auto-assigned if empty
-	WorkDir           string        `json:"work_dir"`
-	Provider          string        `json:"provider"`
-	DoDChecks         []string      `json:"dod_checks"`         // e.g. ["go build ./cmd/chum", "go test ./..."]
-	SlowStepThreshold time.Duration `json:"slow_step_threshold"` // steps exceeding this are flagged slow
+	TaskID            string           `json:"task_id"`
+	Project           string           `json:"project"`
+	Prompt            string           `json:"prompt"`
+	TaskTitle         string           `json:"task_title"` // human-readable task title for workflow searchability and display
+	Agent             string           `json:"agent"`      // primary coding agent (keyword): claude|codex|gemini
+	Model             string           `json:"model"`      // model override for the CLI (e.g. "haiku", "gemini-2.5-flash")
+	Reviewer          string           `json:"reviewer"`   // review agent — auto-assigned if empty
+	WorkDir           string           `json:"work_dir"`
+	Provider          string           `json:"provider"`
+	Priority          int              `json:"priority"`            // scheduling priority expected as an int in range [0,4], where 0 is highest
+	DoDChecks         []string         `json:"dod_checks"`          // e.g. ["go build ./cmd/chum", "go test ./..."]
+	SlowStepThreshold time.Duration    `json:"slow_step_threshold"` // steps exceeding this are flagged slow
+	EscalationChain   []EscalationTier `json:"escalation_chain"`    // ordered tiers for fail-upward retry
+	PreviousErrors    []string         `json:"previous_errors,omitempty"`
+	ExplosionID       string           `json:"explosion_id,omitempty"` // If set, workflow runs in isolated sandbox mode (Cambrian Explosion)
+}
+
+// EscalationTier defines one level in the fail-upward chain.
+type EscalationTier struct {
+	ProviderKey string `json:"provider_key"` // e.g. "codex-spark", "gemini-flash"
+	CLI         string `json:"cli"`          // CLI agent name: "codex", "gemini", "claude"
+	Model       string `json:"model"`        // model to pass via --model flag (empty = default)
+	Tier        string `json:"tier"`         // "fast", "balanced", "premium"
+	Enabled     bool   `json:"enabled"`      // false = skip this tier (gated)
 }
 
 // DefaultReviewer returns the cross-model reviewer for a given primary agent.
@@ -22,7 +37,9 @@ func DefaultReviewer(agent string) string {
 	case "claude":
 		return "codex"
 	case "codex":
-		return "claude"
+		return "gemini"
+	case "gemini":
+		return "codex"
 	default:
 		return "codex"
 	}
@@ -36,14 +53,14 @@ const DoDAgent = "codex" // codex-mini when available
 // Tasks are gated — if the plan doesn't have acceptance criteria,
 // it doesn't enter the coding engine.
 type StructuredPlan struct {
-	Summary            string     `json:"summary"`
-	Steps              []PlanStep `json:"steps"`
-	FilesToModify      []string   `json:"files_to_modify"`
-	AcceptanceCriteria []string   `json:"acceptance_criteria"`
-	EstimatedComplexity string   `json:"estimated_complexity"` // low, medium, high
-	RiskAssessment     string     `json:"risk_assessment"`
-	PreviousErrors     []string   `json:"previous_errors,omitempty"`
-	TokenUsage         TokenUsage `json:"token_usage,omitempty"`
+	Summary             string     `json:"summary"`
+	Steps               []PlanStep `json:"steps"`
+	FilesToModify       []string   `json:"files_to_modify"`
+	AcceptanceCriteria  []string   `json:"acceptance_criteria"`
+	EstimatedComplexity string     `json:"estimated_complexity"` // low, medium, high
+	RiskAssessment      string     `json:"risk_assessment"`
+	PreviousErrors      []string   `json:"previous_errors,omitempty"`
+	TokenUsage          TokenUsage `json:"token_usage,omitempty"`
 }
 
 // PlanStep is a single step in the structured plan.
@@ -119,18 +136,18 @@ type ReviewResult struct {
 
 // DoDResult is returned by the DoD verification activity.
 type DoDResult struct {
-	Passed        bool     `json:"passed"`
-	Checks        []CheckResult `json:"checks"`
-	Failures      []string `json:"failures"`
+	Passed   bool          `json:"passed"`
+	Checks   []CheckResult `json:"checks"`
+	Failures []string      `json:"failures"`
 }
 
 // CheckResult is the result of a single DoD check command.
 type CheckResult struct {
-	Command  string  `json:"command"`
-	ExitCode int     `json:"exit_code"`
-	Output   string  `json:"output"`
-	Passed   bool    `json:"passed"`
-	DurationMs int64 `json:"duration_ms"`
+	Command    string `json:"command"`
+	ExitCode   int    `json:"exit_code"`
+	Output     string `json:"output"`
+	Passed     bool   `json:"passed"`
+	DurationMs int64  `json:"duration_ms"`
 }
 
 // StepMetric records the name, duration, and outcome of a single pipeline step.
@@ -143,22 +160,22 @@ type StepMetric struct {
 
 // OutcomeRecord is passed to the store recording activity.
 type OutcomeRecord struct {
-	DispatchID     int64                 `json:"dispatch_id"`
-	TaskID         string                `json:"task_id"`
-	Project        string                `json:"project"`
-	Agent          string                `json:"agent"`
-	Reviewer       string                `json:"reviewer"`
-	Provider       string                `json:"provider"`
-	Status         string                `json:"status"` // completed, failed, escalated
-	ExitCode       int                   `json:"exit_code"`
-	DurationS      float64               `json:"duration_s"`
-	DoDPassed      bool                  `json:"dod_passed"`
-	DoDFailures    string                `json:"dod_failures"`
-	Handoffs       int                   `json:"handoffs"` // how many cross-model review cycles
-	FilesChanged   int                   `json:"files_changed"`
-	TotalTokens    TokenUsage            `json:"total_tokens"`
-	ActivityTokens []ActivityTokenUsage   `json:"activity_tokens,omitempty"`
-	StepMetrics    []StepMetric           `json:"step_metrics,omitempty"`
+	DispatchID     int64                `json:"dispatch_id"`
+	TaskID         string               `json:"task_id"`
+	Project        string               `json:"project"`
+	Agent          string               `json:"agent"`
+	Reviewer       string               `json:"reviewer"`
+	Provider       string               `json:"provider"`
+	Status         string               `json:"status"` // completed, failed, escalated
+	ExitCode       int                  `json:"exit_code"`
+	DurationS      float64              `json:"duration_s"`
+	DoDPassed      bool                 `json:"dod_passed"`
+	DoDFailures    string               `json:"dod_failures"`
+	Handoffs       int                  `json:"handoffs"` // how many cross-model review cycles
+	FilesChanged   int                  `json:"files_changed"`
+	TotalTokens    TokenUsage           `json:"total_tokens"`
+	ActivityTokens []ActivityTokenUsage `json:"activity_tokens,omitempty"`
+	StepMetrics    []StepMetric         `json:"step_metrics,omitempty"`
 }
 
 // EscalationRequest is sent to the chief when DoD fails after retries.
@@ -172,15 +189,15 @@ type EscalationRequest struct {
 }
 
 // --- Planning Ceremony Types ---
-// Planning happens BEFORE any code is written. Beads are written, arranged,
+// Planning happens BEFORE any code is written. Morsels are written, arranged,
 // deps aligned, structure emerges. Nothing goes to the sharks until it's chum.
 
 // PlanningRequest starts a planning session.
 type PlanningRequest struct {
-	Project string `json:"project"`
-	Agent   string `json:"agent"`  // chief agent for execution (defaults to claude)
-	Tier    string `json:"tier"`   // LLM tier for planning activities: "fast" or "premium"
-	WorkDir string `json:"work_dir"`
+	Project           string        `json:"project"`
+	Agent             string        `json:"agent"` // chief agent for execution (defaults to claude)
+	Tier              string        `json:"tier"`  // LLM tier for planning activities: "fast" or "premium"
+	WorkDir           string        `json:"work_dir"`
 	SlowStepThreshold time.Duration `json:"slow_step_threshold"` // steps exceeding this are flagged slow
 }
 
@@ -203,12 +220,12 @@ type BacklogPresentation struct {
 // PlanningQuestion is a single clarifying question, asked one at a time.
 // Each question depends on answers to previous questions.
 type PlanningQuestion struct {
-	Number         int      `json:"number"`          // 1-indexed
-	Total          int      `json:"total"`           // total questions
-	Question       string   `json:"question"`        // the question
-	Options        []string `json:"options"`         // A, B, C choices
-	Recommendation string   `json:"recommendation"`  // "We recommend A because..."
-	Context        string   `json:"context"`         // what previous answer influenced this
+	Number         int      `json:"number"`         // 1-indexed
+	Total          int      `json:"total"`          // total questions
+	Question       string   `json:"question"`       // the question
+	Options        []string `json:"options"`        // A, B, C choices
+	Recommendation string   `json:"recommendation"` // "We recommend A because..."
+	Context        string   `json:"context"`        // what previous answer influenced this
 }
 
 // PlanSummary is the final summary before greenlight.
@@ -226,24 +243,24 @@ type PlanSummary struct {
 type PlanningState struct {
 	SessionID       string               `json:"session_id"`
 	Phase           string               `json:"phase"` // backlog, selecting, questioning, summarizing, ready, executing
-	Backlog         *BacklogPresentation  `json:"backlog,omitempty"`
-	SelectedItem    *BacklogItem          `json:"selected_item,omitempty"`
-	CurrentQuestion *PlanningQuestion     `json:"current_question,omitempty"`
-	Answers         map[string]string     `json:"answers,omitempty"`         // question# → answer
-	Summary         *PlanSummary          `json:"summary,omitempty"`
-	TaskRequest     *TaskRequest          `json:"task_request,omitempty"`    // produced after greenlight
+	Backlog         *BacklogPresentation `json:"backlog,omitempty"`
+	SelectedItem    *BacklogItem         `json:"selected_item,omitempty"`
+	CurrentQuestion *PlanningQuestion    `json:"current_question,omitempty"`
+	Answers         map[string]string    `json:"answers,omitempty"` // question# → answer
+	Summary         *PlanSummary         `json:"summary,omitempty"`
+	TaskRequest     *TaskRequest         `json:"task_request,omitempty"` // produced after greenlight
 }
 
 // --- CHUM (Continuous Hyper-Kanban Utility Module) Types ---
-// Event-driven learning + grooming triggered after every bead completion,
+// Event-driven learning + grooming triggered after every morsel completion,
 // plus a daily strategic grooming cycle at 5 AM.
 
-// LearnerRequest is passed to ContinuousLearnerWorkflow after a bead completes.
+// LearnerRequest is passed to ContinuousLearnerWorkflow after a morsel completes.
 type LearnerRequest struct {
 	TaskID         string   `json:"task_id"`
 	Project        string   `json:"project"`
 	WorkDir        string   `json:"work_dir"`
-	Agent          string   `json:"agent"`           // which agent completed the bead
+	Agent          string   `json:"agent"` // which agent completed the morsel
 	DoDPassed      bool     `json:"dod_passed"`
 	DoDFailures    string   `json:"dod_failures"`
 	FilesChanged   []string `json:"files_changed,omitempty"`
@@ -252,17 +269,17 @@ type LearnerRequest struct {
 	Tier           string   `json:"tier"`                      // LLM tier: "fast" or "premium"
 }
 
-// Lesson is a single extracted lesson from a completed bead.
+// Lesson is a single extracted lesson from a completed morsel.
 type Lesson struct {
 	ID            int64    `json:"id,omitempty"`
 	TaskID        string   `json:"task_id"`
 	Project       string   `json:"project"`
-	Category      string   `json:"category"`                    // pattern, antipattern, rule, insight
-	Summary       string   `json:"summary"`                     // one-line
-	Detail        string   `json:"detail"`                      // full explanation
-	FilePaths     []string `json:"file_paths"`                  // affected files
-	Labels        []string `json:"labels"`                      // searchable tags
-	SemgrepRuleID string   `json:"semgrep_rule_id,omitempty"`   // if a rule was generated
+	Category      string   `json:"category"`                  // pattern, antipattern, rule, insight
+	Summary       string   `json:"summary"`                   // one-line
+	Detail        string   `json:"detail"`                    // full explanation
+	FilePaths     []string `json:"file_paths"`                // affected files
+	Labels        []string `json:"labels"`                    // searchable tags
+	SemgrepRuleID string   `json:"semgrep_rule_id,omitempty"` // if a rule was generated
 	CreatedAt     string   `json:"created_at,omitempty"`
 }
 
@@ -274,45 +291,42 @@ type SemgrepRule struct {
 	Category string `json:"category"`  // error-handling, security, performance, etc.
 }
 
-// SemgrepScanResult is the parsed output of a semgrep scan.
-type SemgrepScanResult struct {
-	Passed   bool     `json:"passed"`
-	Findings int      `json:"findings"`
-	Errors   []string `json:"errors,omitempty"`
-	Output   string   `json:"output"`
-}
+
 
 // TacticalGroomRequest is passed to TacticalGroomWorkflow after a task completes.
 type TacticalGroomRequest struct {
-	TaskID  string `json:"task_id"`
-	Project string `json:"project"`
-	WorkDir string `json:"work_dir"`
-	Tier    string `json:"tier"` // "fast" for tactical
+	TaskID       string   `json:"task_id"`
+	Project      string   `json:"project"`
+	WorkDir      string   `json:"work_dir"`
+	Tier         string   `json:"tier"`                        // "fast" for tactical
+	FilesChanged []string `json:"files_changed,omitempty"`     // files modified by the landed morsel
+	DiffSummary  string   `json:"diff_summary,omitempty"`      // git diff --stat output
+	TaskTitle    string   `json:"task_title,omitempty"`         // title of the completed morsel
 }
 
-// BeadMutation is a single mutation the groombot wants to apply to the backlog.
+// MorselMutation is a single mutation the groombot wants to apply to the backlog.
 // The Action field determines which other fields are meaningful.
-type BeadMutation struct {
-	TaskID      string   `json:"task_id"`
-	Action      string   `json:"action"`                  // update_priority, add_dependency, update_notes, create, close
-	Priority    *int     `json:"priority,omitempty"`
-	Notes       string   `json:"notes,omitempty"`
-	DependsOnID string   `json:"depends_on_id,omitempty"`
-	Title       string   `json:"title,omitempty"`         // for create
-	Description string   `json:"description,omitempty"`   // for create
-	Acceptance  string   `json:"acceptance_criteria,omitempty"` // for create
-	Design      string   `json:"design,omitempty"`         // for create
-	EstimateMinutes int      `json:"estimate_minutes,omitempty"` // for create
-	Labels      []string `json:"labels,omitempty"`
-	Reason      string   `json:"reason,omitempty"`        // for close
-	StrategicSource string `json:"strategic_source,omitempty"`
-	Deferred    bool     `json:"deferred,omitempty"`       // for strategic decomposition-only suggestions
+type MorselMutation struct {
+	TaskID          string   `json:"task_id"`
+	Action          string   `json:"action"` // update_priority, add_dependency, update_notes, create, close
+	Priority        *int     `json:"priority,omitempty"`
+	Notes           string   `json:"notes,omitempty"`
+	DependsOnID     string   `json:"depends_on_id,omitempty"`
+	Title           string   `json:"title,omitempty"`               // for create
+	Description     string   `json:"description,omitempty"`         // for create
+	Acceptance      string   `json:"acceptance_criteria,omitempty"` // for create
+	Design          string   `json:"design,omitempty"`              // for create
+	EstimateMinutes int      `json:"estimate_minutes,omitempty"`    // for create
+	Labels          []string `json:"labels,omitempty"`
+	Reason          string   `json:"reason,omitempty"` // for close
+	StrategicSource string   `json:"strategic_source,omitempty"`
+	Deferred        bool     `json:"deferred,omitempty"` // for strategic decomposition-only suggestions
 }
 
 const (
 	// StrategicMutationSource identifies strategic-groomer-generated mutations.
 	StrategicMutationSource = "strategic"
-	// StrategicSourceLabel marks bead metadata sourced from strategic grooming.
+	// StrategicSourceLabel marks morsel metadata sourced from strategic grooming.
 	StrategicSourceLabel = "source:strategic"
 	// StrategicDeferredLabel marks deferred strategic suggestions.
 	StrategicDeferredLabel = "strategy:deferred"
@@ -352,10 +366,10 @@ type PackageInfo struct {
 
 // StrategicAnalysis is the output of the premium LLM strategic analysis.
 type StrategicAnalysis struct {
-	Priorities   []StrategicItem `json:"priorities"`
-	Risks        []string        `json:"risks"`
-	Observations []string        `json:"observations"`
-	Mutations    []BeadMutation  `json:"mutations"` // suggested bead mutations
+	Priorities   []StrategicItem  `json:"priorities"`
+	Risks        []string         `json:"risks"`
+	Observations []string         `json:"observations"`
+	Mutations    []MorselMutation `json:"mutations"` // suggested morsel mutations
 }
 
 // StrategicItem is a single priority from strategic analysis.
@@ -366,7 +380,7 @@ type StrategicItem struct {
 	Urgency   string `json:"urgency"` // critical, high, medium, low
 }
 
-// MorningBriefing is the daily briefing written to .beads/morning_briefing.md.
+// MorningBriefing is the daily briefing written to .morsels/morning_briefing.md.
 type MorningBriefing struct {
 	Date          string          `json:"date"`
 	Project       string          `json:"project"`
@@ -377,28 +391,37 @@ type MorningBriefing struct {
 }
 
 // --- Dispatcher Types ---
-// DispatcherWorkflow scans for ready beads and starts ChumAgentWorkflow
+// DispatcherWorkflow scans for ready morsels and starts ChumAgentWorkflow
 // children. Runs on a Temporal Schedule every tick_interval.
 
-// DispatchCandidate is a ready bead with its project context, returned by
+// DispatchCandidate is a ready morsel with its project context, returned by
 // ScanCandidatesActivity and dispatched as a child workflow.
 type DispatchCandidate struct {
-	TaskID          string   `json:"task_id"`
-	Title           string   `json:"title"`
-	Project         string   `json:"project"`
-	WorkDir         string   `json:"work_dir"`
-	Prompt          string   `json:"prompt"`
-	Provider        string   `json:"provider"`
-	DoDChecks       []string `json:"dod_checks"`
+	TaskID            string        `json:"task_id"`
+	Title             string        `json:"title"`
+	TaskTitle         string        `json:"task_title"` // same as title; explicit for consistency with TaskRequest
+	Project           string        `json:"project"`
+	WorkDir           string        `json:"work_dir"`
+	Prompt            string        `json:"prompt"`
+	Priority          int           `json:"priority"` // 0..4 scheduling/search metadata
+	Provider          string        `json:"provider"`
+	DoDChecks         []string      `json:"dod_checks"`
 	SlowStepThreshold time.Duration `json:"slow_step_threshold"`
-	EstimateMinutes int      `json:"estimate_minutes"`
+	EstimateMinutes   int           `json:"estimate_minutes"`
+	PreviousErrors    []string      `json:"previous_errors,omitempty"`
+	Generation        int           `json:"generation"` // 0 = new species (triggers Cambrian Explosion)
+	Complexity        int           `json:"complexity"` // 0-100 score
 }
 
 // ScanCandidatesResult is returned by ScanCandidatesActivity.
 type ScanCandidatesResult struct {
-	Candidates []DispatchCandidate `json:"candidates"`
-	Running    int                 `json:"running"` // currently running workflow count
-	MaxTotal   int                 `json:"max_total"`
+	Candidates      []DispatchCandidate `json:"candidates"`
+	Running         int                 `json:"running"` // currently running workflow count
+	MaxTotal        int                 `json:"max_total"`
+	Throttled       bool                `json:"throttled"`        // true if dispatch was blocked by token budget
+	ThrottleReason  string              `json:"throttle_reason"`  // human-readable reason for throttling
+	AvailableAgents []string            `json:"available_agents"` // enabled CLI agent names from config
+	EscalationTiers []EscalationTier    `json:"escalation_tiers"` // pre-computed escalation chain from config
 }
 
 // --- Crab Decomposition Types ---
@@ -408,12 +431,13 @@ type ScanCandidatesResult struct {
 
 // CrabDecompositionRequest starts a crab decomposition workflow.
 type CrabDecompositionRequest struct {
-	PlanID        string `json:"plan_id"`
-	Project       string `json:"project"`
-	WorkDir       string `json:"work_dir"`
-	PlanMarkdown  string `json:"plan_markdown"`
-	Tier          string `json:"tier"`                        // LLM tier: "fast", "balanced", or "premium"
-	ParentWhaleID string `json:"parent_whale_id,omitempty"`   // optional parent whale to nest under
+	PlanID             string `json:"plan_id"`
+	Project            string `json:"project"`
+	WorkDir            string `json:"work_dir"`
+	PlanMarkdown       string `json:"plan_markdown"`
+	Tier               string `json:"tier"`                      // LLM tier: "fast", "balanced", or "premium"
+	ParentWhaleID      string `json:"parent_whale_id,omitempty"` // optional parent whale to nest under
+	RequireHumanReview bool   `json:"require_human_review"`      // if true, block at Phase 6 for human signal; default: auto-approve
 }
 
 // ParsedPlan is the output of deterministic markdown parsing.
@@ -446,7 +470,7 @@ type ClarificationResult struct {
 type ClarificationEntry struct {
 	Question string `json:"question"`
 	Answer   string `json:"answer"`
-	Source   string `json:"source"` // "lessons_db", "existing_beads", "chief_llm", "human"
+	Source   string `json:"source"` // "lessons_db", "existing_morsels", "chief_llm", "human"
 }
 
 // CandidateWhale is a proposed whale (epic-level grouping) from decomposition.
@@ -482,7 +506,7 @@ type SizedMorsel struct {
 	FileHints          []string `json:"file_hints,omitempty"`
 	DependsOnIndices   []int    `json:"depends_on_indices,omitempty"`
 	WhaleIndex         int      `json:"whale_index"`
-	RiskLevel          string   `json:"risk_level"`       // "low", "medium", "high"
+	RiskLevel          string   `json:"risk_level"` // "low", "medium", "high"
 	SizingRationale    string   `json:"sizing_rationale"`
 }
 

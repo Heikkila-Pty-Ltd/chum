@@ -13,21 +13,21 @@ type HealthEvent struct {
 	EventType  string
 	Details    string
 	DispatchID int64
-	BeadID     string
+	MorselID   string
 	CreatedAt  time.Time
 }
 
 // TickMetric represents metrics recorded for a scheduler tick.
 type TickMetric struct {
-	ID         int64
-	TickAt     time.Time
-	Project    string
-	BeadsOpen  int
-	BeadsReady int
-	Dispatched int
-	Completed  int
-	Failed     int
-	Stuck      int
+	ID           int64
+	TickAt       time.Time
+	Project      string
+	MorselsOpen  int
+	MorselsReady int
+	Dispatched   int
+	Completed    int
+	Failed       int
+	Stuck        int
 }
 
 // SprintBoundary tracks normalized sprint windows for shared cadence.
@@ -56,25 +56,26 @@ type QualityScore struct {
 	Role         string
 	Overall      float64
 	TestsPassed  *bool
-	BeadClosed   bool
+	MorselClosed bool
 	CommitMade   bool
 	FilesChanged int
 	LinesChanged int
 	Duration     float64
 }
+
 // RecordHealthEvent records a health event.
 func (s *Store) RecordHealthEvent(eventType, details string) error {
 	return s.RecordHealthEventWithDispatch(eventType, details, 0, "")
 }
 
-// RecordHealthEventWithDispatch records a health event with optional dispatch/bead correlation.
-func (s *Store) RecordHealthEventWithDispatch(eventType, details string, dispatchID int64, beadID string) error {
+// RecordHealthEventWithDispatch records a health event with optional dispatch/morsel correlation.
+func (s *Store) RecordHealthEventWithDispatch(eventType, details string, dispatchID int64, morselID string) error {
 	if dispatchID < 0 {
 		dispatchID = 0
 	}
 	_, err := s.db.Exec(
-		`INSERT INTO health_events (event_type, details, dispatch_id, bead_id) VALUES (?, ?, ?, ?)`,
-		eventType, details, dispatchID, strings.TrimSpace(beadID),
+		`INSERT INTO health_events (event_type, details, dispatch_id, morsel_id) VALUES (?, ?, ?, ?)`,
+		eventType, details, dispatchID, strings.TrimSpace(morselID),
 	)
 	if err != nil {
 		return fmt.Errorf("store: record health event: %w", err)
@@ -85,7 +86,7 @@ func (s *Store) RecordHealthEventWithDispatch(eventType, details string, dispatc
 // RecordTickMetrics records metrics for a scheduler tick.
 func (s *Store) RecordTickMetrics(project string, open, ready, dispatched, completed, failed, stuck int) error {
 	_, err := s.db.Exec(
-		`INSERT INTO tick_metrics (project, beads_open, beads_ready, dispatched, completed, failed, stuck) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO tick_metrics (project, morsels_open, morsels_ready, dispatched, completed, failed, stuck) VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		project, open, ready, dispatched, completed, failed, stuck,
 	)
 	if err != nil {
@@ -138,7 +139,7 @@ func (s *Store) GetCurrentSprintNumber() (int, error) {
 // GetRecentHealthEvents returns health events from the last N hours.
 func (s *Store) GetRecentHealthEvents(hours int) ([]HealthEvent, error) {
 	rows, err := s.db.Query(
-		`SELECT id, event_type, details, dispatch_id, bead_id, created_at FROM health_events WHERE created_at >= datetime('now', ? || ' hours') ORDER BY created_at DESC`,
+		`SELECT id, event_type, details, dispatch_id, morsel_id, created_at FROM health_events WHERE created_at >= datetime('now', ? || ' hours') ORDER BY created_at DESC`,
 		fmt.Sprintf("-%d", hours),
 	)
 	if err != nil {
@@ -149,13 +150,14 @@ func (s *Store) GetRecentHealthEvents(hours int) ([]HealthEvent, error) {
 	var events []HealthEvent
 	for rows.Next() {
 		var e HealthEvent
-		if err := rows.Scan(&e.ID, &e.EventType, &e.Details, &e.DispatchID, &e.BeadID, &e.CreatedAt); err != nil {
+		if err := rows.Scan(&e.ID, &e.EventType, &e.Details, &e.DispatchID, &e.MorselID, &e.CreatedAt); err != nil {
 			return nil, fmt.Errorf("store: scan health event: %w", err)
 		}
 		events = append(events, e)
 	}
 	return events, rows.Err()
 }
+
 // CaptureOutput captures and stores agent output from a completed dispatch.
 // Output is truncated to 500KB max. The tail contains the last 100 lines.
 func (s *Store) CaptureOutput(dispatchID int64, output string) error {
@@ -219,6 +221,7 @@ func (s *Store) GetOutputTail(dispatchID int64) (string, error) {
 	}
 	return outputTail, nil
 }
+
 // UpsertQualityScore stores or replaces quality scoring for a dispatch.
 func (s *Store) UpsertQualityScore(score QualityScore) error {
 	if score.DispatchID <= 0 {
@@ -236,14 +239,14 @@ func (s *Store) UpsertQualityScore(score QualityScore) error {
 
 	_, err := s.db.Exec(
 		`INSERT INTO quality_scores (
-			dispatch_id, provider, role, overall, tests_passed, bead_closed, commit_made, files_changed, lines_changed, duration
+			dispatch_id, provider, role, overall, tests_passed, morsel_closed, commit_made, files_changed, lines_changed, duration
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(dispatch_id) DO UPDATE SET
 			provider = excluded.provider,
 			role = excluded.role,
 			overall = excluded.overall,
 			tests_passed = excluded.tests_passed,
-			bead_closed = excluded.bead_closed,
+			morsel_closed = excluded.morsel_closed,
 			commit_made = excluded.commit_made,
 			files_changed = excluded.files_changed,
 			lines_changed = excluded.lines_changed,
@@ -254,7 +257,7 @@ func (s *Store) UpsertQualityScore(score QualityScore) error {
 		score.Role,
 		score.Overall,
 		testsPassed,
-		boolToInt(score.BeadClosed),
+		boolToInt(score.MorselClosed),
 		boolToInt(score.CommitMade),
 		score.FilesChanged,
 		score.LinesChanged,
@@ -449,6 +452,7 @@ func (s *Store) GetProviderLabelStats(window time.Duration) (map[string]map[stri
 
 	return stats, nil
 }
+
 // --- Token Usage ---
 
 // TokenUsage is a compact token usage payload for per-activity persistence.
@@ -464,7 +468,7 @@ type TokenUsage struct {
 type TokenUsageRecord struct {
 	ID                  int64
 	DispatchID          int64
-	BeadID              string
+	MorselID            string
 	Project             string
 	ActivityName        string
 	Agent               string
@@ -482,7 +486,7 @@ func migrateTokenUsageTable(db *sql.DB) error {
 		CREATE TABLE IF NOT EXISTS token_usage (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			dispatch_id INTEGER NOT NULL DEFAULT 0,
-			bead_id TEXT NOT NULL DEFAULT '',
+			morsel_id TEXT NOT NULL DEFAULT '',
 			project TEXT NOT NULL DEFAULT '',
 			activity_name TEXT NOT NULL DEFAULT '',
 			agent TEXT NOT NULL DEFAULT '',
@@ -523,11 +527,11 @@ func migrateTokenUsageTable(db *sql.DB) error {
 }
 
 // StoreTokenUsage inserts a per-activity token consumption record.
-func (s *Store) StoreTokenUsage(dispatchID int64, beadID, project, activityName, agent string, usage TokenUsage) error {
+func (s *Store) StoreTokenUsage(dispatchID int64, morselID, project, activityName, agent string, usage TokenUsage) error {
 	_, err := s.db.Exec(
-		`INSERT INTO token_usage (dispatch_id, bead_id, project, activity_name, agent, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, cost_usd)
+		`INSERT INTO token_usage (dispatch_id, morsel_id, project, activity_name, agent, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, cost_usd)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		dispatchID, beadID, project, activityName, agent, usage.InputTokens, usage.OutputTokens, usage.CacheReadTokens, usage.CacheCreationTokens, usage.CostUSD,
+		dispatchID, morselID, project, activityName, agent, usage.InputTokens, usage.OutputTokens, usage.CacheReadTokens, usage.CacheCreationTokens, usage.CostUSD,
 	)
 	if err != nil {
 		return fmt.Errorf("store: store token usage: %w", err)
@@ -538,7 +542,7 @@ func (s *Store) StoreTokenUsage(dispatchID int64, beadID, project, activityName,
 // GetTokenUsageByDispatch returns all per-activity token records for a dispatch.
 func (s *Store) GetTokenUsageByDispatch(dispatchID int64) ([]TokenUsageRecord, error) {
 	rows, err := s.db.Query(
-		`SELECT id, dispatch_id, bead_id, project, activity_name, agent, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, cost_usd, recorded_at
+		`SELECT id, dispatch_id, morsel_id, project, activity_name, agent, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, cost_usd, recorded_at
 		 FROM token_usage WHERE dispatch_id = ? ORDER BY id`,
 		dispatchID,
 	)
@@ -550,7 +554,7 @@ func (s *Store) GetTokenUsageByDispatch(dispatchID int64) ([]TokenUsageRecord, e
 	var records []TokenUsageRecord
 	for rows.Next() {
 		var r TokenUsageRecord
-		if err := rows.Scan(&r.ID, &r.DispatchID, &r.BeadID, &r.Project, &r.ActivityName, &r.Agent,
+		if err := rows.Scan(&r.ID, &r.DispatchID, &r.MorselID, &r.Project, &r.ActivityName, &r.Agent,
 			&r.InputTokens, &r.OutputTokens, &r.CacheReadTokens, &r.CacheCreationTokens, &r.CostUSD, &r.RecordedAt); err != nil {
 			return nil, fmt.Errorf("store: scan token usage: %w", err)
 		}
@@ -561,13 +565,13 @@ func (s *Store) GetTokenUsageByDispatch(dispatchID int64) ([]TokenUsageRecord, e
 
 // TokenUsageSummary holds aggregate token stats for a grouping key.
 type TokenUsageSummary struct {
-	Key                   string  // grouping key (project, agent, or activity_name)
-	TotalInputTokens      int
-	TotalOutputTokens     int
-	TotalCacheReadTokens   int
+	Key                      string // grouping key (project, agent, or activity_name)
+	TotalInputTokens         int
+	TotalOutputTokens        int
+	TotalCacheReadTokens     int
 	TotalCacheCreationTokens int
-	TotalCostUSD          float64
-	RecordCount           int
+	TotalCostUSD             float64
+	RecordCount              int
 }
 
 // GetTokenUsageSummary returns aggregate token usage grouped by the specified column.
@@ -615,7 +619,7 @@ func (s *Store) GetTokenUsageSummary(groupBy string, since time.Time) ([]TokenUs
 type StepMetricRecord struct {
 	ID         int64   `json:"id"`
 	DispatchID int64   `json:"dispatch_id"`
-	BeadID     string  `json:"bead_id"`
+	MorselID   string  `json:"morsel_id"`
 	Project    string  `json:"project"`
 	StepName   string  `json:"step_name"`
 	DurationS  float64 `json:"duration_s"`
@@ -625,15 +629,15 @@ type StepMetricRecord struct {
 }
 
 // StoreStepMetric persists a single pipeline step metric.
-func (s *Store) StoreStepMetric(dispatchID int64, beadID, project, stepName string, durationS float64, status string, slow bool) error {
+func (s *Store) StoreStepMetric(dispatchID int64, morselID, project, stepName string, durationS float64, status string, slow bool) error {
 	slowInt := 0
 	if slow {
 		slowInt = 1
 	}
 	_, err := s.db.Exec(
-		`INSERT INTO step_metrics (dispatch_id, bead_id, project, step_name, duration_s, status, slow)
+		`INSERT INTO step_metrics (dispatch_id, morsel_id, project, step_name, duration_s, status, slow)
 		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		dispatchID, beadID, project, stepName, durationS, status, slowInt,
+		dispatchID, morselID, project, stepName, durationS, status, slowInt,
 	)
 	if err != nil {
 		return fmt.Errorf("store: store step metric: %w", err)
@@ -644,7 +648,7 @@ func (s *Store) StoreStepMetric(dispatchID int64, beadID, project, stepName stri
 // GetStepMetricsByDispatch returns all step metrics for a dispatch.
 func (s *Store) GetStepMetricsByDispatch(dispatchID int64) ([]StepMetricRecord, error) {
 	rows, err := s.db.Query(
-		`SELECT id, dispatch_id, bead_id, project, step_name, duration_s, status, slow, recorded_at
+		`SELECT id, dispatch_id, morsel_id, project, step_name, duration_s, status, slow, recorded_at
 		 FROM step_metrics WHERE dispatch_id = ? ORDER BY id`,
 		dispatchID,
 	)
@@ -657,12 +661,115 @@ func (s *Store) GetStepMetricsByDispatch(dispatchID int64) ([]StepMetricRecord, 
 	for rows.Next() {
 		var r StepMetricRecord
 		var slowInt int
-		if err := rows.Scan(&r.ID, &r.DispatchID, &r.BeadID, &r.Project, &r.StepName, &r.DurationS, &r.Status, &slowInt, &r.RecordedAt); err != nil {
+		if err := rows.Scan(&r.ID, &r.DispatchID, &r.MorselID, &r.Project, &r.StepName, &r.DurationS, &r.Status, &slowInt, &r.RecordedAt); err != nil {
 			return nil, fmt.Errorf("store: scan step metric: %w", err)
 		}
 		r.Slow = slowInt != 0
 		records = append(records, r)
 	}
 	return records, rows.Err()
+}
+
+// TokenBurn holds aggregate token counts for a rolling window query.
+type TokenBurn struct {
+	InputTokens  int64
+	OutputTokens int64
+	CacheRead    int64
+	CacheCreate  int64
+}
+
+// TokenBurnSince returns total token burns for a given agent since the cutoff time.
+// If agent is empty, all agents are included.
+func (s *Store) TokenBurnSince(agent string, since time.Time) (TokenBurn, error) {
+	cutoff := since.UTC().Format(time.DateTime)
+	var b TokenBurn
+	var query string
+	var args []any
+
+	if agent != "" {
+		query = `SELECT COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0),
+		                COALESCE(SUM(cache_read_tokens),0), COALESCE(SUM(cache_creation_tokens),0)
+		         FROM token_usage WHERE agent = ? AND recorded_at >= ?`
+		args = []any{agent, cutoff}
+	} else {
+		query = `SELECT COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0),
+		                COALESCE(SUM(cache_read_tokens),0), COALESCE(SUM(cache_creation_tokens),0)
+		         FROM token_usage WHERE recorded_at >= ?`
+		args = []any{cutoff}
+	}
+
+	err := s.db.QueryRow(query, args...).Scan(&b.InputTokens, &b.OutputTokens, &b.CacheRead, &b.CacheCreate)
+	if err != nil {
+		return b, fmt.Errorf("store: token burn since: %w", err)
+	}
+	return b, nil
+}
+
+// --- Provider Escalation Learning ---
+
+// ProviderEscalation records when a task failed at one provider/tier and
+// succeeded (or failed) at a higher tier. This feeds the learner loop to
+// automatically route tasks based on historical model performance.
+type ProviderEscalation struct {
+	ID              int64
+	MorselID        string
+	Project         string
+	TaskLabels      string // comma-separated task labels for pattern matching
+	FailedProvider  string // provider key that failed (e.g. "codex-spark")
+	FailedCLI       string // CLI agent name (e.g. "codex")
+	FailedModel     string // model name (e.g. "")
+	FailedTier      string // tier level (e.g. "fast")
+	FailureReason   string // why it failed: "exit_error", "dod_fail", "timeout", "review_reject"
+	EscalatedTo     string // provider key it escalated to
+	EscalatedTier   string // tier level it escalated to
+	EscalatedResult string // "success" or "failure"
+	RecordedAt      string
+}
+
+// migrateProviderEscalations creates the escalation learning table.
+func migrateProviderEscalations(db *sql.DB) error {
+	_, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS provider_escalations (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			morsel_id TEXT NOT NULL DEFAULT '',
+			project TEXT NOT NULL DEFAULT '',
+			task_labels TEXT NOT NULL DEFAULT '',
+			failed_provider TEXT NOT NULL DEFAULT '',
+			failed_cli TEXT NOT NULL DEFAULT '',
+			failed_model TEXT NOT NULL DEFAULT '',
+			failed_tier TEXT NOT NULL DEFAULT '',
+			failure_reason TEXT NOT NULL DEFAULT '',
+			escalated_to TEXT NOT NULL DEFAULT '',
+			escalated_tier TEXT NOT NULL DEFAULT '',
+			escalated_result TEXT NOT NULL DEFAULT '',
+			recorded_at DATETIME NOT NULL DEFAULT (datetime('now'))
+		)
+	`)
+	if err != nil {
+		return fmt.Errorf("create provider_escalations table: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_escalations_provider ON provider_escalations(failed_provider, failure_reason)`); err != nil {
+		return fmt.Errorf("create escalations provider index: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_escalations_project ON provider_escalations(project, recorded_at)`); err != nil {
+		return fmt.Errorf("create escalations project index: %w", err)
+	}
+	return nil
+}
+
+// RecordEscalation stores a provider escalation event for learning.
+func (s *Store) RecordEscalation(esc ProviderEscalation) error {
+	_, err := s.db.Exec(
+		`INSERT INTO provider_escalations (morsel_id, project, task_labels, failed_provider, failed_cli,
+		  failed_model, failed_tier, failure_reason, escalated_to, escalated_tier, escalated_result)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		esc.MorselID, esc.Project, esc.TaskLabels, esc.FailedProvider, esc.FailedCLI,
+		esc.FailedModel, esc.FailedTier, esc.FailureReason, esc.EscalatedTo,
+		esc.EscalatedTier, esc.EscalatedResult,
+	)
+	if err != nil {
+		return fmt.Errorf("store: record escalation: %w", err)
+	}
+	return nil
 }
 

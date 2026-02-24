@@ -1,0 +1,32 @@
+rules:
+  - id: chum-raw-json-unmarshal-llm-output
+    paths:
+      include:
+        - internal/temporal/*.go
+    patterns:
+      - pattern: |
+          json.Unmarshal([]byte($OUTPUT), &$TARGET)
+      - pattern-not-inside: |
+          json.Unmarshal([]byte(sanitizeLLMJSON($OUTPUT)), &$TARGET)
+      - pattern-not-inside: |
+          func robustParseJSON(...) ... { ... }
+      - pattern-not-inside: |
+          func robustParseJSONArray(...) ... { ... }
+      - pattern-not-inside: |
+          func parseGeminiOutput(...) ... { ... }
+      - pattern-not-inside: |
+          func parseCodexOutput(...) ... { ... }
+      - pattern-not-inside: |
+          func parseJSONOutput(...) ... { ... }
+      - pattern-not-inside: |
+          func parseDeepSeekOutput(...) ... { ... }
+      - metavariable-regex:
+          metavariable: $OUTPUT
+          regex: (?!.*sanitize).*
+    message: |
+      Raw json.Unmarshal on LLM output without sanitization. LLMs produce
+      literal newlines, stray backslashes, and agent-specific JSON envelopes.
+      Use robustParseJSON() or robustParseJSONArray() instead of direct
+      json.Unmarshal for any LLM CLI output.
+    languages: [go]
+    severity: WARNING

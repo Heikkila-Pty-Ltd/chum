@@ -1,0 +1,26 @@
+rules:
+  - id: chum-cli-output-flag-requires-parser-update
+    paths:
+      include:
+        - internal/temporal/agent_cli.go
+    patterns:
+      - pattern-either:
+        - pattern: |
+            exec.Command("gemini", ..., "-o", "json", ...)
+        - pattern: |
+            exec.Command("codex", ..., "--json", ...)
+        - pattern: |
+            exec.Command("claude", ..., "--output-format", "json", ...)
+    message: |
+      CLI command uses JSON output flag. CRITICAL: Verify that the corresponding
+      parse*Output function in agent_parsers.go correctly extracts the model's
+      response from the JSON envelope.
+
+      Known envelope formats:
+      - Claude: {"result":"<content>","session_id":"...","cost_usd":...}
+      - Codex: JSONL events, last line contains the final output
+      - Gemini: {"session_id":"...","response":"<content>","stats":{...}}
+
+      If you change CLI flags here, you MUST update agent_parsers.go.
+    languages: [go]
+    severity: INFO

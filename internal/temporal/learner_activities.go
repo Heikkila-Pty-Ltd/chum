@@ -298,6 +298,17 @@ rules:
 			continue
 		}
 
+		// Validate the rule with semgrep --validate before accepting it.
+		// LLM-generated YAML frequently has syntax errors that would break the DoD pipeline.
+		validateCmd := exec.CommandContext(ctx, "semgrep", "--validate", "--config", rulePath)
+		validateCmd.Dir = req.WorkDir
+		if validateOutput, validateErr := validateCmd.CombinedOutput(); validateErr != nil {
+			logger.Warn(OctopusPrefix+" Semgrep rule failed validation — discarding",
+				"RuleID", ruleID, "error", validateErr, "output", string(validateOutput))
+			os.Remove(rulePath)
+			continue
+		}
+
 		rules = append(rules, SemgrepRule{
 			RuleID:   ruleID,
 			FileName: fileName,
@@ -305,7 +316,7 @@ rules:
 			Category: lesson.Category,
 		})
 
-		logger.Info(OctopusPrefix+" Semgrep rule generated", "RuleID", ruleID, "Path", rulePath)
+		logger.Info(OctopusPrefix+" Semgrep rule generated and validated", "RuleID", ruleID, "Path", rulePath)
 	}
 
 	return rules, nil

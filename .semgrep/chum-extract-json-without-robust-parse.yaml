@@ -1,0 +1,26 @@
+rules:
+  - id: chum-extract-json-without-robust-parse
+    paths:
+      include:
+        - internal/temporal/*.go
+    patterns:
+      - pattern-either:
+        - pattern: |
+            $VAR := extractJSON($OUTPUT)
+            ...
+            json.Unmarshal([]byte($SANITIZED), &$TARGET)
+        - pattern: |
+            $VAR := extractJSONArray($OUTPUT)
+            ...
+            json.Unmarshal([]byte($SANITIZED), &$TARGET)
+      - pattern-not-inside: |
+          func robustParseJSON(...) ... { ... }
+      - pattern-not-inside: |
+          func robustParseJSONArray(...) ... { ... }
+    message: |
+      Manual extractJSON/extractJSONArray → json.Unmarshal chain detected.
+      Use robustParseJSON() or robustParseJSONArray() instead, which tries
+      4 extraction strategies (including sanitize-first) to handle Gemini
+      backslash escaping and other LLM output quirks.
+    languages: [go]
+    severity: WARNING

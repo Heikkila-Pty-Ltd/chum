@@ -145,7 +145,7 @@ func main() {
 	// Start Temporal worker — now includes DispatcherWorkflow + ScanCandidatesActivity
 	go func() {
 		logger.Info("starting temporal worker")
-		if workerErr := temporal.StartWorker(st, cfg.Tiers, dag, cfgManager, cfg.General.TemporalHostPort, logger); workerErr != nil {
+		if workerErr := temporal.StartWorker(st, cfg.Tiers, dag, cfgManager, cfg.General.TemporalHostPort, cfg.General.TaskQueue, logger); workerErr != nil {
 			logger.Error("temporal worker error", "error", workerErr)
 		}
 	}()
@@ -181,7 +181,7 @@ func main() {
 			Action: &tclient.ScheduleWorkflowAction{
 				Workflow:  temporal.DispatcherWorkflow,
 				Args:      []interface{}{struct{}{}},
-				TaskQueue: temporal.DefaultTaskQueue,
+				TaskQueue: temporal.ResolvedTaskQueue,
 				ID:        "dispatcher",
 			},
 			Overlap: enumspb.SCHEDULE_OVERLAP_POLICY_SKIP,
@@ -218,7 +218,7 @@ func main() {
 
 			_, groomErr := tc.ExecuteWorkflow(ctx, tclient.StartWorkflowOptions{
 				ID:           workflowID,
-				TaskQueue:    "chum-task-queue",
+				TaskQueue:    temporal.ResolvedTaskQueue,
 				CronSchedule: "0 5 * * *",
 			}, temporal.StrategicGroomWorkflow, req)
 			if groomErr != nil {

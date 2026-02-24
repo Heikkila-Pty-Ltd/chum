@@ -49,13 +49,14 @@ func RegisterSearchAttributes(ctx context.Context, c client.Client, logger *slog
 // StartWorker connects to Temporal and starts the chum task queue worker.
 // The store, tiers, dag, and cfgMgr are injected so activities can record
 // outcomes, resolve agents, and scan for ready tasks.
-func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr config.ConfigManager, temporalHostPort string, logger *slog.Logger) error {
+func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr config.ConfigManager, temporalHostPort string, taskQueue string, logger *slog.Logger) error {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	if temporalHostPort == "" {
 		temporalHostPort = DefaultTemporalHostPort
 	}
+	ResolvedTaskQueue = ResolveTaskQueue(taskQueue)
 	c, err := client.Dial(client.Options{
 		HostPort: temporalHostPort,
 	})
@@ -69,7 +70,7 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 	defer regCancel()
 	RegisterSearchAttributes(regCtx, c, logger)
 
-	w := worker.New(c, DefaultTaskQueue, worker.Options{})
+	w := worker.New(c, ResolvedTaskQueue, worker.Options{})
 
 	acts := &Activities{Store: st, Tiers: tiers, DAG: dag}
 	rl := dispatch.NewRateLimiter(st, cfgMgr.Get().RateLimits)
@@ -135,6 +136,6 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 	w.RegisterActivity(acts.SizeMorselsActivity)
 	w.RegisterActivity(acts.EmitMorselsActivity)
 
-	logger.Info("temporal worker started", "task_queue", DefaultTaskQueue)
+	logger.Info("temporal worker started", "task_queue", ResolvedTaskQueue)
 	return w.Run(worker.InterruptCh())
 }

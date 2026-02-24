@@ -63,6 +63,7 @@ type General struct {
 	MaxConcurrentTotal     int                    `toml:"max_concurrent_total"`     // hard cap on total concurrent agents
 	SlowStepThreshold      Duration               `toml:"slow_step_threshold"`      // steps exceeding this are flagged slow (default 2m)
 	TemporalHostPort       string                 `toml:"temporal_host_port"`       // Temporal server address (default 127.0.0.1:7233)
+	TaskQueue              string                 `toml:"task_queue"`               // Temporal task queue name (default chum-task-queue)
 }
 
 // Cadence defines shared sprint cadence across all projects.

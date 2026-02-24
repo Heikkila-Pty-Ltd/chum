@@ -40,7 +40,7 @@ scripts/test-safe.sh ./internal/temporal/...  # Locked + timeout + JSON go test
 Tasks flow through the CHUM DAG, not through markdown files:
 
 ```
-POST /tasks (create) → tasks table (DAG) → groomer → dispatcher → agent → learner
+POST /tasks (open) → crabs (groom/validate) → ready → dispatcher → agent → learner
 ```
 
 ### Creating Tasks via API
@@ -62,7 +62,7 @@ curl -s -X POST http://localhost:8900/tasks \
 ```
 
 **Required fields**: `title`, `project`  
-**Defaults**: `status=ready`, `type=task`
+**Defaults**: `status=open` (crabs groom to `ready`), `type=task`
 
 ### Viewing Tasks
 
@@ -78,7 +78,7 @@ curl -s http://localhost:8900/tasks/<task-id>
 
 - **Priority**: P0=critical, P1=high, P2=medium, P3=low, P4=backlog
 - **Types**: task, bug, feature, epic, question, docs
-- **Status**: `ready` → CHUM dispatches automatically. `done` → completed.
+- **Status lifecycle**: `open` → crabs groom/validate → `ready` → CHUM dispatches → `done`
 - **Dependencies**: Use `depends_on` array when creating tasks. CHUM will not dispatch until dependencies are met.
 
 ### Sizing Guidance (minutes)

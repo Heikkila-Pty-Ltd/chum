@@ -70,7 +70,7 @@ func (s *Server) handleTaskCreate(w http.ResponseWriter, r *http.Request) {
 
 	// Defaults
 	if req.Status == "" {
-		req.Status = "ready"
+		req.Status = "open" // Crabs groom open→ready; dispatcher only picks up ready tasks.
 	}
 	if req.Type == "" {
 		req.Type = "task"

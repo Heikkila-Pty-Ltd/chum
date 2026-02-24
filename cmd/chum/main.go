@@ -378,8 +378,8 @@ func main() {
 
 	temporalNamespace := resolveTemporalNamespace()
 	if registerErr := registerTemporalSearchAttributes(context.Background(), cfg.General.TemporalHostPort, temporalNamespace, logger); registerErr != nil {
-		logger.Error("failed to register temporal search attributes", "host", cfg.General.TemporalHostPort, "namespace", temporalNamespace, "error", registerErr)
-		os.Exit(1)
+		// Non-fatal: attributes may already exist in persistent store from a prior run.
+		logger.Warn("search attribute registration failed (may already exist)", "host", cfg.General.TemporalHostPort, "namespace", temporalNamespace, "error", registerErr)
 	}
 
 	// Start Temporal worker — now includes DispatcherWorkflow + ScanCandidatesActivity

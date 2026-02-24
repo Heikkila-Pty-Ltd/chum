@@ -15,11 +15,11 @@ import (
 )
 
 const (
-	SearchAttributeProject      = "project"
-	SearchAttributePriority     = "priority"
-	SearchAttributeAgent        = "agent"
-	SearchAttributeCurrentStage = "current_stage"
-	SearchAttributeTaskTitle    = "task_title"
+	SearchAttributeProject      = "ChumProject"
+	SearchAttributePriority     = "ChumPriority"
+	SearchAttributeAgent        = "ChumAgent"
+	SearchAttributeCurrentStage = "ChumCurrentStage"
+	SearchAttributeTaskTitle    = "ChumTaskTitle"
 
 	// Signal names used by admin operations.
 	ChumAgentDrainSignalName  = "admin-drain"

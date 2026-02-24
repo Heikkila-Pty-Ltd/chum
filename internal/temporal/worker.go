@@ -38,7 +38,7 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 	defer c.Close()
 
 	if err := RegisterChumSearchAttributesWithNamespace(context.Background(), c, ns); err != nil {
-		return err
+		logger.Warn("search attribute registration failed in worker (may already exist)", "namespace", ns, "error", err)
 	}
 
 	w := worker.New(c, DefaultTaskQueue, worker.Options{

@@ -220,17 +220,36 @@ func (a *Activities) TurtleConvergeActivity(
 	logger := activity.GetLogger(ctx)
 	logger.Info(TurtlePrefix+" Converging", "Proposals", len(proposals), "Critiques", len(critiques))
 
-	// Build full context
-	var context strings.Builder
-	context.WriteString("## Proposals\n")
+	// Build COMPRESSED context — keep under ~4k tokens to avoid truncation.
+	// Only include essential information: approach summary, morsels, and latest round.
+	var ctxBuf strings.Builder
+	ctxBuf.WriteString("## Proposals (compressed)\n")
 	for _, p := range proposals {
-		context.WriteString(fmt.Sprintf("\n### %s (confidence: %d%%)\n%s\nMorsels: %s\n",
-			p.Agent, p.Confidence, p.Approach, strings.Join(p.Morsels, "; ")))
+		ctxBuf.WriteString(fmt.Sprintf("\n### %s (confidence: %d%%)\n%s\nMorsels: %s\n",
+			p.Agent, p.Confidence,
+			truncate(p.Approach, 300), // compress approach
+			strings.Join(p.Morsels, "; ")))
 	}
-	context.WriteString("\n## Deliberation History\n")
+
+	// Only include the LATEST round of critiques (earlier rounds are redundant
+	// since each round revises the prior position)
+	latestRound := 0
 	for _, c := range critiques {
-		context.WriteString(fmt.Sprintf("\n### %s (round %d)\nAgreed: %s\nDisagreed: %s\nRevised: %s\n",
-			c.Agent, c.Round, c.Agreements, c.Disagreements, c.Revised))
+		if c.Round > latestRound {
+			latestRound = c.Round
+		}
+	}
+	if latestRound > 0 {
+		ctxBuf.WriteString(fmt.Sprintf("\n## Final Deliberation (round %d)\n", latestRound))
+		for _, c := range critiques {
+			if c.Round == latestRound {
+				ctxBuf.WriteString(fmt.Sprintf("\n### %s\nAgreed: %s\nDisagreed: %s\nRevised: %s\n",
+					c.Agent,
+					truncate(c.Agreements, 200),
+					truncate(c.Disagreements, 200),
+					truncate(c.Revised, 300)))
+			}
+		}
 	}
 
 	prompt := fmt.Sprintf(`You are the synthesis agent. Merge all proposals and deliberation into a final consensus plan.
@@ -254,10 +273,10 @@ Produce a JSON object with:
   "disagreements": ["Any unresolved disagreements — empty array if consensus"]
 }
 
+IMPORTANT: Keep your response concise. Output ONLY the JSON object, no markdown fences.
 The confidence_score is 0-100 representing overall team consensus.
-Per-item confidence shows how aligned the team is on each specific deliverable.
-If all agents converged, score should be high (>80). If major disagreements remain, be honest.`,
-		req.TaskID, context.String())
+Per-item confidence shows how aligned the team is on each specific deliverable.`,
+		req.TaskID, ctxBuf.String())
 
 	// Use the first agent (balanced tier) for synthesis
 	agent := ResolveTierAgent(a.Tiers, "balanced")

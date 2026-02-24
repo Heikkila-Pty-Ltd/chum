@@ -445,6 +445,12 @@ func migrate(db *sql.DB) error {
 		}
 	}
 
+	if err := addColumnIfNotExists(db, "genomes", "provider_genes", "provider_genes TEXT NOT NULL DEFAULT '[]'"); err != nil {
+		return err
+	}
+	if err := addColumnIfNotExists(db, "genomes", "total_cost_usd", "total_cost_usd REAL NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
 	if err := addColumnIfNotExists(db, "genomes", "hibernating", "hibernating BOOLEAN NOT NULL DEFAULT 0"); err != nil {
 		return err
 	}

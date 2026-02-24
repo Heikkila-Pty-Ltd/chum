@@ -191,7 +191,7 @@ func AutonomousPlanningCeremonyWorkflow(ctx workflow.Context, req TurtlePlanning
 	}
 
 	// ===== PHASE 2: DELIBERATE (up to 5 rounds) =====
-	const maxRounds = 5
+	const maxRounds = 2
 	const convergenceThreshold = 80
 
 	var allCritiques []TurtleCritique

@@ -11,7 +11,7 @@ import (
 
 // PlanningAgents is the team that contributes perspectives during planning.
 // Plan space is cheap — get multiple viewpoints before committing to implementation.
-var PlanningAgents = []string{"claude", "codex", "gemini"}
+var PlanningAgents = []string{"codex", "gemini"}
 
 // GroomBacklogActivity has the chief analyze the project and identify
 // the highest-impact work items. Consults multiple agents for diverse perspectives.

@@ -231,16 +231,63 @@ func extractJSONArray(text string) string {
 }
 
 // sanitizeLLMJSON cleans up common LLM JSON output quirks:
-//   - Literal backslash+n (\n) outside string values -> actual newlines
-//   - Leading/trailing whitespace or stray escape sequences
-//   - Double-escaped quotes (\" -> ")
+//   - Literal newlines/tabs/carriage-returns inside JSON string values → escaped
+//   - Double-escaped sequences (\\n → \n in the JSON sense)
+//   - Leading/trailing whitespace
+//
+// LLMs frequently produce JSON with unescaped newlines inside string values,
+// which causes json.Unmarshal to fail with "invalid character '\n' in string literal".
+// This function walks the JSON string-aware and escapes them properly.
 func sanitizeLLMJSON(raw string) string {
-	// If the string starts with a literal backslash, the whole thing may be
-	// double-escaped (common with CLI piping through shells).
-	if strings.Contains(raw, "\\n") || strings.Contains(raw, "\\t") {
-		raw = strings.ReplaceAll(raw, "\\n", "\n")
-		raw = strings.ReplaceAll(raw, "\\t", "\t")
-		raw = strings.ReplaceAll(raw, "\\\"", "\"")
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return raw
 	}
-	return strings.TrimSpace(raw)
+
+	// Phase 1: Fix double-escaped sequences that came from CLI piping
+	if strings.Contains(raw, "\\\\n") || strings.Contains(raw, "\\\\t") {
+		raw = strings.ReplaceAll(raw, "\\\\n", "\\n")
+		raw = strings.ReplaceAll(raw, "\\\\t", "\\t")
+		raw = strings.ReplaceAll(raw, "\\\\\"", "\\\"")
+	}
+
+	// Phase 2: Walk char-by-char, escaping literal control chars inside strings.
+	// This is the critical fix — LLMs put real newlines in JSON string values.
+	var out strings.Builder
+	out.Grow(len(raw))
+	inString := false
+	for i := 0; i < len(raw); i++ {
+		ch := raw[i]
+
+		if ch == '\\' && inString && i+1 < len(raw) {
+			// Already-escaped sequence inside a string — pass through as-is
+			out.WriteByte(ch)
+			i++
+			out.WriteByte(raw[i])
+			continue
+		}
+
+		if ch == '"' {
+			inString = !inString
+			out.WriteByte(ch)
+			continue
+		}
+
+		if inString {
+			switch ch {
+			case '\n':
+				out.WriteString("\\n")
+			case '\r':
+				out.WriteString("\\r")
+			case '\t':
+				out.WriteString("\\t")
+			default:
+				out.WriteByte(ch)
+			}
+		} else {
+			out.WriteByte(ch)
+		}
+	}
+
+	return out.String()
 }

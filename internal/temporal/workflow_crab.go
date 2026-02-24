@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	enumspb "go.temporal.io/api/enums/v1"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
 )
@@ -89,7 +90,7 @@ func CrabDecompositionWorkflow(ctx workflow.Context, req CrabDecompositionReques
 	var plan ParsedPlan
 	if err := workflow.ExecuteActivity(parseCtx, a.ParsePlanActivity, req).Get(ctx, &plan); err != nil {
 		recordStep("parse", parseStart, "failed")
-		return nil, fmt.Errorf("parse plan failed: %w", err)
+		return escalateToTurtle(ctx, req, "parse plan failed: "+err.Error())
 	}
 	recordStep("parse", parseStart, "ok")
 
@@ -144,7 +145,7 @@ func CrabDecompositionWorkflow(ctx workflow.Context, req CrabDecompositionReques
 	var whales []CandidateWhale
 	if err := workflow.ExecuteActivity(decomposeCtx, a.DecomposeActivity, req, plan, clarifications).Get(ctx, &whales); err != nil {
 		recordStep("decompose", decomposeStart, "failed")
-		return nil, fmt.Errorf("decomposition failed: %w", err)
+		return escalateToTurtle(ctx, req, "decomposition failed: "+err.Error())
 	}
 	recordStep("decompose", decomposeStart, "ok")
 
@@ -172,7 +173,7 @@ func CrabDecompositionWorkflow(ctx workflow.Context, req CrabDecompositionReques
 	var sizedMorsels []SizedMorsel
 	if err := workflow.ExecuteActivity(sizeCtx, a.SizeMorselsActivity, req, scopedWhales).Get(ctx, &sizedMorsels); err != nil {
 		recordStep("size", sizeStart, "failed")
-		return nil, fmt.Errorf("sizing failed: %w", err)
+		return escalateToTurtle(ctx, req, "sizing failed: "+err.Error())
 	}
 	recordStep("size", sizeStart, "ok")
 
@@ -242,7 +243,7 @@ func CrabDecompositionWorkflow(ctx workflow.Context, req CrabDecompositionReques
 		recordCrabHealth(ctx, shortAO, a, req.PlanID, req.Project, "emit_failed",
 			fmt.Sprintf("Emit failed: %v. Whales: %d, Morsels: %d", err, len(scopedWhales), len(sizedMorsels)))
 
-		return nil, fmt.Errorf("emit failed: %w", err)
+		return escalateToTurtle(ctx, req, "emit failed: "+err.Error())
 	}
 	recordStep("emit", emitStart, "ok")
 
@@ -288,4 +289,48 @@ func recordCrabHealth(ctx workflow.Context, opts workflow.ActivityOptions, a *Ac
 	fullDetails := fmt.Sprintf("[%s] %s: %s", project, planID, details)
 	_ = workflow.ExecuteActivity(actCtx, a.RecordHealthEventActivity, eventType, fullDetails).Get(ctx, nil)
 	logger.Info(CrabPrefix+" Health event recorded", "EventType", eventType, "PlanID", planID)
+}
+
+// escalateToTurtle triggers an autonomous planning ceremony (Turtle) when crab
+// decomposition fails. This ensures complex plans that the crab can't slice
+// get a higher-level multi-agent deliberation instead of dying silently.
+func escalateToTurtle(ctx workflow.Context, req CrabDecompositionRequest, reason string) (*CrabDecompositionResult, error) {
+	logger := workflow.GetLogger(ctx)
+	logger.Warn(CrabPrefix+" Escalating to Turtle ceremony", "PlanID", req.PlanID, "Reason", reason)
+
+	var a *Activities
+	notifyOpts := workflow.ActivityOptions{
+		StartToCloseTimeout: 5 * time.Second,
+		RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 1},
+	}
+	nCtx := workflow.WithActivityOptions(ctx, notifyOpts)
+	_ = workflow.ExecuteActivity(nCtx, a.NotifyActivity, NotifyRequest{
+		Event: "crab_escalate", TaskID: req.PlanID, Extra: map[string]string{"reason": reason},
+	}).Get(ctx, nil)
+
+	turtleReq := TurtlePlanningRequest{
+		TaskID:      req.PlanID,
+		Project:     req.Project,
+		WorkDir:     req.WorkDir,
+		Description: req.PlanMarkdown,
+		Tier:        "premium", // turtles use top-tier models for deliberation
+	}
+
+	childOpts := workflow.ChildWorkflowOptions{
+		WorkflowID:            "turtle-" + req.PlanID,
+		WorkflowIDReusePolicy: enumspb.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE,
+		ParentClosePolicy:     enumspb.PARENT_CLOSE_POLICY_ABANDON,
+	}
+	childCtx := workflow.WithChildOptions(ctx, childOpts)
+
+	var result TurtlePlanningResult
+	err := workflow.ExecuteChildWorkflow(childCtx, AutonomousPlanningCeremonyWorkflow, turtleReq).Get(ctx, &result)
+	if err != nil {
+		return nil, fmt.Errorf("turtle escalation failed: %w", err)
+	}
+
+	return &CrabDecompositionResult{
+		Status: "escalated",
+		PlanID: req.PlanID,
+	}, nil
 }

@@ -102,13 +102,29 @@ func DispatcherWorkflow(ctx workflow.Context, _ struct{}) error {
 			PreviousErrors:    c.PreviousErrors,
 		}
 
-		// Fire-and-forget — we don't wait for the child to complete.
-		// The dispatcher's job is to START workflows, not babysit them.
+		// 3-lane dispatcher routing:
+		// 1. Familiar (Gen > 0) -> direct assign (ChumAgentWorkflow)
+		// 2. Unfamiliar (Gen 0) -> Cambrian Explosion (CambrianExplosionWorkflow)
+		// 3. Complex (Score > 70) -> turtle ceremony (AutonomousPlanningCeremonyWorkflow)
 		var future workflow.ChildWorkflowFuture
-		if c.Generation == 0 && len(result.EscalationTiers) > 1 {
-			// Trigger Cambrian Explosion for new species 🌋
+		if c.Complexity > 70 {
+			// Lane 3: Complex -> Turtle Ceremony 🐢
+			// Multi-agent deliberation to decompose complex tasks before implementation.
+			turtleReq := TurtlePlanningRequest{
+				TaskID:      c.TaskID,
+				Project:     c.Project,
+				WorkDir:     c.WorkDir,
+				Description: c.Prompt,
+				Tier:        "premium", // turtle ceremonies use top-tier models for planning
+			}
+			future = workflow.ExecuteChildWorkflow(childCtx, AutonomousPlanningCeremonyWorkflow, turtleReq)
+		} else if c.Generation == 0 && len(result.EscalationTiers) > 1 {
+			// Lane 2: Unfamiliar -> Cambrian Explosion 🌋
+			// Parallel exploration of new task types to find the fittest provider.
 			future = workflow.ExecuteChildWorkflow(childCtx, CambrianExplosionWorkflow, req, result.EscalationTiers)
 		} else {
+			// Lane 1: Familiar/Simple -> Direct Assign 🦈
+			// Standard single-agent execution loop.
 			future = workflow.ExecuteChildWorkflow(childCtx, ChumAgentWorkflow, req)
 		}
 
@@ -416,6 +432,7 @@ func (da *DispatchActivities) ScanCandidatesActivity(ctx context.Context) (*Scan
 			EstimateMinutes:   c.task.EstimateMinutes,
 			PreviousErrors:    strings.Split(c.task.ErrorLog, "\n---\n"),
 			Generation:        generation,
+			Complexity:        ScoreTaskComplexity(c.task.Title, prompt, c.task.Acceptance, c.task.EstimateMinutes),
 		})
 		projectRunning[c.project]++
 	}

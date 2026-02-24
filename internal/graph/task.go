@@ -19,6 +19,7 @@ type Task struct {
 	DependsOn       []string  `json:"depends_on"`
 	Project         string    `json:"project"`
 	ErrorLog        string    `json:"error_log,omitempty"` // scent of failed sharks
+	Complexity      int       `json:"complexity"`
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
 }

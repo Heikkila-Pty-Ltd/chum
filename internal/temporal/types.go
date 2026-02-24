@@ -410,6 +410,7 @@ type DispatchCandidate struct {
 	EstimateMinutes   int           `json:"estimate_minutes"`
 	PreviousErrors    []string      `json:"previous_errors,omitempty"`
 	Generation        int           `json:"generation"` // 0 = new species (triggers Cambrian Explosion)
+	Complexity        int           `json:"complexity"` // 0-100 score
 }
 
 // ScanCandidatesResult is returned by ScanCandidatesActivity.

@@ -13,6 +13,7 @@ import (
 // Spawned as a fire-and-forget child workflow (ParentClosePolicy: ABANDON).
 // Uses fast/cheap LLM tier.
 func TacticalGroomWorkflow(ctx workflow.Context, req TacticalGroomRequest) error {
+	startTime := workflow.Now(ctx)
 	logger := workflow.GetLogger(ctx)
 	logger.Info(RemoraPrefix+" TacticalGroom starting", "TaskID", req.TaskID, "Project", req.Project)
 
@@ -40,6 +41,10 @@ func TacticalGroomWorkflow(ctx workflow.Context, req TacticalGroomRequest) error
 
 	logger.Info(RemoraPrefix+" TacticalGroom complete", "Applied", result.MutationsApplied, "Failed", result.MutationsFailed)
 
+	recordOrganismLog(ctx, "groomer", req.TaskID, req.Project, "completed",
+		fmt.Sprintf("tactical: %d applied, %d failed", result.MutationsApplied, result.MutationsFailed),
+		startTime, 1, "")
+
 	// Fire-and-forget notification.
 	notifyOpts := workflow.ActivityOptions{
 		StartToCloseTimeout: 5 * time.Second,
@@ -59,6 +64,7 @@ func TacticalGroomWorkflow(ctx workflow.Context, req TacticalGroomRequest) error
 //
 // Pipeline: GenerateRepoMap -> GetMorselState -> StrategicAnalysis -> ApplyMutations -> MorningBriefing
 func StrategicGroomWorkflow(ctx workflow.Context, req StrategicGroomRequest) error {
+	startTime := workflow.Now(ctx)
 	logger := workflow.GetLogger(ctx)
 	logger.Info(RemoraPrefix+" StrategicGroom starting", "Project", req.Project)
 
@@ -138,6 +144,12 @@ func StrategicGroomWorkflow(ctx workflow.Context, req StrategicGroomRequest) err
 		"Risks", len(analysis.Risks),
 		"UBSMorsels", ubsMorselsCreated,
 	)
+
+	recordOrganismLog(ctx, "groomer", "", req.Project, "completed",
+		fmt.Sprintf("strategic: %d priorities, %d risks, %d UBS morsels",
+			len(analysis.Priorities), len(analysis.Risks), ubsMorselsCreated),
+		startTime, 6, "")
+
 	return nil
 }
 

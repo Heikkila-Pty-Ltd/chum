@@ -159,6 +159,19 @@ type StepMetric struct {
 	Status    string  `json:"status"` // "ok", "failed", "skipped"
 	Slow      bool    `json:"slow,omitempty"`
 }
+// OrganismLog captures a structured log entry for any non-shark organism
+// (turtle, crab, learner, groomer, dispatcher, explosion, etc.).
+type OrganismLog struct {
+	OrganismType string  `json:"organism_type"` // turtle, crab, learner, groomer, dispatcher, explosion
+	WorkflowID   string  `json:"workflow_id"`
+	TaskID       string  `json:"task_id"`
+	Project      string  `json:"project"`
+	Status       string  `json:"status"`  // completed, failed, escalated, throttled
+	DurationS    float64 `json:"duration_s"`
+	Details      string  `json:"details"` // free-text summary of what happened
+	Steps        int     `json:"steps"`   // phase/step count
+	Error        string  `json:"error,omitempty"`
+}
 
 // OutcomeRecord is passed to the store recording activity.
 type OutcomeRecord struct {

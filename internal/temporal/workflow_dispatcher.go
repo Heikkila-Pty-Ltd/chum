@@ -26,6 +26,7 @@ import (
 // Unlike the old scheduler goroutine, this is durable — survives crashes,
 // visible in the Temporal UI, and doesn't pile up via SKIP overlap policy.
 func DispatcherWorkflow(ctx workflow.Context, _ struct{}) error {
+	startTime := workflow.Now(ctx)
 	logger := workflow.GetLogger(ctx)
 	logger.Info(SharkPrefix + " Dispatcher: scanning for ready tasks")
 
@@ -55,11 +56,16 @@ func DispatcherWorkflow(ctx workflow.Context, _ struct{}) error {
 			Severity:    "critical",
 		}).Get(ctx, nil)
 
+		recordOrganismLog(ctx, "dispatcher", "", "", "failed",
+			"scan failed: "+truncate(err.Error(), 200), startTime, 0, err.Error())
+
 		return fmt.Errorf("scan candidates: %w", err)
 	}
 
 	if result.Throttled {
 		logger.Info(SharkPrefix+" ⏸️  Dispatcher: throttled", "reason", result.ThrottleReason)
+		recordOrganismLog(ctx, "dispatcher", "", "", "throttled",
+			result.ThrottleReason, startTime, 0, "")
 		return nil
 	}
 
@@ -169,6 +175,12 @@ func DispatcherWorkflow(ctx workflow.Context, _ struct{}) error {
 		"dispatched", dispatched,
 		"running", result.Running,
 	)
+
+	recordOrganismLog(ctx, "dispatcher", "", "", "completed",
+		fmt.Sprintf("%d dispatched, %d running, %d candidates",
+			dispatched, result.Running, len(result.Candidates)),
+		startTime, dispatched, "")
+
 	return nil
 }
 

@@ -602,6 +602,28 @@ func (a *Activities) RecordHealthEventActivity(ctx context.Context, eventType, d
 	return a.Store.RecordHealthEvent(eventType, details)
 }
 
+// RecordOrganismLogActivity persists a structured log entry for any non-shark
+// organism. This makes turtles, crabs, learners, groomers, dispatchers, and
+// explosions visible to the learner/paleontologist analysis loop.
+func (a *Activities) RecordOrganismLogActivity(ctx context.Context, log OrganismLog) error {
+	logger := activity.GetLogger(ctx)
+	if a.Store == nil {
+		logger.Warn(OrcaPrefix + " No store configured, skipping organism log")
+		return nil
+	}
+	if err := a.Store.RecordOrganismLog(
+		log.OrganismType, log.WorkflowID, log.TaskID, log.Project,
+		log.Status, log.DurationS, log.Details, log.Steps, log.Error,
+	); err != nil {
+		logger.Error(OrcaPrefix+" Failed to record organism log", "error", err,
+			"type", log.OrganismType, "task", log.TaskID)
+		return err
+	}
+	logger.Info(OrcaPrefix+" Organism log recorded",
+		"type", log.OrganismType, "task", log.TaskID, "status", log.Status)
+	return nil
+}
+
 // --- helpers ---
 
 // extractJSON finds the first JSON object in text (handles markdown code fences).

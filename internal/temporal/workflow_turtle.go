@@ -311,6 +311,10 @@ func AutonomousPlanningCeremonyWorkflow(ctx workflow.Context, req TurtlePlanning
 			req.Project, req.TaskID, len(consensus.Items), consensus.ConfidenceScore, fmtDuration(duration)),
 	).Get(ctx, nil)
 
+	recordOrganismLog(ctx, "turtle", req.TaskID, req.Project, "completed",
+		fmt.Sprintf("%d items, confidence %d%%, %d rounds", len(consensus.Items), consensus.ConfidenceScore, rounds),
+		startTime, rounds, "")
+
 	return &TurtlePlanningResult{
 		Status:          "completed",
 		TaskID:          req.TaskID,
@@ -327,6 +331,7 @@ func AutonomousPlanningCeremonyWorkflow(ctx workflow.Context, req TurtlePlanning
 // This is the pipeline for complex tasks: the dispatcher fires this as one
 // child workflow, and the turtle→crab handoff happens internally.
 func TurtleToCrabWorkflow(ctx workflow.Context, req TurtlePlanningRequest) (*TurtlePlanningResult, error) {
+	startTime := workflow.Now(ctx)
 	logger := workflow.GetLogger(ctx)
 	logger.Info(TurtlePrefix+" Turtle→Crab pipeline starting", "TaskID", req.TaskID)
 
@@ -370,6 +375,10 @@ func TurtleToCrabWorkflow(ctx workflow.Context, req TurtlePlanningRequest) (*Tur
 	result.MorselsEmitted = crabResult.MorselsEmitted
 	logger.Info(TurtlePrefix+" Turtle→Crab pipeline complete",
 		"TaskID", req.TaskID, "Morsels", len(result.MorselsEmitted))
+
+	recordOrganismLog(ctx, "turtle_crab", req.TaskID, req.Project, "completed",
+		fmt.Sprintf("turtle→crab pipeline: %d morsels emitted", len(result.MorselsEmitted)),
+		startTime, 2, "")
 
 	return &result, nil
 }

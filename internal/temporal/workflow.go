@@ -988,6 +988,37 @@ func recordOutcome(ctx workflow.Context, opts workflow.ActivityOptions, a *Activ
 	}
 }
 
+// recordOrganismLog is a fire-and-forget helper to persist organism logs from
+// any non-shark workflow (turtle, crab, learner, groomer, dispatcher, explosion).
+func recordOrganismLog(ctx workflow.Context, organismType, taskID, project, status, details string,
+	startTime time.Time, steps int, errMsg string) {
+
+	logger := workflow.GetLogger(ctx)
+	opts := workflow.ActivityOptions{
+		StartToCloseTimeout: 10 * time.Second,
+		RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 2},
+	}
+	actCtx := workflow.WithActivityOptions(ctx, opts)
+
+	wfID := workflow.GetInfo(ctx).WorkflowExecution.ID
+	duration := workflow.Now(ctx).Sub(startTime).Seconds()
+
+	var a *Activities
+	if err := workflow.ExecuteActivity(actCtx, a.RecordOrganismLogActivity, OrganismLog{
+		OrganismType: organismType,
+		WorkflowID:   wfID,
+		TaskID:       taskID,
+		Project:      project,
+		Status:       status,
+		DurationS:    duration,
+		Details:      details,
+		Steps:        steps,
+		Error:        errMsg,
+	}).Get(ctx, nil); err != nil {
+		logger.Warn("Organism log recording failed (best-effort)", "error", err, "type", organismType)
+	}
+}
+
 // spawnCHUMWorkflows fires off the ContinuousLearner and TacticalGroom as
 // detached child workflows. They run completely async — the parent returns
 // immediately and the children survive even after it completes.

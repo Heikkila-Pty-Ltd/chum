@@ -282,6 +282,23 @@ CREATE TABLE IF NOT EXISTS paleontology_runs (
 	summary                TEXT NOT NULL DEFAULT ''
 );
 
+CREATE TABLE IF NOT EXISTS organism_logs (
+	id             INTEGER PRIMARY KEY AUTOINCREMENT,
+	organism_type  TEXT NOT NULL,
+	workflow_id    TEXT NOT NULL DEFAULT '',
+	task_id        TEXT NOT NULL DEFAULT '',
+	project        TEXT NOT NULL DEFAULT '',
+	status         TEXT NOT NULL DEFAULT '',
+	duration_s     REAL NOT NULL DEFAULT 0,
+	details        TEXT NOT NULL DEFAULT '',
+	steps          INTEGER NOT NULL DEFAULT 0,
+	error          TEXT NOT NULL DEFAULT '',
+	created_at     DATETIME NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_organism_logs_type ON organism_logs(organism_type, created_at);
+CREATE INDEX IF NOT EXISTS idx_organism_logs_project ON organism_logs(project, created_at);
+CREATE INDEX IF NOT EXISTS idx_organism_logs_task ON organism_logs(task_id);
+
 `
 
 // Open creates or opens a SQLite database at the given path and ensures the schema exists.
@@ -615,6 +632,10 @@ func migrate(db *sql.DB) error {
 
 	if err := migrateCalcifiedScripts(db); err != nil {
 		return fmt.Errorf("migrate calcified scripts: %w", err)
+	}
+
+	if err := migrateOrganismLogs(db); err != nil {
+		return fmt.Errorf("migrate organism logs: %w", err)
 	}
 
 	return nil

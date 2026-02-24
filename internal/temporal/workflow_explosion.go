@@ -143,6 +143,10 @@ func CambrianExplosionWorkflow(ctx workflow.Context, req TaskRequest, providers 
 			resDir := WorktreeDir(req.TaskID, res.ExplosionID)
 			workflow.ExecuteActivity(recordCtx, a.CleanupWorktreeActivity, req.WorkDir, resDir).Get(ctx, nil)
 		}
+		recordOrganismLog(ctx, "explosion", req.TaskID, req.Project, "failed",
+			fmt.Sprintf("all %d providers extinct", len(results)),
+			startTime, len(results), "all providers failed")
+
 		return fmt.Errorf("all providers failed the explosion")
 	}
 
@@ -217,6 +221,10 @@ func CambrianExplosionWorkflow(ctx workflow.Context, req TaskRequest, providers 
 		resDir := WorktreeDir(req.TaskID, res.ExplosionID)
 		workflow.ExecuteActivity(recordCtx, a.CleanupWorktreeActivity, req.WorkDir, resDir).Get(ctx, nil)
 	}
+
+	recordOrganismLog(ctx, "explosion", req.TaskID, req.Project, "completed",
+		fmt.Sprintf("winner=%s, %d/%d passed", winner.Provider, passedCount, len(results)),
+		startTime, len(results), "")
 
 	return nil
 }

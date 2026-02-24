@@ -218,6 +218,9 @@ func CrabDecompositionWorkflow(ctx workflow.Context, req CrabDecompositionReques
 		// Record health event so octopus can learn from rejections
 		recordCrabHealth(ctx, shortAO, a, req.PlanID, req.Project, "rejected",
 			fmt.Sprintf("Plan rejected by human review. Whales: %d, Morsels: %d", len(scopedWhales), len(sizedMorsels)))
+		recordOrganismLog(ctx, "crab", req.PlanID, req.Project, "rejected",
+			fmt.Sprintf("rejected by human review: %d whales, %d morsels", len(scopedWhales), len(sizedMorsels)),
+			startTime, 6, "")
 
 		return &CrabDecompositionResult{
 			Status:      "rejected",
@@ -264,6 +267,9 @@ func CrabDecompositionWorkflow(ctx workflow.Context, req CrabDecompositionReques
 		fmt.Sprintf("Emitted %d whales, %d morsels in %s",
 			len(emitResult.WhaleIDs), len(emitResult.MorselIDs),
 			workflow.Now(ctx).Sub(startTime).String()))
+	recordOrganismLog(ctx, "crab", req.PlanID, req.Project, "completed",
+		fmt.Sprintf("%d whales, %d morsels emitted", len(emitResult.WhaleIDs), len(emitResult.MorselIDs)),
+		startTime, 7, "")
 
 	return &CrabDecompositionResult{
 		Status:         "completed",

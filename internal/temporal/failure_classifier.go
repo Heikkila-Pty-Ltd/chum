@@ -97,8 +97,11 @@ func classifyFailure(failures string) (category, summary string) {
 func isInfrastructureFailure(lower string) bool {
 	infraPatterns := []string{
 		"parallel golangci-lint is running",
-		"golangci-lint" + " " + "exit 3", // config error
-		"semgrep" + " " + "exit 7",       // config/download error
+		"golangci-lint" + " " + "exit 3",  // config error
+		"golangci-lint" + " " + "exit -1", // signal kill (OOM)
+		"semgrep" + " " + "exit 7",        // config/download error
+		"exit -1",                          // any tool killed by signal (OOM, SIGKILL)
+		"error obtaining vcs status",       // golangci-lint in worktrees
 		"command not found",
 		"no such file or directory",
 		"permission denied",

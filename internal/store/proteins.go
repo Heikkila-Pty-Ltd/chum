@@ -165,5 +165,71 @@ If any issues found, fix them and re-run npm run build.`,
 	// Update existing protein in case molecules changed
 	_, err = s.db.Exec(`UPDATE proteins SET molecules = ?, category = ?, name = ? WHERE id = ?`,
 		string(molJSON), reactComponentProtein.Category, reactComponentProtein.Name, reactComponentProtein.ID)
+	if err != nil {
+		return err
+	}
+
+	// Go feature protein — the dominant species for CHUM self-modification tasks.
+	goFeatureProtein := Protein{
+		ID:       "go-feature-v1",
+		Category: "go-feature",
+		Name:     "Go Feature Build Sequence",
+		Molecules: []Molecule{
+			{
+				ID:    "read-interfaces",
+				Order: 1,
+				Action: "script",
+				Instruction: `BEFORE writing any code, read the existing interfaces and types.
+Run: grep -rn "type.*struct\|type.*interface\|func (" in the relevant package directory.
+Record EXACT type names, method signatures, and field names.
+Check existing tests to understand expected behaviour.
+Do NOT guess — get them from the source.`,
+				Provider: "any",
+			},
+			{
+				ID:    "implement",
+				Order: 2,
+				Action: "prompt",
+				Instruction: `Implement the feature using ONLY types and interfaces confirmed in step 1.
+Rules:
+1. Run 'go build ./...' after EVERY file change — fix compile errors immediately
+2. Run 'go vet ./...' to catch common mistakes
+3. Add or update tests for new/changed functions
+4. Run 'go test ./...' — ALL tests must pass, not just the new ones
+5. If tests fail, read the FULL error output and fix the EXACT issue
+6. Do NOT regenerate entire files — patch only broken lines
+7. Check that exported functions have doc comments`,
+				Provider: "any",
+			},
+			{
+				ID:    "verify",
+				Order: 3,
+				Action: "script",
+				Instruction: `Verify the implementation:
+1. Run: go build ./... — must succeed with zero errors
+2. Run: go test ./... — ALL packages must pass
+3. Run: go vet ./... — must pass clean
+4. Check that no unrelated files were modified (scope discipline)
+5. If any check fails, fix and re-run until clean`,
+				Provider: "any",
+			},
+		},
+		Generation: 0,
+	}
+
+	goMolJSON, err := json.Marshal(goFeatureProtein.Molecules)
+	if err != nil {
+		return err
+	}
+
+	_, err = s.db.Exec(`INSERT OR IGNORE INTO proteins (id, category, name, molecules, generation)
+		VALUES (?, ?, ?, ?, ?)`,
+		goFeatureProtein.ID, goFeatureProtein.Category,
+		goFeatureProtein.Name, string(goMolJSON), goFeatureProtein.Generation)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`UPDATE proteins SET molecules = ?, category = ?, name = ? WHERE id = ?`,
+		string(goMolJSON), goFeatureProtein.Category, goFeatureProtein.Name, goFeatureProtein.ID)
 	return err
 }

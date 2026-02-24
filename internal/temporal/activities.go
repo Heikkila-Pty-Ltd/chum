@@ -424,6 +424,21 @@ func (a *Activities) RecordOutcomeActivity(ctx context.Context, outcome OutcomeR
 		logger.Error(OrcaPrefix+" Failed to record DoD result", "error", err)
 	}
 
+	// Classify failure for systemic pattern detection (paleontologist, genome evolution).
+	if !outcome.DoDPassed && outcome.DoDFailures != "" {
+		category, summary := classifyFailure(outcome.DoDFailures)
+		if category != "" {
+			if diagErr := a.Store.UpdateFailureDiagnosis(dispatchID, category, summary); diagErr != nil {
+				logger.Error(OrcaPrefix+" Failed to record failure diagnosis", "error", diagErr)
+			} else {
+				logger.Info(OrcaPrefix+" Failure classified",
+					"DispatchID", dispatchID,
+					"Category", category,
+					"Summary", summary)
+			}
+		}
+	}
+
 	// Close task in DAG when DoD passes — this ungates downstream dependencies.
 	// When DoD fails, the task stays "ready" — the organism dies but the substrate
 	// persists for the next attempt. Task mortality never ungates dependencies.

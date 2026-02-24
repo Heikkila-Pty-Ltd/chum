@@ -130,6 +130,10 @@ If there are no meaningful lessons, return an empty array [].`,
 		return nil, nil
 	}
 
+	// Sanitize LLM JSON output — LLMs frequently emit raw backslashes
+	// (e.g. file paths like "internal\temporal") that break json.Unmarshal.
+	jsonStr = sanitizeLLMJSON(jsonStr)
+
 	var lessons []Lesson
 	if err := json.Unmarshal([]byte(jsonStr), &lessons); err != nil {
 		logger.Warn(OctopusPrefix+" Failed to parse lessons JSON", "error", err)

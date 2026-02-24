@@ -28,11 +28,16 @@ func ScoreTaskComplexity(title, prompt, acceptance string, estimateMinutes int) 
 		"consensus", "authentication", "authorization", "distributed",
 	}
 	
+	keywordScore := 0
 	for _, kw := range highComplexityKeywords {
 		if strings.Contains(combined, kw) {
-			score += 10
+			keywordScore += 10
 		}
 	}
+	if keywordScore > 40 {
+		keywordScore = 40
+	}
+	score += keywordScore
 	
 	// 3. Length-based scoring (up to 20 points)
 	// Very long prompts usually imply complex requirements.

@@ -164,7 +164,7 @@ func TestCHUMNotSpawnedOnFailure(t *testing.T) {
 	// Register the child workflows but they should NOT be called
 	env.OnWorkflow(ContinuousLearnerWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
 	env.OnWorkflow(TacticalGroomWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
-	env.OnWorkflow(AutonomousPlanningCeremonyWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnWorkflow(TurtleToCrabWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
 
 	env.OnActivity(a.AutoFixLintActivity, mock.Anything, mock.Anything).Return(nil).Maybe()
 	env.OnActivity(a.RecordFailureActivity, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
@@ -842,7 +842,7 @@ func TestStepDurationLoggingEscalation(t *testing.T) {
 
 	env.OnWorkflow(ContinuousLearnerWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
 	env.OnWorkflow(TacticalGroomWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
-	env.OnWorkflow(AutonomousPlanningCeremonyWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnWorkflow(TurtleToCrabWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
 
 	var outcome OutcomeRecord
 	env.OnActivity(a.RecordOutcomeActivity, mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
@@ -1025,7 +1025,7 @@ func TestFailureTriageRetryGuidance(t *testing.T) {
 	env.OnActivity(a.HibernateGenomeActivity, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 	env.OnWorkflow(ContinuousLearnerWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
 	env.OnWorkflow(TacticalGroomWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
-	env.OnWorkflow(AutonomousPlanningCeremonyWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnWorkflow(TurtleToCrabWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
 
 	env.ExecuteWorkflow(ChumAgentWorkflow, TaskRequest{
 		TaskID:  "test-triage-retry",
@@ -1082,7 +1082,7 @@ func TestFailureTriageRescope(t *testing.T) {
 	env.OnActivity(a.HibernateGenomeActivity, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 	env.OnWorkflow(ContinuousLearnerWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
 	env.OnWorkflow(TacticalGroomWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
-	env.OnWorkflow(AutonomousPlanningCeremonyWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnWorkflow(TurtleToCrabWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
 
 	env.ExecuteWorkflow(ChumAgentWorkflow, TaskRequest{
 		TaskID:  "test-triage-rescope",
@@ -1133,7 +1133,7 @@ func TestFailureTriageFallback(t *testing.T) {
 	env.OnActivity(a.HibernateGenomeActivity, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 	env.OnWorkflow(ContinuousLearnerWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
 	env.OnWorkflow(TacticalGroomWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
-	env.OnWorkflow(AutonomousPlanningCeremonyWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnWorkflow(TurtleToCrabWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
 
 	env.ExecuteWorkflow(ChumAgentWorkflow, TaskRequest{
 		TaskID:  "test-triage-fallback",

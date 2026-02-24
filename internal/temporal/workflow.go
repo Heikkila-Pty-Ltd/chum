@@ -886,7 +886,7 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 		WorkflowID:        fmt.Sprintf("turtle-rescue-%s-%d", req.TaskID, workflow.Now(ctx).Unix()),
 	}
 	turtleCtx := workflow.WithChildOptions(ctx, turtleOpts)
-	turtleFut := workflow.ExecuteChildWorkflow(turtleCtx, AutonomousPlanningCeremonyWorkflow, turtleReq)
+	turtleFut := workflow.ExecuteChildWorkflow(turtleCtx, TurtleToCrabWorkflow, turtleReq)
 	if err := turtleFut.GetChildWorkflowExecution().Get(ctx, nil); err != nil {
 		logger.Warn(SharkPrefix+" Turtle rescue ceremony failed to start", "error", err)
 	} else {

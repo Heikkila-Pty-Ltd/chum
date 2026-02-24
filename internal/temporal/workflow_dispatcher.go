@@ -105,11 +105,11 @@ func DispatcherWorkflow(ctx workflow.Context, _ struct{}) error {
 		// 3-lane dispatcher routing:
 		// 1. Familiar (Gen > 0) -> direct assign (ChumAgentWorkflow)
 		// 2. Unfamiliar (Gen 0) -> Cambrian Explosion (CambrianExplosionWorkflow)
-		// 3. Complex (Score > 70) -> turtle ceremony (AutonomousPlanningCeremonyWorkflow)
+		// 3. Complex (Score > 70) -> turtle→crab pipeline (TurtleToCrabWorkflow)
 		var future workflow.ChildWorkflowFuture
 		if c.Complexity > 70 {
-			// Lane 3: Complex -> Turtle Ceremony 🐢
-			// Multi-agent deliberation to decompose complex tasks before implementation.
+			// Lane 3: Complex -> Turtle→Crab Pipeline 🐢🦀
+			// Turtle defines (multi-agent deliberation). Crab slices (decompose into morsels).
 			turtleReq := TurtlePlanningRequest{
 				TaskID:      c.TaskID,
 				Project:     c.Project,
@@ -117,7 +117,7 @@ func DispatcherWorkflow(ctx workflow.Context, _ struct{}) error {
 				Description: c.Prompt,
 				Tier:        "premium", // turtle ceremonies use top-tier models for planning
 			}
-			future = workflow.ExecuteChildWorkflow(childCtx, AutonomousPlanningCeremonyWorkflow, turtleReq)
+			future = workflow.ExecuteChildWorkflow(childCtx, TurtleToCrabWorkflow, turtleReq)
 		} else if c.Generation == 0 && len(result.EscalationTiers) > 1 {
 			// Lane 2: Unfamiliar -> Cambrian Explosion 🌋
 			// Parallel exploration of new task types to find the fittest provider.

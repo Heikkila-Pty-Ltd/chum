@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	enumspb "go.temporal.io/api/enums/v1"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
 )
@@ -72,13 +73,14 @@ type TurtleMorsel struct {
 
 // TurtlePlanningResult is the output of the autonomous planning ceremony.
 type TurtlePlanningResult struct {
-	Status          string        `json:"status"` // "completed", "escalated", "no_consensus"
-	TaskID          string        `json:"task_id"`
-	MorselsEmitted  []string      `json:"morsels_emitted"`
-	Rounds          int           `json:"rounds"`
-	ConfidenceScore int           `json:"confidence_score"`
-	StepMetrics     []StepMetric  `json:"step_metrics"`
-	TotalTokens     TokenUsage    `json:"total_tokens"`
+	Status          string           `json:"status"` // "completed", "escalated", "no_consensus"
+	TaskID          string           `json:"task_id"`
+	Consensus       *TurtleConsensus `json:"consensus,omitempty"` // the merged plan — callers feed this to a crab
+	MorselsEmitted  []string         `json:"morsels_emitted"`     // deprecated: crabs now handle emission
+	Rounds          int              `json:"rounds"`
+	ConfidenceScore int              `json:"confidence_score"`
+	StepMetrics     []StepMetric     `json:"step_metrics"`
+	TotalTokens     TokenUsage       `json:"total_tokens"`
 }
 
 // AutonomousPlanningCeremonyWorkflow runs a 3-agent deliberation to decompose
@@ -281,42 +283,19 @@ func AutonomousPlanningCeremonyWorkflow(ctx workflow.Context, req TurtlePlanning
 		sel.Select(ctx)
 	}
 
-	// ===== PHASE 4: DECOMPOSE =====
-	decomposeStart := workflow.Now(ctx)
-	logger.Info(TurtlePrefix+" Phase 4: DECOMPOSE — breaking into morsels")
-
-	decomposeCtx := workflow.WithActivityOptions(ctx, longAO)
-	var morsels []TurtleMorsel
-	if err := workflow.ExecuteActivity(decomposeCtx, a.TurtleDecomposeActivity, req, consensus).Get(ctx, &morsels); err != nil {
-		recordStep("decompose", decomposeStart, "failed")
-		notify("turtle_failed", map[string]string{"phase": "decompose", "error": err.Error()})
-		return &TurtlePlanningResult{Status: "failed", TaskID: req.TaskID, StepMetrics: stepMetrics}, nil
-	}
-	recordStep("decompose", decomposeStart, "ok")
-
-	logger.Info(TurtlePrefix+" Decomposition complete", "Morsels", len(morsels))
-
-	// ===== PHASE 5: EMIT =====
-	emitStart := workflow.Now(ctx)
-	logger.Info(TurtlePrefix+" Phase 5: EMIT — writing morsels to DAG")
-
-	emitCtx := workflow.WithActivityOptions(ctx, shortAO)
-	var emittedIDs []string
-	if err := workflow.ExecuteActivity(emitCtx, a.TurtleEmitActivity, req, morsels).Get(ctx, &emittedIDs); err != nil {
-		recordStep("emit", emitStart, "failed")
-		notify("turtle_failed", map[string]string{"phase": "emit", "error": err.Error()})
-		return &TurtlePlanningResult{Status: "failed", TaskID: req.TaskID, StepMetrics: stepMetrics}, nil
-	}
-	recordStep("emit", emitStart, "ok")
+	// ===== DONE — Turtle has defined the plan. Callers feed it to a crab. =====
+	// The old phases 4 (DECOMPOSE) and 5 (EMIT) have been removed.
+	// Turtles define. Crabs slice. Clean separation of concerns.
 
 	duration := workflow.Now(ctx).Sub(startTime)
-	logger.Info(TurtlePrefix+" Ceremony complete",
-		"TaskID", req.TaskID, "Morsels", len(emittedIDs), "Duration", duration.String(),
-		"Consensus", consensus.ConfidenceScore, "Rounds", len(allCritiques)/3)
+	rounds := len(allCritiques) / max(len(PlanningAgents), 1)
+	logger.Info(TurtlePrefix+" Ceremony complete — consensus ready for crab decomposition",
+		"TaskID", req.TaskID, "Items", len(consensus.Items),
+		"Duration", duration.String(), "Consensus", consensus.ConfidenceScore, "Rounds", rounds)
 
 	notify("turtle_done", map[string]string{
 		"task":     req.TaskID,
-		"morsels":  fmt.Sprintf("%d", len(emittedIDs)),
+		"items":    fmt.Sprintf("%d", len(consensus.Items)),
 		"score":    fmt.Sprintf("%d", consensus.ConfidenceScore),
 		"duration": fmtDuration(duration),
 	})
@@ -325,17 +304,69 @@ func AutonomousPlanningCeremonyWorkflow(ctx workflow.Context, req TurtlePlanning
 	recordCtx := workflow.WithActivityOptions(ctx, shortAO)
 	_ = workflow.ExecuteActivity(recordCtx, a.RecordHealthEventActivity,
 		"turtle_completed",
-		fmt.Sprintf("[%s] Turtle planned %s: %d morsels, confidence %d%%, %s",
-			req.Project, req.TaskID, len(emittedIDs), consensus.ConfidenceScore, fmtDuration(duration)),
+		fmt.Sprintf("[%s] Turtle planned %s: %d items, confidence %d%%, %s — awaiting crab decomposition",
+			req.Project, req.TaskID, len(consensus.Items), consensus.ConfidenceScore, fmtDuration(duration)),
 	).Get(ctx, nil)
 
 	return &TurtlePlanningResult{
 		Status:          "completed",
 		TaskID:          req.TaskID,
-		MorselsEmitted:  emittedIDs,
-		Rounds:          len(allCritiques) / max(len(PlanningAgents), 1),
+		Consensus:       &consensus,
+		Rounds:          rounds,
 		ConfidenceScore: consensus.ConfidenceScore,
 		StepMetrics:     stepMetrics,
 		TotalTokens:     totalTokens,
 	}, nil
+}
+
+// TurtleToCrabWorkflow chains turtle planning → crab decomposition.
+// Turtles define (explore, deliberate, converge). Crabs slice (decompose, emit).
+// This is the pipeline for complex tasks: the dispatcher fires this as one
+// child workflow, and the turtle→crab handoff happens internally.
+func TurtleToCrabWorkflow(ctx workflow.Context, req TurtlePlanningRequest) (*TurtlePlanningResult, error) {
+	logger := workflow.GetLogger(ctx)
+	logger.Info(TurtlePrefix+" Turtle→Crab pipeline starting", "TaskID", req.TaskID)
+
+	// Phase 1: Turtle plans
+	turtleOpts := workflow.ChildWorkflowOptions{
+		ParentClosePolicy: enumspb.PARENT_CLOSE_POLICY_ABANDON,
+	}
+	turtleCtx := workflow.WithChildOptions(ctx, turtleOpts)
+
+	var result TurtlePlanningResult
+	if err := workflow.ExecuteChildWorkflow(turtleCtx, AutonomousPlanningCeremonyWorkflow, req).Get(ctx, &result); err != nil {
+		return nil, fmt.Errorf("turtle planning failed: %w", err)
+	}
+
+	if result.Status != "completed" || result.Consensus == nil || result.Consensus.MergedPlan == "" {
+		logger.Warn(TurtlePrefix+" Turtle produced no consensus, skipping crab",
+			"Status", result.Status)
+		return &result, nil
+	}
+
+	// Phase 2: Crab slices
+	crabReq := CrabDecompositionRequest{
+		PlanID:       req.TaskID,
+		Project:      req.Project,
+		WorkDir:      req.WorkDir,
+		PlanMarkdown: result.Consensus.MergedPlan,
+		Tier:         "balanced",
+	}
+	crabOpts := workflow.ChildWorkflowOptions{
+		ParentClosePolicy: enumspb.PARENT_CLOSE_POLICY_ABANDON,
+	}
+	crabCtx := workflow.WithChildOptions(ctx, crabOpts)
+
+	var crabResult CrabDecompositionResult
+	if err := workflow.ExecuteChildWorkflow(crabCtx, CrabDecompositionWorkflow, crabReq).Get(ctx, &crabResult); err != nil {
+		logger.Warn(TurtlePrefix+" Post-turtle crab decomposition failed", "error", err)
+		// Still return the turtle result — the plan exists even if crab failed
+		return &result, nil
+	}
+
+	result.MorselsEmitted = crabResult.MorselsEmitted
+	logger.Info(TurtlePrefix+" Turtle→Crab pipeline complete",
+		"TaskID", req.TaskID, "Morsels", len(result.MorselsEmitted))
+
+	return &result, nil
 }

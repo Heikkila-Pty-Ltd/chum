@@ -168,12 +168,12 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 	w.RegisterActivity(acts.EmitMorselsActivity)
 
 	// --- Turtle (Autonomous Planning Ceremony) ---
+	// Turtles define (explore, deliberate, converge). Crabs slice (decompose, emit).
 	w.RegisterWorkflow(AutonomousPlanningCeremonyWorkflow)
+	w.RegisterWorkflow(TurtleToCrabWorkflow)
 	w.RegisterActivity(acts.TurtleExploreActivity)
 	w.RegisterActivity(acts.TurtleDeliberateActivity)
 	w.RegisterActivity(acts.TurtleConvergeActivity)
-	w.RegisterActivity(acts.TurtleDecomposeActivity)
-	w.RegisterActivity(acts.TurtleEmitActivity)
 	w.RegisterActivity(acts.TurtleSendAsActivity)
 
 	// --- Calcifier (Stochastic→Deterministic) ---

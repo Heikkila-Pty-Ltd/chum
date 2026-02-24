@@ -432,8 +432,9 @@ type DispatchCandidate struct {
 	SlowStepThreshold time.Duration `json:"slow_step_threshold"`
 	EstimateMinutes   int           `json:"estimate_minutes"`
 	PreviousErrors    []string      `json:"previous_errors,omitempty"`
-	Generation        int           `json:"generation"` // 0 = new species (triggers Cambrian Explosion)
-	Complexity        int           `json:"complexity"` // 0-100 score
+	Generation        int           `json:"generation"`  // 0 = new species (triggers Cambrian Explosion)
+	Complexity        int           `json:"complexity"`  // 0-100 score
+	HasCrabSeal       bool          `json:"has_crab_seal"` // true if properly decomposed/sized for direct dispatch
 }
 
 // ScanCandidatesResult is returned by ScanCandidatesActivity.

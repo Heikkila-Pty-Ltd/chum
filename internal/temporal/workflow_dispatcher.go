@@ -107,8 +107,8 @@ func DispatcherWorkflow(ctx workflow.Context, _ struct{}) error {
 		// 2. Unfamiliar (Gen 0) -> Cambrian Explosion (CambrianExplosionWorkflow)
 		// 3. Complex (Score > 70) -> turtle→crab pipeline (TurtleToCrabWorkflow)
 		var future workflow.ChildWorkflowFuture
-		if c.Complexity > 70 {
-			// Lane 3: Complex -> Turtle→Crab Pipeline 🐢🦀
+		if c.Complexity > 70 || !c.HasCrabSeal {
+			// Lane 3: Complex or un-decomposed → Turtle→Crab Pipeline 🐢🦀
 			// Turtle defines (multi-agent deliberation). Crab slices (decompose into morsels).
 			turtleReq := TurtlePlanningRequest{
 				TaskID:      c.TaskID,
@@ -459,6 +459,7 @@ func (da *DispatchActivities) ScanCandidatesActivity(ctx context.Context) (*Scan
 			PreviousErrors:    strings.Split(c.task.ErrorLog, "\n---\n"),
 			Generation:        generation,
 			Complexity:        ScoreTaskComplexity(c.task.Title, prompt, c.task.Acceptance, c.task.EstimateMinutes),
+			HasCrabSeal:       hasCrabSeal(c.task),
 		})
 		projectRunning[c.project]++
 	}
@@ -710,6 +711,27 @@ func isStrategicDeferredTask(t graph.Task) bool {
 		if strings.EqualFold(strings.TrimSpace(label), StrategicDeferredLabel) {
 			return true
 		}
+	}
+	return false
+}
+
+// hasCrabSeal checks whether a task has been properly decomposed and sized.
+// Tasks without the seal are rerouted to the turtle→crab pipeline instead of
+// being dispatched directly to sharks.
+func hasCrabSeal(t graph.Task) bool {
+	// Morsels with acceptance criteria and time estimates are pre-approved.
+	if t.Type == "morsel" && t.Acceptance != "" && t.EstimateMinutes > 0 {
+		return true
+	}
+	// Explicit crab:approved label overrides all checks.
+	for _, l := range t.Labels {
+		if strings.TrimSpace(l) == "crab:approved" {
+			return true
+		}
+	}
+	// Small tasks (type "task") with estimates are likely human-created morsels.
+	if t.Type == "task" && t.EstimateMinutes > 0 && t.EstimateMinutes <= 120 {
+		return true
 	}
 	return false
 }

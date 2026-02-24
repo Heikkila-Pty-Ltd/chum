@@ -83,6 +83,9 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.HandleFunc("/tasks", s.authMiddleware.RequireAuth(s.routeTasks))
 	mux.HandleFunc("/tasks/", s.authMiddleware.RequireAuth(s.routeTasks))
 
+	// Turtle tiebreak signal
+	mux.HandleFunc("/tiebreak", s.authMiddleware.RequireAuth(s.handleTiebreak))
+
 	s.httpServer = &http.Server{
 		Addr:        s.cfg.API.Bind,
 		Handler:     mux,

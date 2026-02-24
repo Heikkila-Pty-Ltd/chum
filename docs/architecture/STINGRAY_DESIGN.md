@@ -6,8 +6,8 @@ CHUM already has three self-improvement loops:
 
 | System | Trigger | Looks At | Blind Spot |
 |--------|---------|----------|------------|
-| **Learner** | After each bead | Diffs + DoD failures from that bead | Only sees what just changed |
-| **Tactical Groom** | After each bead | Open backlog + completed task context | Reshuffles tasks, doesn't analyze code |
+| **Learner** | After each morsel | Diffs + DoD failures from that morsel | Only sees what just changed |
+| **Tactical Groom** | After each morsel | Open backlog + completed task context | Reshuffles tasks, doesn't analyze code |
 | **Strategic Groom** | Daily cron | `go list -json` + backlog + lessons | Surface-level repo structure, no deep reads |
 
 None of them ever **read the actual code** looking for structural problems. They're all reactive — they learn from work that was done, not from the codebase as it exists. The strategic groomer gets a compressed package list but never opens a file.
@@ -23,7 +23,7 @@ Log prefix: `🦂 STINGRAY`
 ### New Temporal Workflow: `StingrayWorkflow`
 
 **Trigger:** Configurable cron (default: every 12 hours, e.g. `0 */12 * * *`).
-At the pace sharks churn through beads, the codebase can shift significantly in a single day. Twice-daily catches drift before it compounds. Can also be triggered manually via API or after a strategic groom. Frequency is configurable per-project — high-velocity projects might run every 6h, stable ones daily.
+At the pace sharks churn through morsels, the codebase can shift significantly in a single day. Twice-daily catches drift before it compounds. Can also be triggered manually via API or after a strategic groom. Frequency is configurable per-project — high-velocity projects might run every 6h, stable ones daily.
 
 **Pipeline:**
 
@@ -48,20 +48,20 @@ AnalyzeCodeHealthActivity      (10 min, premium LLM, heartbeat)
 DeduplicateActivity            (30s, no LLM)
     │
     │  Check against:
-    │  - Open beads with label "source:stingray"
+    │  - Open morsels with label "source:stingray"
     │  - Previous findings in stingray_findings table
-    │  - Recently closed beads (don't re-file resolved items)
+    │  - Recently closed morsels (don't re-file resolved items)
     │
     ▼
 FileBacklogItemsActivity       (1 min, no LLM)
     │
-    │  **High severity** → auto-file as P2 bead + surface warning notification
+    │  **High severity** → auto-file as P2 morsel + surface warning notification
     │    (god objects, security, circular deps, critical doc drift)
     │    Notification via Matrix/email (when implemented) so humans see it
     │  **Medium/low** → stored in findings table only
     │    Surfaced in next planning session / morning briefing for triage
-    │    Planning ceremony (chief or human) promotes to beads if warranted
-    │  All beads tagged: source:stingray, category:{finding_type}
+    │    Planning ceremony (chief or human) promotes to morsels if warranted
+    │  All morsels tagged: source:stingray, category:{finding_type}
     │
     ▼
 RecordStingrayRunActivity    (30s, no LLM)
@@ -126,7 +126,7 @@ Each analyzer is a section of the LLM prompt, not a separate interface. The LLM 
   - **Config drift**: keys in chum.toml not mentioned in any doc file
   - **Dead references**: docs referencing functions/files that no longer exist
   - **README freshness**: README.md last modified vs last 50 commits
-- Example: `"docs/architecture/CHUM_OVERVIEW.md references 'internal/beads/' which was deprecated — update to reflect graph/ migration"`
+- Example: `"docs/architecture/CHUM_OVERVIEW.md references 'internal/graph/' which was deprecated — update to reflect graph/ migration"`
 - Example: `"14 exported functions in internal/scheduler/ have no godoc comment"`
 
 ### Data Model
@@ -152,7 +152,7 @@ CREATE TABLE stingray_findings (
     detail TEXT NOT NULL,
     file_path TEXT NOT NULL DEFAULT '',
     evidence TEXT NOT NULL DEFAULT '',
-    bead_id TEXT NOT NULL DEFAULT '',  -- linked bead if filed
+    morsel_id TEXT NOT NULL DEFAULT '',  -- linked morsel if filed
     status TEXT NOT NULL DEFAULT 'open',  -- open, filed, resolved, wont_fix
     first_seen DATETIME NOT NULL DEFAULT (datetime('now')),
     last_seen DATETIME NOT NULL DEFAULT (datetime('now'))
@@ -168,7 +168,7 @@ CREATE TABLE stingray_findings (
 enabled = true
 schedule = "0 */12 * * *"  # every 12 hours
 max_findings_per_run = 15
-auto_file_threshold = "medium"  # file beads for medium+ severity; low = report only
+auto_file_threshold = "medium"  # file morsels for medium+ severity; low = report only
 include_oss_suggestions = true
 cooldown_if_no_changes = "24h"  # skip run if no commits since last run
 ```
@@ -213,5 +213,5 @@ They complement each other: the strategic groom decides priority order, the stin
 ## Verification
 1. `go build ./...`
 2. `go test ./internal/temporal/...` (workflow + activity unit tests)
-3. Manual trigger via Temporal CLI or API endpoint, observe findings filed as beads
-4. Second run with no code changes — verify dedup (no duplicate beads)
+3. Manual trigger via Temporal CLI or API endpoint, observe findings filed as morsels
+4. Second run with no code changes — verify dedup (no duplicate morsels)

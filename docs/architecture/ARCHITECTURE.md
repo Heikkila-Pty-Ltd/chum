@@ -11,7 +11,7 @@ CHUM is a **durable, self-healing agent orchestrator** composed of three layers:
 ```mermaid
 graph LR
     subgraph Input
-        BD["Beads DAG"]
+        BD["Morsels DAG"]
         API["HTTP API :8900"]
         CRON["Daily Cron"]
     end
@@ -44,6 +44,16 @@ graph LR
     TGW --> BD
     SGW --> BD
 ```
+
+---
+
+## Package Dependencies
+
+> For detailed coupling metrics, dead package analysis, and fan-in/fan-out data, see [PACKAGE_MAP.md](PACKAGE_MAP.md).
+
+![Package dependency graph](../deps/package-deps.svg)
+
+Regenerate: `bash scripts/gen-dep-graph.sh | dot -Tsvg -o docs/deps/package-deps.svg`
 
 ---
 
@@ -119,13 +129,13 @@ CHUM implements a **dual-speed Kanban** system. Both speeds run as **abandoned c
 
 ```mermaid
 graph TB
-    subgraph Fast["Per-Bead"]
+    subgraph Fast["Per-Morsel"]
         CL["Learner"] --> EL["ExtractLessons"] --> SL["StoreLessons"] --> GR["GenerateSemgrep"]
-        TG["TacticalGroom"] --> MB["MutateBeads"]
+        TG["TacticalGroom"] --> MB["MutateMorsels"]
     end
 
     subgraph Slow["Daily Cron"]
-        SG["StrategicGroom"] --> RM["RepoMap"] --> BS["BeadSummary"] --> SA["Analysis"] --> AM["Mutations"] --> BF["Briefing"]
+        SG["StrategicGroom"] --> RM["RepoMap"] --> BS["MorselSummary"] --> SA["Analysis"] --> AM["Mutations"] --> BF["Briefing"]
     end
 
     DoD["DoD PASSED"] -->|fire-and-forget| CL & TG
@@ -160,8 +170,8 @@ All workflows run on `chum-task-queue`. Single shared queue simplifies deploymen
 |----------|--------|---------------|------------|
 | `CHUMAgentWorkflow` | API trigger | — | On-demand |
 | `PlanningCeremonyWorkflow` | API trigger | — | On-demand |
-| `ContinuousLearnerWorkflow` | Child of Shark | ABANDON | Per bead completion |
-| `TacticalGroomWorkflow` | Child of Shark | ABANDON | Per bead completion |
+| `ContinuousLearnerWorkflow` | Child of Shark | ABANDON | Per morsel completion |
+| `TacticalGroomWorkflow` | Child of Shark | ABANDON | Per morsel completion |
 | `StrategicGroomWorkflow` | Temporal Client | — | Cron `0 5 * * *` |
 
 ### Activity Timeout Design
@@ -182,7 +192,7 @@ All workflows run on `chum-task-queue`. Single shared queue simplifies deploymen
 ### SQLite Schema (Key Tables)
 
 ```
-dispatches     — Every agent dispatch (bead_id, agent, provider, status, duration)
+dispatches     — Every agent dispatch (morsel_id, agent, provider, status, duration)
 dod_results    — DoD pass/fail per dispatch (passed, failures, coverage)
 lessons        — Extracted lessons (category, summary, detail, file_paths, labels)
 lessons_fts    — FTS5 virtual table for full-text lesson search
@@ -193,7 +203,7 @@ health_events  — System health events (escalations, gateway issues)
 
 ```
 workspace/
-├── .beads/                    # Beads DAG (issues.jsonl, deps)
+├── .morsels/                    # Morsels DAG (issues.jsonl, deps)
 │   └── morning_briefing.md    # StrategicGroom daily output
 ├── .semgrep/                  # CHUM-generated rules
 │   ├── chum-nil-check-*.yaml  # Auto-generated from learner

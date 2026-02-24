@@ -1,0 +1,486 @@
+digraph gocallvis {
+    label="";
+    labeljust="l";
+    fontname="Arial";
+    fontsize="14";
+    rankdir="LR";
+    bgcolor="lightgray";
+    style="solid";
+    penwidth="0.5";
+    pad="0.0";
+    nodesep="0.35";
+
+    node [shape="box" style="filled,rounded" fillcolor="honeydew" fontname="Verdana" penwidth="1.0" margin="0.16,0.0"];
+    edge [minlen="2"]
+
+    subgraph "cluster_focus" {
+        labeljust="c";
+fontsize="18";
+bgcolor="#e6ecfa";
+label="main";
+labelloc="t";
+        
+        "github.com/antigravity-dev/chum/cmd/chum.configureLogger" [ penwidth="0.5" tooltip="github.com/antigravity-dev/chum/cmd/chum.configureLogger | defined in main.go:27\nat main.go:40: calling [log/slog.NewTextHandler]\nat main.go:42: calling [log/slog.NewJSONHandler]\nat main.go:29: calling [strings.TrimSpace]\nat main.go:29: calling [strings.ToLower]\nat main.go:40: calling [log/slog.New]\nat main.go:42: calling [log/slog.New]" fillcolor="lightblue" label="configureLogger" ]
+        "github.com/antigravity-dev/chum/cmd/chum.validateRuntimeConfigReload" [ fillcolor="lightblue" label="validateRuntimeConfigReload" penwidth="0.5" tooltip="github.com/antigravity-dev/chum/cmd/chum.validateRuntimeConfigReload | defined in main.go:45\nat main.go:50: calling [strings.TrimSpace]\nat main.go:51: calling [strings.TrimSpace]\nat main.go:56: calling [strings.TrimSpace]\nat main.go:57: calling [strings.TrimSpace]\nat main.go:47: calling [fmt.Errorf]\nat main.go:53: calling [fmt.Errorf]\nat main.go:59: calling [fmt.Errorf]" ]
+        "github.com/antigravity-dev/chum/cmd/chum.main$3" [ fillcolor="lightblue" label="main$3" style="dotted,filled" tooltip="github.com/antigravity-dev/chum/cmd/chum.main$3 | defined in main.go:154\nat main.go:193: calling [errors.As]\nat main.go:226: calling [errors.As]\nat main.go:158: calling [go.temporal.io/sdk/client.Dial]\nat main.go:156: calling [time.Sleep]\nat main.go:162: calling [(*log/slog.Logger).Error]\nat main.go:200: calling [(*log/slog.Logger).Error]\nat main.go:230: calling [(*log/slog.Logger).Error]\nat main.go:215: calling [github.com/antigravity-dev/chum/internal/config.ExpandHome]\nat main.go:203: calling [(*log/slog.Logger).Info]\nat main.go:194: calling [(*log/slog.Logger).Info]\nat main.go:198: calling [(*log/slog.Logger).Info]\nat main.go:233: calling [(*log/slog.Logger).Info]\nat main.go:227: calling [(*log/slog.Logger).Info]\nat main.go:195: calling [strings.Contains]\nat main.go:197: calling [strings.Contains]\nat main.go:196: calling [strings.Contains]\nat main.go:212: calling [fmt.Sprintf]" ]
+        "github.com/antigravity-dev/chum/cmd/chum.disableAnthropicInConfigFile" [ fillcolor="lightblue" label="disableAnthropicInConfigFile" penwidth="0.5" tooltip="github.com/antigravity-dev/chum/cmd/chum.disableAnthropicInConfigFile | defined in config_quickcmd.go:19\nat config_quickcmd.go:20: calling [os.ReadFile]\nat config_quickcmd.go:30: calling [os.WriteFile]\nat config_quickcmd.go:22: calling [fmt.Errorf]\nat config_quickcmd.go:31: calling [fmt.Errorf]" ]
+        "github.com/antigravity-dev/chum/cmd/chum.disableAnthropicInConfigContent" [ fillcolor="lightblue" label="disableAnthropicInConfigContent" penwidth="0.5" tooltip="github.com/antigravity-dev/chum/cmd/chum.disableAnthropicInConfigContent | defined in config_quickcmd.go:112\nat config_quickcmd.go:117: calling [strings.Split]\nat config_quickcmd.go:190: calling [strings.HasSuffix]\nat config_quickcmd.go:190: calling [strings.HasSuffix]\nat config_quickcmd.go:164: calling [strings.ToLower]\nat config_quickcmd.go:189: calling [strings.Join]\nat config_quickcmd.go:113: calling [strings.TrimSpace]\nat config_quickcmd.go:164: calling [strings.TrimSpace]" ]
+        "github.com/antigravity-dev/chum/cmd/chum.parseTableHeader" [ tooltip="github.com/antigravity-dev/chum/cmd/chum.parseTableHeader | defined in config_quickcmd.go:197\nat config_quickcmd.go:198: calling [(*regexp.Regexp).FindStringSubmatch]\nat config_quickcmd.go:202: calling [strings.TrimSpace]" fillcolor="lightblue" label="parseTableHeader" penwidth="0.5" ]
+        "github.com/antigravity-dev/chum/cmd/chum.shouldRemoveTable" [ tooltip="github.com/antigravity-dev/chum/cmd/chum.shouldRemoveTable | defined in config_quickcmd.go:205\nat config_quickcmd.go:210: calling [strings.HasPrefix]\nat config_quickcmd.go:214: calling [strings.TrimPrefix]\nat config_quickcmd.go:220: calling [(*regexp.Regexp).FindStringSubmatch]\nat config_quickcmd.go:206: calling [strings.TrimSpace]\nat config_quickcmd.go:206: calling [strings.ToLower]" fillcolor="lightblue" label="shouldRemoveTable" penwidth="0.5" ]
+        "github.com/antigravity-dev/chum/cmd/chum.looksAnthropic" [ fillcolor="lightblue" label="looksAnthropic" penwidth="0.5" tooltip="github.com/antigravity-dev/chum/cmd/chum.looksAnthropic | defined in config_quickcmd.go:271\nat config_quickcmd.go:273: calling [strings.Contains]\nat config_quickcmd.go:273: calling [strings.Contains]\nat config_quickcmd.go:272: calling [strings.TrimSpace]\nat config_quickcmd.go:272: calling [strings.ToLower]" ]
+        "github.com/antigravity-dev/chum/cmd/chum.collapseBlankRuns" [ penwidth="0.5" tooltip="github.com/antigravity-dev/chum/cmd/chum.collapseBlankRuns | defined in config_quickcmd.go:276\nat config_quickcmd.go:283: calling [strings.TrimSpace]" fillcolor="lightblue" label="collapseBlankRuns" ]
+        "github.com/antigravity-dev/chum/cmd/chum.trimAnthropicTierValues" [ fillcolor="lightblue" label="trimAnthropicTierValues" penwidth="0.5" tooltip="github.com/antigravity-dev/chum/cmd/chum.trimAnthropicTierValues | defined in config_quickcmd.go:231\nat config_quickcmd.go:254: calling [strings.Join]\nat config_quickcmd.go:232: calling [(*regexp.Regexp).FindStringSubmatch]\nat config_quickcmd.go:237: calling [(*regexp.Regexp).FindAllStringSubmatch]\nat config_quickcmd.go:247: calling [strings.TrimSpace]" ]
+        "github.com/antigravity-dev/chum/cmd/chum.replaceAnthropicChiefModel" [ fillcolor="lightblue" label="replaceAnthropicChiefModel" penwidth="0.5" tooltip="github.com/antigravity-dev/chum/cmd/chum.replaceAnthropicChiefModel | defined in config_quickcmd.go:257\nat config_quickcmd.go:261: calling [(*regexp.Regexp).FindStringSubmatch]\nat config_quickcmd.go:258: calling [strings.TrimSpace]" ]
+        "github.com/antigravity-dev/chum/cmd/chum.main$1" [ tooltip="github.com/antigravity-dev/chum/cmd/chum.main$1 | defined in main.go:130\nat main.go:141: calling [log/slog.SetDefault]\nat main.go:131: calling [github.com/antigravity-dev/chum/internal/config.Reload]" fillcolor="lightblue" label="main$1" style="dotted,filled" ]
+        "github.com/antigravity-dev/chum/cmd/chum.main$4" [ tooltip="github.com/antigravity-dev/chum/cmd/chum.main$4 | defined in main.go:245\nat main.go:247: calling [(*log/slog.Logger).Error]\nat main.go:246: calling [(*github.com/antigravity-dev/chum/internal/api.Server).Start]" fillcolor="lightblue" label="main$4" style="dotted,filled" ]
+        "github.com/antigravity-dev/chum/cmd/chum.setTickIntervalInConfigContent" [ label="setTickIntervalInConfigContent" penwidth="0.5" tooltip="github.com/antigravity-dev/chum/cmd/chum.setTickIntervalInConfigContent | defined in config_quickcmd.go:64\nat config_quickcmd.go:88: calling [(*regexp.Regexp).FindStringSubmatch]\nat config_quickcmd.go:83: calling [strings.ToLower]\nat config_quickcmd.go:65: calling [strings.TrimSpace]\nat config_quickcmd.go:72: calling [strings.TrimSpace]\nat config_quickcmd.go:83: calling [strings.TrimSpace]\nat config_quickcmd.go:69: calling [time.ParseDuration]\nat config_quickcmd.go:67: calling [fmt.Errorf]\nat config_quickcmd.go:70: calling [fmt.Errorf]\nat config_quickcmd.go:73: calling [fmt.Errorf]\nat config_quickcmd.go:101: calling [fmt.Errorf]\nat config_quickcmd.go:105: calling [strings.HasSuffix]\nat config_quickcmd.go:105: calling [strings.HasSuffix]\nat config_quickcmd.go:76: calling [strings.Split]\nat config_quickcmd.go:104: calling [strings.Join]" fillcolor="lightblue" ]
+        "github.com/antigravity-dev/chum/cmd/chum.setTickIntervalInConfigFile" [ fillcolor="lightblue" label="setTickIntervalInConfigFile" penwidth="0.5" tooltip="github.com/antigravity-dev/chum/cmd/chum.setTickIntervalInConfigFile | defined in config_quickcmd.go:36\nat config_quickcmd.go:41: calling [time.ParseDuration]\nat config_quickcmd.go:37: calling [strings.TrimSpace]\nat config_quickcmd.go:58: calling [os.WriteFile]\nat config_quickcmd.go:45: calling [os.ReadFile]\nat config_quickcmd.go:39: calling [fmt.Errorf]\nat config_quickcmd.go:42: calling [fmt.Errorf]\nat config_quickcmd.go:47: calling [fmt.Errorf]\nat config_quickcmd.go:52: calling [fmt.Errorf]\nat config_quickcmd.go:59: calling [fmt.Errorf]" ]
+        "github.com/antigravity-dev/chum/cmd/chum.main$2" [ fillcolor="lightblue" label="main$2" style="dotted,filled" tooltip="github.com/antigravity-dev/chum/cmd/chum.main$2 | defined in main.go:146\nat main.go:148: calling [github.com/antigravity-dev/chum/internal/temporal.StartWorker]\nat main.go:149: calling [(*log/slog.Logger).Error]\nat main.go:147: calling [(*log/slog.Logger).Info]" ]
+        "github.com/antigravity-dev/chum/cmd/chum.main" [ fillcolor="lightblue" label="main" penwidth="0.5" tooltip="github.com/antigravity-dev/chum/cmd/chum.main | defined in main.go:64\nat main.go:73: calling [log/slog.NewTextHandler]\nat main.go:73: calling [log/slog.New]\nat main.go:243: calling [(*github.com/antigravity-dev/chum/internal/api.Server).Close]\nat main.go:271: calling [(time.Duration).String]\nat main.go:277: calling [(time.Duration).String]\nat main.go:118: calling [(*github.com/antigravity-dev/chum/internal/store.Store).Close]\nat main.go:81: calling [(*log/slog.Logger).Error]\nat main.go:90: calling [(*log/slog.Logger).Error]\nat main.go:99: calling [(*log/slog.Logger).Error]\nat main.go:104: calling [(*log/slog.Logger).Error]\nat main.go:115: calling [(*log/slog.Logger).Error]\nat main.go:122: calling [(*log/slog.Logger).Error]\nat main.go:240: calling [(*log/slog.Logger).Error]\nat main.go:263: calling [(*log/slog.Logger).Error]\nat main.go:121: calling [(*github.com/antigravity-dev/chum/internal/graph.DAG).EnsureSchema]\nat main.go:87: calling [strings.TrimSpace]\nat main.go:113: calling [github.com/antigravity-dev/chum/internal/store.Open]\nat main.go:262: calling [github.com/antigravity-dev/chum/cmd/chum.main$1]\nat main.go:66: calling [flag.Bool]\nat main.go:67: calling [flag.Bool]\nat main.go:71: calling [flag.Parse]\nat main.go:120: calling [github.com/antigravity-dev/chum/internal/graph.NewDAG]\nat main.go:126: calling [context.WithCancel]\nat main.go:97: calling [github.com/antigravity-dev/chum/internal/config.LoadManager]\nat main.go:256: calling [os/signal.Notify]\nat main.go:76: calling [(*log/slog.Logger).Info]\nat main.go:84: calling [(*log/slog.Logger).Info]\nat main.go:93: calling [(*log/slog.Logger).Info]\nat main.go:251: calling [(*log/slog.Logger).Info]\nat main.go:269: calling [(*log/slog.Logger).Info]\nat main.go:271: calling [(*log/slog.Logger).Info]\nat main.go:266: calling [(*log/slog.Logger).Info]\nat main.go:275: calling [(*log/slog.Logger).Info]\nat main.go:277: calling [(*log/slog.Logger).Info]\nat main.go:82: calling [os.Exit]\nat main.go:91: calling [os.Exit]\nat main.go:100: calling [os.Exit]\nat main.go:105: calling [os.Exit]\nat main.go:116: calling [os.Exit]\nat main.go:123: calling [os.Exit]\nat main.go:241: calling [os.Exit]\nat main.go:271: calling [time.Since]\nat main.go:277: calling [time.Since]\nat main.go:154: calling [github.com/antigravity-dev/chum/cmd/chum.main$3]\nat main.go:146: calling [github.com/antigravity-dev/chum/cmd/chum.main$2]\nat main.go:245: calling [github.com/antigravity-dev/chum/cmd/chum.main$4]\nat main.go:238: calling [(*log/slog.Logger).With]\nat main.go:238: calling [github.com/antigravity-dev/chum/internal/api.NewServer]\nat main.go:268: calling [time.Now]\nat main.go:274: calling [time.Now]\nat main.go:74: calling [log/slog.SetDefault]\nat main.go:109: calling [log/slog.SetDefault]\nat main.go:112: calling [github.com/antigravity-dev/chum/internal/config.ExpandHome]\nat main.go:120: calling [(*github.com/antigravity-dev/chum/internal/store.Store).DB]\nat main.go:121: calling [context.Background]\nat main.go:126: calling [context.Background]\nat main.go:263: calling [fmt.Sprintf]\nat main.go:65: calling [flag.String]\nat main.go:68: calling [flag.String]\nat main.go:70: calling [flag.String]" ]
+        "github.com/antigravity-dev/chum/cmd/chum.init" [ penwidth="0.5" tooltip="github.com/antigravity-dev/chum/cmd/chum.init | defined in .:0\nat config_quickcmd.go:12: calling [regexp.MustCompile]\nat config_quickcmd.go:13: calling [regexp.MustCompile]\nat config_quickcmd.go:14: calling [regexp.MustCompile]\nat config_quickcmd.go:15: calling [regexp.MustCompile]\nat config_quickcmd.go:16: calling [regexp.MustCompile]" fillcolor="lightblue" label="init" ]
+        
+        subgraph "cluster_context" {
+        tooltip="package: context";
+fillcolor="#E0FFE1";
+penwidth="0.8";
+fontsize="16";
+style="filled";
+fontname="Tahoma bold";
+rank="sink";
+label="context";
+URL="/?f=context";
+        
+        "context.Background" [ fillcolor="#adedad" label="Background" penwidth="1.5" tooltip="context.Background | defined in context.go:215" ]
+        "context.WithCancel" [ fillcolor="#adedad" label="WithCancel" penwidth="1.5" tooltip="context.WithCancel | defined in context.go:240" ]
+        
+    }
+
+        subgraph "cluster_errors" {
+        fillcolor="#E0FFE1";
+fontname="Tahoma bold";
+rank="sink";
+label="errors";
+URL="/?f=errors";
+tooltip="package: errors";
+penwidth="0.8";
+fontsize="16";
+style="filled";
+        
+        "errors.As" [ tooltip="errors.As | defined in wrap.go:102" fillcolor="#adedad" label="As" penwidth="1.5" ]
+        
+    }
+
+        subgraph "cluster_flag" {
+        URL="/?f=flag";
+penwidth="0.8";
+fontname="Tahoma bold";
+label="flag";
+tooltip="package: flag";
+fontsize="16";
+style="filled";
+fillcolor="#E0FFE1";
+rank="sink";
+        
+        "flag.String" [ fillcolor="#adedad" label="String" penwidth="1.5" tooltip="flag.String | defined in flag.go:898" ]
+        "flag.Bool" [ fillcolor="#adedad" label="Bool" penwidth="1.5" tooltip="flag.Bool | defined in flag.go:768" ]
+        "flag.Parse" [ tooltip="flag.Parse | defined in flag.go:1186" fillcolor="#adedad" label="Parse" penwidth="1.5" ]
+        
+    }
+
+        subgraph "cluster_fmt" {
+        tooltip="package: fmt";
+penwidth="0.8";
+fontsize="16";
+fillcolor="#E0FFE1";
+rank="sink";
+URL="/?f=fmt";
+style="filled";
+fontname="Tahoma bold";
+label="fmt";
+        
+        "fmt.Errorf" [ fillcolor="#adedad" label="Errorf" penwidth="1.5" tooltip="fmt.Errorf | defined in errors.go:23" ]
+        "fmt.Sprintf" [ tooltip="fmt.Sprintf | defined in print.go:237" fillcolor="#adedad" label="Sprintf" penwidth="1.5" ]
+        
+    }
+
+        subgraph "cluster_github.com/antigravity-dev/chum/internal/api" {
+        label="api";
+URL="/?f=github.com/antigravity-dev/chum/internal/api";
+tooltip="package: github.com/antigravity-dev/chum/internal/api";
+style="filled";
+fillcolor="lightyellow";
+penwidth="0.8";
+fontsize="16";
+fontname="Tahoma bold";
+rank="sink";
+        
+        "github.com/antigravity-dev/chum/internal/api.NewServer" [ tooltip="github.com/antigravity-dev/chum/internal/api.NewServer | defined in api.go:30" fillcolor="moccasin" label="NewServer" penwidth="1.5" ]
+        
+        subgraph "cluster_*github.com/antigravity-dev/chum/internal/api.Server" {
+        label="(*Server)";
+tooltip="type: *github.com/antigravity-dev/chum/internal/api.Server";
+penwidth="0.5";
+fontsize="15";
+fontcolor="#222222";
+labelloc="b";
+style="rounded,filled";
+fillcolor="wheat2";
+        
+        "(*github.com/antigravity-dev/chum/internal/api.Server).Start" [ fillcolor="moccasin" label="Start" penwidth="1.5" tooltip="(*github.com/antigravity-dev/chum/internal/api.Server).Start | defined in api.go:54" ]
+        "(*github.com/antigravity-dev/chum/internal/api.Server).Close" [ fillcolor="moccasin" label="Close" penwidth="1.5" tooltip="(*github.com/antigravity-dev/chum/internal/api.Server).Close | defined in api.go:46" ]
+        
+    }
+
+    }
+
+        subgraph "cluster_github.com/antigravity-dev/chum/internal/config" {
+        fontsize="16";
+style="filled";
+fillcolor="lightyellow";
+fontname="Tahoma bold";
+penwidth="0.8";
+rank="sink";
+label="config";
+URL="/?f=github.com/antigravity-dev/chum/internal/config";
+tooltip="package: github.com/antigravity-dev/chum/internal/config";
+        
+        "github.com/antigravity-dev/chum/internal/config.ExpandHome" [ penwidth="1.5" tooltip="github.com/antigravity-dev/chum/internal/config.ExpandHome | defined in loader.go:74" fillcolor="moccasin" label="ExpandHome" ]
+        "github.com/antigravity-dev/chum/internal/config.Reload" [ fillcolor="moccasin" label="Reload" penwidth="1.5" tooltip="github.com/antigravity-dev/chum/internal/config.Reload | defined in loader.go:39" ]
+        "github.com/antigravity-dev/chum/internal/config.LoadManager" [ fillcolor="moccasin" label="LoadManager" penwidth="1.5" tooltip="github.com/antigravity-dev/chum/internal/config.LoadManager | defined in loader.go:44" ]
+        
+    }
+
+        subgraph "cluster_github.com/antigravity-dev/chum/internal/graph" {
+        fontsize="16";
+fillcolor="lightyellow";
+fontname="Tahoma bold";
+label="graph";
+URL="/?f=github.com/antigravity-dev/chum/internal/graph";
+tooltip="package: github.com/antigravity-dev/chum/internal/graph";
+style="filled";
+rank="sink";
+penwidth="0.8";
+        
+        "github.com/antigravity-dev/chum/internal/graph.NewDAG" [ fillcolor="moccasin" label="NewDAG" penwidth="1.5" tooltip="github.com/antigravity-dev/chum/internal/graph.NewDAG | defined in dag.go:146" ]
+        
+        subgraph "cluster_*github.com/antigravity-dev/chum/internal/graph.DAG" {
+        fillcolor="wheat2";
+label="(*DAG)";
+tooltip="type: *github.com/antigravity-dev/chum/internal/graph.DAG";
+penwidth="0.5";
+fontsize="15";
+fontcolor="#222222";
+labelloc="b";
+style="rounded,filled";
+        
+        "(*github.com/antigravity-dev/chum/internal/graph.DAG).EnsureSchema" [ label="EnsureSchema" penwidth="1.5" tooltip="(*github.com/antigravity-dev/chum/internal/graph.DAG).EnsureSchema | defined in dag.go:150" fillcolor="moccasin" ]
+        
+    }
+
+    }
+
+        subgraph "cluster_github.com/antigravity-dev/chum/internal/store" {
+        fontsize="16";
+fillcolor="lightyellow";
+fontname="Tahoma bold";
+rank="sink";
+label="store";
+penwidth="0.8";
+style="filled";
+URL="/?f=github.com/antigravity-dev/chum/internal/store";
+tooltip="package: github.com/antigravity-dev/chum/internal/store";
+        
+        "github.com/antigravity-dev/chum/internal/store.Open" [ tooltip="github.com/antigravity-dev/chum/internal/store.Open | defined in store.go:257" fillcolor="moccasin" label="Open" penwidth="1.5" ]
+        
+        subgraph "cluster_*github.com/antigravity-dev/chum/internal/store.Store" {
+        style="rounded,filled";
+fillcolor="wheat2";
+label="(*Store)";
+tooltip="type: *github.com/antigravity-dev/chum/internal/store.Store";
+penwidth="0.5";
+fontsize="15";
+fontcolor="#222222";
+labelloc="b";
+        
+        "(*github.com/antigravity-dev/chum/internal/store.Store).Close" [ fillcolor="moccasin" label="Close" penwidth="1.5" tooltip="(*github.com/antigravity-dev/chum/internal/store.Store).Close | defined in store.go:582" ]
+        "(*github.com/antigravity-dev/chum/internal/store.Store).DB" [ fillcolor="moccasin" label="DB" penwidth="1.5" tooltip="(*github.com/antigravity-dev/chum/internal/store.Store).DB | defined in store.go:587" ]
+        
+    }
+
+    }
+
+        subgraph "cluster_github.com/antigravity-dev/chum/internal/temporal" {
+        tooltip="package: github.com/antigravity-dev/chum/internal/temporal";
+penwidth="0.8";
+fontsize="16";
+style="filled";
+fillcolor="lightyellow";
+rank="sink";
+label="temporal";
+fontname="Tahoma bold";
+URL="/?f=github.com/antigravity-dev/chum/internal/temporal";
+        
+        "github.com/antigravity-dev/chum/internal/temporal.StartWorker" [ penwidth="1.5" tooltip="github.com/antigravity-dev/chum/internal/temporal.StartWorker | defined in worker.go:52" fillcolor="moccasin" label="StartWorker" ]
+        
+    }
+
+        subgraph "cluster_go.temporal.io/sdk/client" {
+        label="client";
+URL="/?f=go.temporal.io/sdk/client";
+tooltip="package: go.temporal.io/sdk/client";
+penwidth="0.8";
+fontname="Tahoma bold";
+rank="sink";
+fontsize="16";
+style="filled";
+fillcolor="lightyellow";
+        
+        "go.temporal.io/sdk/client.Dial" [ fillcolor="moccasin" label="Dial" penwidth="1.5" tooltip="go.temporal.io/sdk/client.Dial | defined in client.go:1525" ]
+        
+    }
+
+        subgraph "cluster_log/slog" {
+        penwidth="0.8";
+fontname="Tahoma bold";
+rank="sink";
+label="log/slog";
+URL="/?f=log/slog";
+fontsize="16";
+style="filled";
+fillcolor="#E0FFE1";
+tooltip="package: log/slog";
+        
+        "log/slog.NewTextHandler" [ fillcolor="#adedad" label="NewTextHandler" penwidth="1.5" tooltip="log/slog.NewTextHandler | defined in text_handler.go:28" ]
+        "log/slog.New" [ label="New" penwidth="1.5" tooltip="log/slog.New | defined in logger.go:151" fillcolor="#adedad" ]
+        "log/slog.NewJSONHandler" [ fillcolor="#adedad" label="NewJSONHandler" penwidth="1.5" tooltip="log/slog.NewJSONHandler | defined in json_handler.go:30" ]
+        "log/slog.SetDefault" [ fillcolor="#adedad" label="SetDefault" penwidth="1.5" tooltip="log/slog.SetDefault | defined in logger.go:62" ]
+        
+        subgraph "cluster_*log/slog.Logger" {
+        tooltip="type: *log/slog.Logger";
+penwidth="0.5";
+fontsize="15";
+fontcolor="#222222";
+labelloc="b";
+style="rounded,filled";
+fillcolor="#c2e3c2";
+label="(*Logger)";
+        
+        "(*log/slog.Logger).Error" [ fillcolor="#adedad" label="Error" penwidth="1.5" tooltip="(*log/slog.Logger).Error | defined in logger.go:228" ]
+        "(*log/slog.Logger).Info" [ fillcolor="#adedad" label="Info" penwidth="1.5" tooltip="(*log/slog.Logger).Info | defined in logger.go:208" ]
+        "(*log/slog.Logger).With" [ fillcolor="#adedad" label="With" penwidth="1.5" tooltip="(*log/slog.Logger).With | defined in logger.go:126" ]
+        
+    }
+
+    }
+
+        subgraph "cluster_os" {
+        fontname="Tahoma bold";
+rank="sink";
+label="os";
+penwidth="0.8";
+fontsize="16";
+style="filled";
+fillcolor="#E0FFE1";
+URL="/?f=os";
+tooltip="package: os";
+        
+        "os.ReadFile" [ tooltip="os.ReadFile | defined in file.go:867" fillcolor="#adedad" label="ReadFile" penwidth="1.5" ]
+        "os.WriteFile" [ penwidth="1.5" tooltip="os.WriteFile | defined in file.go:935" fillcolor="#adedad" label="WriteFile" ]
+        "os.Exit" [ penwidth="1.5" tooltip="os.Exit | defined in proc.go:62" fillcolor="#adedad" label="Exit" ]
+        
+    }
+
+        subgraph "cluster_os/signal" {
+        rank="sink";
+tooltip="package: os/signal";
+penwidth="0.8";
+fontname="Tahoma bold";
+label="os/signal";
+URL="/?f=os/signal";
+fontsize="16";
+style="filled";
+fillcolor="#E0FFE1";
+        
+        "os/signal.Notify" [ fillcolor="#adedad" label="Notify" penwidth="1.5" tooltip="os/signal.Notify | defined in signal.go:122" ]
+        
+    }
+
+        subgraph "cluster_regexp" {
+        penwidth="0.8";
+fillcolor="#E0FFE1";
+fontname="Tahoma bold";
+label="regexp";
+URL="/?f=regexp";
+fontsize="16";
+style="filled";
+rank="sink";
+tooltip="package: regexp";
+        
+        "regexp.MustCompile" [ penwidth="1.5" tooltip="regexp.MustCompile | defined in regexp.go:310" fillcolor="#adedad" label="MustCompile" ]
+        
+        subgraph "cluster_*regexp.Regexp" {
+        fontsize="15";
+fontcolor="#222222";
+labelloc="b";
+fillcolor="#c2e3c2";
+penwidth="0.5";
+style="rounded,filled";
+label="(*Regexp)";
+tooltip="type: *regexp.Regexp";
+        
+        "(*regexp.Regexp).FindStringSubmatch" [ tooltip="(*regexp.Regexp).FindStringSubmatch | defined in regexp.go:1018" fillcolor="#adedad" label="FindStringSubmatch" penwidth="1.5" ]
+        "(*regexp.Regexp).FindAllStringSubmatch" [ fillcolor="#adedad" label="FindAllStringSubmatch" penwidth="1.5" tooltip="(*regexp.Regexp).FindAllStringSubmatch | defined in regexp.go:1171" ]
+        
+    }
+
+    }
+
+        subgraph "cluster_strings" {
+        tooltip="package: strings";
+fontsize="16";
+style="filled";
+fontname="Tahoma bold";
+penwidth="0.8";
+fillcolor="#E0FFE1";
+rank="sink";
+label="strings";
+URL="/?f=strings";
+        
+        "strings.TrimSpace" [ fillcolor="#adedad" label="TrimSpace" penwidth="1.5" tooltip="strings.TrimSpace | defined in strings.go:1091" ]
+        "strings.ToLower" [ fillcolor="#adedad" label="ToLower" penwidth="1.5" tooltip="strings.ToLower | defined in strings.go:727" ]
+        "strings.Contains" [ fillcolor="#adedad" label="Contains" penwidth="1.5" tooltip="strings.Contains | defined in strings.go:62" ]
+        "strings.Split" [ fillcolor="#adedad" label="Split" penwidth="1.5" tooltip="strings.Split | defined in strings.go:361" ]
+        "strings.HasPrefix" [ penwidth="1.5" tooltip="strings.HasPrefix | defined in strings.go:520" fillcolor="#adedad" label="HasPrefix" ]
+        "strings.TrimPrefix" [ fillcolor="#adedad" label="TrimPrefix" penwidth="1.5" tooltip="strings.TrimPrefix | defined in strings.go:1122" ]
+        "strings.Join" [ penwidth="1.5" tooltip="strings.Join | defined in strings.go:487" fillcolor="#adedad" label="Join" ]
+        "strings.HasSuffix" [ penwidth="1.5" tooltip="strings.HasSuffix | defined in strings.go:525" fillcolor="#adedad" label="HasSuffix" ]
+        
+    }
+
+        subgraph "cluster_time" {
+        fontsize="16";
+fillcolor="#E0FFE1";
+label="time";
+URL="/?f=time";
+style="filled";
+fontname="Tahoma bold";
+rank="sink";
+tooltip="package: time";
+penwidth="0.8";
+        
+        "time.Sleep" [ fillcolor="#adedad" label="Sleep" penwidth="1.5" tooltip="time.Sleep | defined in sleep.go:14" ]
+        "time.ParseDuration" [ fillcolor="#adedad" label="ParseDuration" penwidth="1.5" tooltip="time.ParseDuration | defined in format.go:1631" ]
+        "time.Now" [ tooltip="time.Now | defined in time.go:1347" fillcolor="#adedad" label="Now" penwidth="1.5" ]
+        "time.Since" [ tooltip="time.Since | defined in time.go:1227" fillcolor="#adedad" label="Since" penwidth="1.5" ]
+        
+        subgraph "cluster_time.Duration" {
+        tooltip="type: time.Duration";
+penwidth="0.5";
+fontsize="15";
+fontcolor="#222222";
+labelloc="b";
+style="rounded,filled";
+fillcolor="#c2e3c2";
+label="(Duration)";
+        
+        "(time.Duration).String" [ tooltip="(time.Duration).String | defined in time.go:947" fillcolor="#adedad" label="String" penwidth="1.5" ]
+        
+    }
+
+    }
+
+    }
+
+    "github.com/antigravity-dev/chum/cmd/chum.shouldRemoveTable" -> "strings.HasPrefix" [ color="saddlebrown" tooltip="at config_quickcmd.go:210: calling [strings.HasPrefix]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.shouldRemoveTable" -> "strings.TrimPrefix" [ tooltip="at config_quickcmd.go:214: calling [strings.TrimPrefix]" color="saddlebrown" ]
+    "github.com/antigravity-dev/chum/cmd/chum.main$1" -> "log/slog.SetDefault" [ color="saddlebrown" tooltip="at main.go:141: calling [log/slog.SetDefault]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.main$4" -> "(*log/slog.Logger).Error" [ color="saddlebrown" tooltip="at main.go:247: calling [(*log/slog.Logger).Error]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.main" -> "log/slog.NewTextHandler" [ color="saddlebrown" tooltip="at main.go:73: calling [log/slog.NewTextHandler]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.main" -> "log/slog.New" [ color="saddlebrown" tooltip="at main.go:73: calling [log/slog.New]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.main" -> "(*github.com/antigravity-dev/chum/internal/api.Server).Close" [ arrowhead="normalnoneodiamond" color="saddlebrown" tooltip="at main.go:243: calling [(*github.com/antigravity-dev/chum/internal/api.Server).Close]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.main" -> "(time.Duration).String" [ color="saddlebrown" tooltip="at main.go:271: calling [(time.Duration).String]\nat main.go:277: calling [(time.Duration).String]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.main$3" -> "errors.As" [ tooltip="at main.go:193: calling [errors.As]\nat main.go:226: calling [errors.As]" color="saddlebrown" ]
+    "github.com/antigravity-dev/chum/cmd/chum.shouldRemoveTable" -> "(*regexp.Regexp).FindStringSubmatch" [ color="saddlebrown" tooltip="at config_quickcmd.go:220: calling [(*regexp.Regexp).FindStringSubmatch]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.main$1" -> "github.com/antigravity-dev/chum/internal/config.Reload" [ color="saddlebrown" tooltip="at main.go:131: calling [github.com/antigravity-dev/chum/internal/config.Reload]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.main$4" -> "(*github.com/antigravity-dev/chum/internal/api.Server).Start" [ color="saddlebrown" tooltip="at main.go:246: calling [(*github.com/antigravity-dev/chum/internal/api.Server).Start]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.setTickIntervalInConfigContent" -> "(*regexp.Regexp).FindStringSubmatch" [ color="saddlebrown" tooltip="at config_quickcmd.go:88: calling [(*regexp.Regexp).FindStringSubmatch]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.setTickIntervalInConfigFile" -> "time.ParseDuration" [ color="saddlebrown" tooltip="at config_quickcmd.go:41: calling [time.ParseDuration]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.main" -> "(*github.com/antigravity-dev/chum/internal/store.Store).Close" [ arrowhead="normalnoneodiamond" color="saddlebrown" tooltip="at main.go:118: calling [(*github.com/antigravity-dev/chum/internal/store.Store).Close]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.init" -> "regexp.MustCompile" [ color="saddlebrown" tooltip="at config_quickcmd.go:12: calling [regexp.MustCompile]\nat config_quickcmd.go:13: calling [regexp.MustCompile]\nat config_quickcmd.go:14: calling [regexp.MustCompile]\nat config_quickcmd.go:15: calling [regexp.MustCompile]\nat config_quickcmd.go:16: calling [regexp.MustCompile]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.configureLogger" -> "log/slog.NewTextHandler" [ color="saddlebrown" tooltip="at main.go:40: calling [log/slog.NewTextHandler]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.disableAnthropicInConfigContent" -> "strings.Split" [ tooltip="at config_quickcmd.go:117: calling [strings.Split]" color="saddlebrown" ]
+    "github.com/antigravity-dev/chum/cmd/chum.looksAnthropic" -> "strings.Contains" [ color="saddlebrown" tooltip="at config_quickcmd.go:273: calling [strings.Contains]\nat config_quickcmd.go:273: calling [strings.Contains]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.main" -> "(*log/slog.Logger).Error" [ color="saddlebrown" tooltip="at main.go:81: calling [(*log/slog.Logger).Error]\nat main.go:90: calling [(*log/slog.Logger).Error]\nat main.go:99: calling [(*log/slog.Logger).Error]\nat main.go:104: calling [(*log/slog.Logger).Error]\nat main.go:115: calling [(*log/slog.Logger).Error]\nat main.go:122: calling [(*log/slog.Logger).Error]\nat main.go:240: calling [(*log/slog.Logger).Error]\nat main.go:263: calling [(*log/slog.Logger).Error]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.main" -> "(*github.com/antigravity-dev/chum/internal/graph.DAG).EnsureSchema" [ tooltip="at main.go:121: calling [(*github.com/antigravity-dev/chum/internal/graph.DAG).EnsureSchema]" color="saddlebrown" ]
+    "github.com/antigravity-dev/chum/cmd/chum.configureLogger" -> "log/slog.NewJSONHandler" [ tooltip="at main.go:42: calling [log/slog.NewJSONHandler]" color="saddlebrown" ]
+    "github.com/antigravity-dev/chum/cmd/chum.main$3" -> "go.temporal.io/sdk/client.Dial" [ color="saddlebrown" tooltip="at main.go:158: calling [go.temporal.io/sdk/client.Dial]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.shouldRemoveTable" -> "strings.TrimSpace" [ color="saddlebrown" tooltip="at config_quickcmd.go:206: calling [strings.TrimSpace]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.looksAnthropic" -> "strings.TrimSpace" [ color="saddlebrown" tooltip="at config_quickcmd.go:272: calling [strings.TrimSpace]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.disableAnthropicInConfigContent" -> "strings.HasSuffix" [ color="saddlebrown" tooltip="at config_quickcmd.go:190: calling [strings.HasSuffix]\nat config_quickcmd.go:190: calling [strings.HasSuffix]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.setTickIntervalInConfigContent" -> "strings.ToLower" [ color="saddlebrown" tooltip="at config_quickcmd.go:83: calling [strings.ToLower]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.setTickIntervalInConfigFile" -> "strings.TrimSpace" [ color="saddlebrown" tooltip="at config_quickcmd.go:37: calling [strings.TrimSpace]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.main" -> "strings.TrimSpace" [ color="saddlebrown" tooltip="at main.go:87: calling [strings.TrimSpace]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.configureLogger" -> "strings.TrimSpace" [ tooltip="at main.go:29: calling [strings.TrimSpace]" color="saddlebrown" ]
+    "github.com/antigravity-dev/chum/cmd/chum.collapseBlankRuns" -> "strings.TrimSpace" [ color="saddlebrown" tooltip="at config_quickcmd.go:283: calling [strings.TrimSpace]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.main" -> "github.com/antigravity-dev/chum/internal/store.Open" [ color="saddlebrown" tooltip="at main.go:113: calling [github.com/antigravity-dev/chum/internal/store.Open]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.main" -> "github.com/antigravity-dev/chum/cmd/chum.main$1" [ tooltip="at main.go:262: calling [github.com/antigravity-dev/chum/cmd/chum.main$1]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.disableAnthropicInConfigFile" -> "os.ReadFile" [ color="saddlebrown" tooltip="at config_quickcmd.go:20: calling [os.ReadFile]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.trimAnthropicTierValues" -> "strings.Join" [ color="saddlebrown" tooltip="at config_quickcmd.go:254: calling [strings.Join]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.replaceAnthropicChiefModel" -> "(*regexp.Regexp).FindStringSubmatch" [ color="saddlebrown" tooltip="at config_quickcmd.go:261: calling [(*regexp.Regexp).FindStringSubmatch]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.setTickIntervalInConfigContent" -> "strings.TrimSpace" [ color="saddlebrown" tooltip="at config_quickcmd.go:65: calling [strings.TrimSpace]\nat config_quickcmd.go:72: calling [strings.TrimSpace]\nat config_quickcmd.go:83: calling [strings.TrimSpace]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.main" -> "flag.Bool" [ color="saddlebrown" tooltip="at main.go:66: calling [flag.Bool]\nat main.go:67: calling [flag.Bool]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.main" -> "flag.Parse" [ color="saddlebrown" tooltip="at main.go:71: calling [flag.Parse]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.main" -> "github.com/antigravity-dev/chum/internal/graph.NewDAG" [ color="saddlebrown" tooltip="at main.go:120: calling [github.com/antigravity-dev/chum/internal/graph.NewDAG]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.main" -> "context.WithCancel" [ color="saddlebrown" tooltip="at main.go:126: calling [context.WithCancel]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.trimAnthropicTierValues" -> "(*regexp.Regexp).FindStringSubmatch" [ color="saddlebrown" tooltip="at config_quickcmd.go:232: calling [(*regexp.Regexp).FindStringSubmatch]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.trimAnthropicTierValues" -> "(*regexp.Regexp).FindAllStringSubmatch" [ color="saddlebrown" tooltip="at config_quickcmd.go:237: calling [(*regexp.Regexp).FindAllStringSubmatch]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.disableAnthropicInConfigFile" -> "os.WriteFile" [ color="saddlebrown" tooltip="at config_quickcmd.go:30: calling [os.WriteFile]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.main" -> "github.com/antigravity-dev/chum/internal/config.LoadManager" [ color="saddlebrown" tooltip="at main.go:97: calling [github.com/antigravity-dev/chum/internal/config.LoadManager]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.main" -> "os/signal.Notify" [ color="saddlebrown" tooltip="at main.go:256: calling [os/signal.Notify]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.main$3" -> "time.Sleep" [ tooltip="at main.go:156: calling [time.Sleep]" color="saddlebrown" ]
+    "github.com/antigravity-dev/chum/cmd/chum.parseTableHeader" -> "(*regexp.Regexp).FindStringSubmatch" [ color="saddlebrown" tooltip="at config_quickcmd.go:198: calling [(*regexp.Regexp).FindStringSubmatch]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.parseTableHeader" -> "strings.TrimSpace" [ color="saddlebrown" tooltip="at config_quickcmd.go:202: calling [strings.TrimSpace]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.setTickIntervalInConfigContent" -> "time.ParseDuration" [ color="saddlebrown" tooltip="at config_quickcmd.go:69: calling [time.ParseDuration]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.main" -> "(*log/slog.Logger).Info" [ color="saddlebrown" tooltip="at main.go:76: calling [(*log/slog.Logger).Info]\nat main.go:84: calling [(*log/slog.Logger).Info]\nat main.go:93: calling [(*log/slog.Logger).Info]\nat main.go:251: calling [(*log/slog.Logger).Info]\nat main.go:269: calling [(*log/slog.Logger).Info]\nat main.go:271: calling [(*log/slog.Logger).Info]\nat main.go:266: calling [(*log/slog.Logger).Info]\nat main.go:275: calling [(*log/slog.Logger).Info]\nat main.go:277: calling [(*log/slog.Logger).Info]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.main" -> "os.Exit" [ color="saddlebrown" tooltip="at main.go:82: calling [os.Exit]\nat main.go:91: calling [os.Exit]\nat main.go:100: calling [os.Exit]\nat main.go:105: calling [os.Exit]\nat main.go:116: calling [os.Exit]\nat main.go:123: calling [os.Exit]\nat main.go:241: calling [os.Exit]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.main" -> "time.Since" [ color="saddlebrown" tooltip="at main.go:271: calling [time.Since]\nat main.go:277: calling [time.Since]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.validateRuntimeConfigReload" -> "strings.TrimSpace" [ color="saddlebrown" tooltip="at main.go:50: calling [strings.TrimSpace]\nat main.go:51: calling [strings.TrimSpace]\nat main.go:56: calling [strings.TrimSpace]\nat main.go:57: calling [strings.TrimSpace]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.main$3" -> "(*log/slog.Logger).Error" [ color="saddlebrown" tooltip="at main.go:162: calling [(*log/slog.Logger).Error]\nat main.go:200: calling [(*log/slog.Logger).Error]\nat main.go:230: calling [(*log/slog.Logger).Error]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.shouldRemoveTable" -> "strings.ToLower" [ color="saddlebrown" tooltip="at config_quickcmd.go:206: calling [strings.ToLower]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.setTickIntervalInConfigFile" -> "os.WriteFile" [ color="saddlebrown" tooltip="at config_quickcmd.go:58: calling [os.WriteFile]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.main$2" -> "github.com/antigravity-dev/chum/internal/temporal.StartWorker" [ color="saddlebrown" tooltip="at main.go:148: calling [github.com/antigravity-dev/chum/internal/temporal.StartWorker]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.main" -> "github.com/antigravity-dev/chum/cmd/chum.main$3" [ arrowhead="normalnoneodot" tooltip="at main.go:154: calling [github.com/antigravity-dev/chum/cmd/chum.main$3]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.main$3" -> "github.com/antigravity-dev/chum/internal/config.ExpandHome" [ color="saddlebrown" tooltip="at main.go:215: calling [github.com/antigravity-dev/chum/internal/config.ExpandHome]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.disableAnthropicInConfigContent" -> "strings.ToLower" [ color="saddlebrown" tooltip="at config_quickcmd.go:164: calling [strings.ToLower]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.main" -> "github.com/antigravity-dev/chum/cmd/chum.main$2" [ arrowhead="normalnoneodot" tooltip="at main.go:146: calling [github.com/antigravity-dev/chum/cmd/chum.main$2]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.configureLogger" -> "strings.ToLower" [ color="saddlebrown" tooltip="at main.go:29: calling [strings.ToLower]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.trimAnthropicTierValues" -> "strings.TrimSpace" [ color="saddlebrown" tooltip="at config_quickcmd.go:247: calling [strings.TrimSpace]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.replaceAnthropicChiefModel" -> "strings.TrimSpace" [ color="saddlebrown" tooltip="at config_quickcmd.go:258: calling [strings.TrimSpace]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.main" -> "github.com/antigravity-dev/chum/cmd/chum.main$4" [ arrowhead="normalnoneodot" tooltip="at main.go:245: calling [github.com/antigravity-dev/chum/cmd/chum.main$4]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.disableAnthropicInConfigContent" -> "strings.Join" [ color="saddlebrown" tooltip="at config_quickcmd.go:189: calling [strings.Join]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.setTickIntervalInConfigContent" -> "fmt.Errorf" [ color="saddlebrown" tooltip="at config_quickcmd.go:67: calling [fmt.Errorf]\nat config_quickcmd.go:70: calling [fmt.Errorf]\nat config_quickcmd.go:73: calling [fmt.Errorf]\nat config_quickcmd.go:101: calling [fmt.Errorf]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.main" -> "(*log/slog.Logger).With" [ color="saddlebrown" tooltip="at main.go:238: calling [(*log/slog.Logger).With]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.main" -> "github.com/antigravity-dev/chum/internal/api.NewServer" [ color="saddlebrown" tooltip="at main.go:238: calling [github.com/antigravity-dev/chum/internal/api.NewServer]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.main" -> "time.Now" [ color="saddlebrown" tooltip="at main.go:268: calling [time.Now]\nat main.go:274: calling [time.Now]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.configureLogger" -> "log/slog.New" [ color="saddlebrown" tooltip="at main.go:40: calling [log/slog.New]\nat main.go:42: calling [log/slog.New]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.setTickIntervalInConfigContent" -> "strings.HasSuffix" [ color="saddlebrown" tooltip="at config_quickcmd.go:105: calling [strings.HasSuffix]\nat config_quickcmd.go:105: calling [strings.HasSuffix]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.setTickIntervalInConfigFile" -> "os.ReadFile" [ tooltip="at config_quickcmd.go:45: calling [os.ReadFile]" color="saddlebrown" ]
+    "github.com/antigravity-dev/chum/cmd/chum.main$2" -> "(*log/slog.Logger).Error" [ tooltip="at main.go:149: calling [(*log/slog.Logger).Error]" color="saddlebrown" ]
+    "github.com/antigravity-dev/chum/cmd/chum.setTickIntervalInConfigContent" -> "strings.Split" [ color="saddlebrown" tooltip="at config_quickcmd.go:76: calling [strings.Split]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.setTickIntervalInConfigContent" -> "strings.Join" [ color="saddlebrown" tooltip="at config_quickcmd.go:104: calling [strings.Join]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.setTickIntervalInConfigFile" -> "fmt.Errorf" [ color="saddlebrown" tooltip="at config_quickcmd.go:39: calling [fmt.Errorf]\nat config_quickcmd.go:42: calling [fmt.Errorf]\nat config_quickcmd.go:47: calling [fmt.Errorf]\nat config_quickcmd.go:52: calling [fmt.Errorf]\nat config_quickcmd.go:59: calling [fmt.Errorf]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.main$3" -> "(*log/slog.Logger).Info" [ color="saddlebrown" tooltip="at main.go:203: calling [(*log/slog.Logger).Info]\nat main.go:194: calling [(*log/slog.Logger).Info]\nat main.go:198: calling [(*log/slog.Logger).Info]\nat main.go:233: calling [(*log/slog.Logger).Info]\nat main.go:227: calling [(*log/slog.Logger).Info]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.main$3" -> "strings.Contains" [ color="saddlebrown" tooltip="at main.go:195: calling [strings.Contains]\nat main.go:197: calling [strings.Contains]\nat main.go:196: calling [strings.Contains]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.main$3" -> "fmt.Sprintf" [ tooltip="at main.go:212: calling [fmt.Sprintf]" color="saddlebrown" ]
+    "github.com/antigravity-dev/chum/cmd/chum.disableAnthropicInConfigContent" -> "strings.TrimSpace" [ color="saddlebrown" tooltip="at config_quickcmd.go:113: calling [strings.TrimSpace]\nat config_quickcmd.go:164: calling [strings.TrimSpace]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.main$2" -> "(*log/slog.Logger).Info" [ color="saddlebrown" tooltip="at main.go:147: calling [(*log/slog.Logger).Info]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.looksAnthropic" -> "strings.ToLower" [ color="saddlebrown" tooltip="at config_quickcmd.go:272: calling [strings.ToLower]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.main" -> "log/slog.SetDefault" [ tooltip="at main.go:74: calling [log/slog.SetDefault]\nat main.go:109: calling [log/slog.SetDefault]" color="saddlebrown" ]
+    "github.com/antigravity-dev/chum/cmd/chum.main" -> "github.com/antigravity-dev/chum/internal/config.ExpandHome" [ color="saddlebrown" tooltip="at main.go:112: calling [github.com/antigravity-dev/chum/internal/config.ExpandHome]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.main" -> "(*github.com/antigravity-dev/chum/internal/store.Store).DB" [ color="saddlebrown" tooltip="at main.go:120: calling [(*github.com/antigravity-dev/chum/internal/store.Store).DB]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.main" -> "context.Background" [ color="saddlebrown" tooltip="at main.go:121: calling [context.Background]\nat main.go:126: calling [context.Background]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.main" -> "fmt.Sprintf" [ color="saddlebrown" tooltip="at main.go:263: calling [fmt.Sprintf]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.validateRuntimeConfigReload" -> "fmt.Errorf" [ color="saddlebrown" tooltip="at main.go:47: calling [fmt.Errorf]\nat main.go:53: calling [fmt.Errorf]\nat main.go:59: calling [fmt.Errorf]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.disableAnthropicInConfigFile" -> "fmt.Errorf" [ color="saddlebrown" tooltip="at config_quickcmd.go:22: calling [fmt.Errorf]\nat config_quickcmd.go:31: calling [fmt.Errorf]" ]
+    "github.com/antigravity-dev/chum/cmd/chum.main" -> "flag.String" [ color="saddlebrown" tooltip="at main.go:65: calling [flag.String]\nat main.go:68: calling [flag.String]\nat main.go:70: calling [flag.String]" ]
+}

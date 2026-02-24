@@ -13,7 +13,7 @@ Most AI coding workflows are manual: pick a task, prompt an agent, review the ou
 - **Learning from mistakes** so the same bug category doesn't burn tokens twice
 - **Fault tolerance** when an agent hangs, crashes, or hallucinates `rm -rf /`
 
-CHUM is the orchestration layer that sits between your task backlog (Beads) and your agent runtimes (Claude, Codex, etc.) and makes all of the above automatic.
+CHUM is the orchestration layer that sits between your task backlog (Morsels) and your agent runtimes (Claude, Codex, etc.) and makes all of the above automatic.
 
 ---
 
@@ -21,7 +21,7 @@ CHUM is the orchestration layer that sits between your task backlog (Beads) and 
 
 ### ADR-001: Temporal over In-Process Scheduler
 
-**Context:** The original CHUM v0 used a tick-based in-process scheduler with SQLite state. Every 60 seconds, it would scan beads, dispatch agents, and reconcile. This worked but had a fatal flaw: if the process crashed mid-dispatch, state was lost.
+**Context:** The original CHUM v0 used a tick-based in-process scheduler with SQLite state. Every 60 seconds, it would scan morsels, dispatch agents, and reconcile. This worked but had a fatal flaw: if the process crashed mid-dispatch, state was lost.
 
 **Decision:** Migrate the execution engine to Temporal workflows.
 
@@ -39,21 +39,21 @@ CHUM is the orchestration layer that sits between your task backlog (Beads) and 
 
 ---
 
-### ADR-002: Beads over Jira/Linear/GitHub Issues
+### ADR-002: Morsels over Jira/Linear/GitHub Issues
 
 **Context:** We needed a dependency-aware task graph. Commercial tools (Jira, Linear) are cloud-hosted and API-rate-limited. GitHub Issues lack first-class dependency edges.
 
-**Decision:** Use Beads — a Git-backed, local-first issue tracker with dependency DAG support.
+**Decision:** Use Morsels — a Git-backed, local-first issue tracker with dependency DAG support.
 
 **Rationale:**
 - **Local-first.** No network calls to read the backlog. Zero-latency task queries.
 - **Git-backed.** Issues are JSONL files in the repo. Full version history via `git log`. No vendor lock.
 - **Dependency DAG.** `bd` natively supports `blocks:`, `parent-child:`, `discovered-from:` edges. Cross-project deps work out of the box.
-- **Programmable.** The `beads` Go package lets CHUM query, create, update, and mutate beads programmatically — no REST API, no rate limits, no OAuth tokens.
+- **Programmable.** The `morsels` Go package lets CHUM query, create, update, and mutate morsels programmatically — no REST API, no rate limits, no OAuth tokens.
 
 **Trade-offs accepted:**
 - No web UI for non-technical stakeholders (acceptable: CHUM is a developer tool).
-- Merge conflicts on `issues.jsonl` in multi-agent environments (mitigated by bead ownership locks).
+- Merge conflicts on `issues.jsonl` in multi-agent environments (mitigated by morsel ownership locks).
 
 ---
 
@@ -83,7 +83,7 @@ CHUM is the orchestration layer that sits between your task backlog (Beads) and 
 - **Explicit scope control.** The human gate prevents scope creep — the agent can only implement what was approved.
 - **Audit trail.** Every approval is a Temporal event with timestamp and signal payload. Full accountability.
 
-**Future:** As confidence grows, the gate can be relaxed for low-risk beads (e.g., `priority >= P3`, `complexity = fast`).
+**Future:** As confidence grows, the gate can be relaxed for low-risk morsels (e.g., `priority >= P3`, `complexity = fast`).
 
 ---
 
@@ -105,7 +105,7 @@ CHUM is the orchestration layer that sits between your task backlog (Beads) and 
 
 ### ADR-006: CHUM as Abandoned Child Workflows
 
-**Context:** After a bead completes, the system should extract lessons and groom the backlog. But these operations must never block the next bead's execution.
+**Context:** After a morsel completes, the system should extract lessons and groom the backlog. But these operations must never block the next morsel's execution.
 
 **Decision:** ContinuousLearner and TacticalGroom run as child workflows with `PARENT_CLOSE_POLICY_ABANDON`.
 
@@ -159,10 +159,10 @@ CHUM is the orchestration layer that sits between your task backlog (Beads) and 
 
 | | Tactical Groom | Strategic Groom |
 |---|---|---|
-| **Trigger** | Per bead completion | Cron: daily at 5 AM |
+| **Trigger** | Per morsel completion | Cron: daily at 5 AM |
 | **LLM tier** | Fast (cheap) | Premium (expensive) |
-| **Scope** | Adjacent beads only | Entire backlog + repo map |
-| **Actions** | Reprioritize, add deps, close stale | Deep analysis, split/merge beads, morning briefing |
+| **Scope** | Adjacent morsels only | Entire backlog + repo map |
+| **Actions** | Reprioritize, add deps, close stale | Deep analysis, split/merge morsels, morning briefing |
 | **Latency budget** | < 30 seconds | < 5 minutes |
 
 This mirrors real Scrum: tactical grooming happens in standup (fast, narrow), strategic grooming happens in sprint planning (slow, broad).
@@ -175,7 +175,7 @@ This mirrors real Scrum: tactical grooming happens in standup (fast, narrow), st
 |--------|-------------|--------------|
 | **OpenClaw** | Agent runtime + gateway/control plane | CHUM executes work through it |
 | **Gas Town** | Multi-agent workspace/orchestration framework | CHUM focuses on policy/ops, not town topology |
-| **Beads** | Git-backed issue tracker + dependency DAG | CHUM's input layer |
+| **Morsels** | Git-backed issue tracker + dependency DAG | CHUM's input layer |
 | **Temporal** | Durable workflow execution engine | CHUM's execution substrate |
 | **CHUM** | Autonomous dispatch policy + learning loop | Sits above all of the above |
 
@@ -187,6 +187,6 @@ CHUM is explicitly **not** trying to be:
 
 - A chatbot or assistant (that's OpenClaw)
 - A workspace management UI (that's Gas Town)
-- An issue tracker (that's Beads)
+- An issue tracker (that's Morsels)
 - A CI/CD pipeline (CHUM triggers code-level work, not build/deploy)
 - A replacement for human architects (the human gate exists for a reason)

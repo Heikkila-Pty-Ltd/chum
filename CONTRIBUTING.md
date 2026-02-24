@@ -43,7 +43,7 @@ Please familiarize yourself with the [Project Structure](./PROJECT_STRUCTURE.md)
 
 ### 1. Create an Issue
 
-Before starting work, create or find an issue in the [beads tracker](./.beads):
+Before starting work, create or find an issue in the [morsels tracker](./.morsels):
 
 ```bash
 bd create "Add feature X to Y"
@@ -194,9 +194,9 @@ Examples:
 feat(scheduler): Add priority-based task queue
 
 Implements a priority queue for tasks based on project
-priority and bead urgency. Tasks are now sorted by:
+priority and morsel urgency. Tasks are now sorted by:
 1. Project priority
-2. Bead priority
+2. Morsel priority
 3. Creation time
 
 fix(store): Correct race condition in dispatch tracking

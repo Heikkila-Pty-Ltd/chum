@@ -7,7 +7,7 @@ chum/
 ├── cmd/                          # Application entry points
 │   ├── chum/                     # Main binary (API + Temporal worker + cron)
 │   │   ├── main.go               #   Entrypoint, config loading, worker/API bootstrap
-│   │   └── admin.go              #   Admin CLI commands (disable-anthropic, normalize-beads)
+│   │   └── admin.go              #   Admin CLI commands (disable-anthropic, normalize-morsels)
 │   ├── db-backup/                # Database backup utility
 │   └── db-restore/               # Database restore utility
 │
@@ -30,20 +30,20 @@ chum/
 │   │   ├── store.go              #   Store struct, schema, Open, migrate, Close
 │   │   ├── dispatches.go         #   Dispatch CRUD, overflow queue, provider usage
 │   │   ├── safety.go             #   Safety blocks (throttling + coordination guards)
-│   │   ├── claims.go             #   Claim leases (bead ownership locks)
-│   │   ├── stages.go             #   BeadStage CRUD (workflow stage tracking)
+│   │   ├── claims.go             #   Claim leases (morsel ownership locks)
+│   │   ├── stages.go             #   MorselStage CRUD (workflow stage tracking)
 │   │   ├── metrics.go            #   Health events, tick metrics, quality scores, token usage
 │   │   └── store_test.go         #   Store tests
 │   ├── api/                      # HTTP API server
-│   ├── beads/                    # Beads DAG integration (CRUD, deps, queries)
+│   ├── graph/                    # Morsels DAG integration (CRUD, deps, queries)
 │   ├── config/                   # TOML config with hot-reload (SIGHUP)
 │   ├── dispatch/                 # Agent dispatch, rate limiting, cost control
 │   ├── git/                      # Git operations + DoD post-merge checks
-│   ├── chief/                    # Chief/scrum-master agent coordination
-│   ├── cost/                     # Cost tracking and budget controls
-│   ├── matrix/                   # Matrix messaging integration
+│   ├── chief/                    # ⚠️ Chief/scrum-master agent coordination (not yet wired)
+│   ├── cost/                     # ⚠️ Cost tracking and budget controls (not yet wired)
+│   ├── matrix/                   # ⚠️ Matrix messaging integration (not yet wired)
 │   ├── portfolio/                # Multi-project portfolio management
-│   ├── team/                     # Team/agent management
+│   ├── team/                     # ⚠️ Team/agent management (not yet wired)
 │
 ├── configs/                      # Configuration examples
 │   ├── chum.runner.toml        #   Production runner config template
@@ -57,11 +57,14 @@ chum/
 │
 ├── docs/                         # Documentation
 │   ├── architecture/             #   System architecture, CHUM backlog, config reference
+│   │   └── PACKAGE_MAP.md        #   Package coupling metrics + dependency graph
 │   ├── api/                      #   API documentation
+│   ├── deps/                     #   Auto-generated dependency visualizations
 │   ├── development/              #   Developer guides, AI agent onboarding
 │   └── operations/               #   Operational guides, scrum commands
 │
 ├── scripts/                      # Utility scripts
+│   ├── gen-dep-graph.sh          #   Generate package dependency graph (DOT format)
 │   ├── dev/                      #   Development helpers
 │   ├── hooks/                    #   Git hooks (branch guard, pre-commit)
 │   ├── ops/                      #   Operational maintenance scripts
@@ -71,7 +74,7 @@ chum/
 │   └── package/                  #   Container images
 │       ├── Dockerfile            #     Main container image
 │       └── Dockerfile.agent      #     Agent container image
-├── .beads/                       # Beads issue tracker data (gitignored runtime data)
+├── .morsels/                       # Morsels issue tracker data (gitignored runtime data)
 ├── .openclaw/                    # OpenClaw agent personality files
 │
 ├── Makefile                      # Build automation
@@ -89,7 +92,7 @@ chum/
 | Decision | Rationale |
 |----------|-----------|
 | **Temporal over in-process scheduler** | Durable execution: if CHUM crashes mid-workflow, Temporal replays from exactly where it left off |
-| **Beads over Jira/Linear** | Git-backed, local-first, dependency-aware DAG. No external service dependency |
+| **Morsels over Jira/Linear** | Git-backed, local-first, dependency-aware DAG. No external service dependency |
 | **Cross-model review** | Claude reviews Codex, Codex reviews Claude. Catches model-specific blind spots |
 | **CHUM as child workflows** | Fire-and-forget with `PARENT_CLOSE_POLICY_ABANDON`. Learning never blocks execution |
 | **SQLite FTS5 for lessons** | Full-text search over accumulated lessons. No external search infrastructure |

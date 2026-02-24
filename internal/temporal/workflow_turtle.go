@@ -127,12 +127,12 @@ func AutonomousPlanningCeremonyWorkflow(ctx workflow.Context, req TurtlePlanning
 
 	// Activity option presets
 	longAO := workflow.ActivityOptions{
-		StartToCloseTimeout: 5 * time.Minute,
-		HeartbeatTimeout:    30 * time.Second,
+		StartToCloseTimeout: 10 * time.Minute,
+		HeartbeatTimeout:    60 * time.Second,
 		RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 2},
 	}
 	shortAO := workflow.ActivityOptions{
-		StartToCloseTimeout: 30 * time.Second,
+		StartToCloseTimeout: 2 * time.Minute,
 		RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 2},
 	}
 

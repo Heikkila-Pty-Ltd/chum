@@ -268,7 +268,39 @@ If all agents converged, score should be high (>80). If major disagreements rema
 
 	var consensus TurtleConsensus
 	if err := robustParseJSON(cliResult.Output, &consensus); err != nil {
-		return nil, fmt.Errorf("parse consensus JSON: %w", err)
+		// Fallback: synthesize a consensus directly from the proposals
+		// instead of crashing the entire ceremony.
+		logger.Warn(TurtlePrefix+" Consensus JSON parse failed, synthesizing from proposals",
+			"error", err, "OutputLen", len(cliResult.Output))
+
+		// Build a merged plan from the highest-confidence proposal
+		var bestProposal *TurtleProposal
+		for i := range proposals {
+			if bestProposal == nil || proposals[i].Confidence > bestProposal.Confidence {
+				bestProposal = &proposals[i]
+			}
+		}
+		if bestProposal == nil {
+			return nil, fmt.Errorf("no proposals available for fallback consensus")
+		}
+
+		// Build items from the best proposal's morsels
+		var items []ConsensusItem
+		for _, m := range bestProposal.Morsels {
+			items = append(items, ConsensusItem{
+				Title:       m,
+				Description: m,
+				Confidence:  bestProposal.Confidence,
+				Effort:      "medium",
+			})
+		}
+
+		consensus = TurtleConsensus{
+			MergedPlan:      bestProposal.Approach,
+			ConfidenceScore: bestProposal.Confidence,
+			Items:           items,
+			Disagreements:   []string{"(auto-synthesized: LLM convergence output was truncated)"},
+		}
 	}
 
 	logger.Info(TurtlePrefix+" Convergence result",

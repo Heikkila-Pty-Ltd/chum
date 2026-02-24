@@ -233,37 +233,106 @@ func extractJSONArray(text string) string {
 // sanitizeLLMJSON cleans up common LLM JSON output quirks:
 //   - Literal newlines/tabs/carriage-returns inside JSON string values → escaped
 //   - Double-escaped sequences (\\n → \n in the JSON sense)
+//   - Stray backslashes outside JSON strings (Gemini pattern)
 //   - Leading/trailing whitespace
 //
-// LLMs frequently produce JSON with unescaped newlines inside string values,
-// which causes json.Unmarshal to fail with "invalid character '\n' in string literal".
-// This function walks the JSON string-aware and escapes them properly.
+// LLMs (especially Gemini) produce JSON with various escaping issues.
+// This function applies progressively more aggressive fixes until json.Valid passes.
 func sanitizeLLMJSON(raw string) string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return raw
 	}
 
-	// Phase 1: Fix double-escaped sequences that came from CLI piping
-	if strings.Contains(raw, "\\\\n") || strings.Contains(raw, "\\\\t") {
-		raw = strings.ReplaceAll(raw, "\\\\n", "\\n")
-		raw = strings.ReplaceAll(raw, "\\\\t", "\\t")
-		raw = strings.ReplaceAll(raw, "\\\\\"", "\\\"")
+	// Fast path — if already valid, return immediately.
+	if json.Valid([]byte(raw)) {
+		return raw
 	}
 
-	// Phase 2: Walk char-by-char, escaping literal control chars inside strings.
-	// This is the critical fix — LLMs put real newlines in JSON string values.
+	// Phase 1: Fix double-escaped sequences that came from CLI piping.
+	// Gemini frequently wraps output in extra escape layers.
+	cleaned := raw
+	if strings.Contains(cleaned, "\\\\") {
+		cleaned = fixDoubleEscapes(cleaned)
+		if json.Valid([]byte(cleaned)) {
+			return cleaned
+		}
+	}
+
+	// Phase 2: Walk char-by-char, fix control chars inside strings AND
+	// stray backslashes outside strings.
+	cleaned = fixJSONChars(raw)
+	if json.Valid([]byte(cleaned)) {
+		return cleaned
+	}
+
+	// Phase 3: Try on the double-escaped version too.
+	cleaned = fixJSONChars(fixDoubleEscapes(raw))
+	if json.Valid([]byte(cleaned)) {
+		return cleaned
+	}
+
+	// Phase 4: Nuclear option — strip ALL backslashes that aren't valid JSON
+	// escape sequences. This is aggressive but catches Gemini's edge cases.
+	cleaned = nukeInvalidBackslashes(raw)
+	if json.Valid([]byte(cleaned)) {
+		return cleaned
+	}
+
+	// Give up — return the best effort (Phase 2 result, which at least
+	// handles the most common issues).
+	return fixJSONChars(raw)
+}
+
+// fixDoubleEscapes converts double-escaped sequences to single-escaped.
+// Handles: \\n → \n, \\t → \t, \\" → \"
+func fixDoubleEscapes(s string) string {
+	s = strings.ReplaceAll(s, "\\\\n", "\\n")
+	s = strings.ReplaceAll(s, "\\\\t", "\\t")
+	s = strings.ReplaceAll(s, "\\\\r", "\\r")
+	s = strings.ReplaceAll(s, "\\\\\"", "\\\"")
+	return s
+}
+
+// fixJSONChars walks char-by-char, fixing:
+// - Literal control chars inside strings → proper JSON escapes
+// - Stray backslashes outside strings → removed
+func fixJSONChars(raw string) string {
 	var out strings.Builder
 	out.Grow(len(raw))
 	inString := false
+
 	for i := 0; i < len(raw); i++ {
 		ch := raw[i]
 
 		if ch == '\\' && inString && i+1 < len(raw) {
-			// Already-escaped sequence inside a string — pass through as-is
-			out.WriteByte(ch)
-			i++
-			out.WriteByte(raw[i])
+			next := raw[i+1]
+			// Valid JSON escapes: " \ / b f n r t u
+			switch next {
+			case '"', '\\', '/', 'b', 'f', 'n', 'r', 't', 'u':
+				out.WriteByte(ch)
+				out.WriteByte(next)
+				i++
+				continue
+			default:
+				// Invalid escape inside string — double-escape the backslash
+				out.WriteString("\\\\")
+				continue
+			}
+		}
+
+		if ch == '\\' && !inString {
+			// Stray backslash outside a string — skip it entirely.
+			// This is Gemini's main issue: putting \n or \ in value positions.
+			if i+1 < len(raw) {
+				next := raw[i+1]
+				// If it's \n, \t, \r outside a string, skip both chars
+				// (they're meaningless whitespace in JSON grammar)
+				if next == 'n' || next == 't' || next == 'r' {
+					i++
+					continue
+				}
+			}
 			continue
 		}
 
@@ -282,12 +351,70 @@ func sanitizeLLMJSON(raw string) string {
 			case '\t':
 				out.WriteString("\\t")
 			default:
-				out.WriteByte(ch)
+				if ch < 0x20 {
+					out.WriteString(fmt.Sprintf("\\u%04x", ch))
+				} else {
+					out.WriteByte(ch)
+				}
 			}
 		} else {
 			out.WriteByte(ch)
 		}
 	}
 
+	return out.String()
+}
+
+// nukeInvalidBackslashes removes ALL backslash sequences that aren't valid
+// JSON escapes, both inside and outside strings. This is the most aggressive
+// sanitizer — only used as a last resort.
+func nukeInvalidBackslashes(raw string) string {
+	var out strings.Builder
+	out.Grow(len(raw))
+	inString := false
+
+	for i := 0; i < len(raw); i++ {
+		ch := raw[i]
+
+		if ch == '"' && (i == 0 || raw[i-1] != '\\') {
+			inString = !inString
+			out.WriteByte(ch)
+			continue
+		}
+
+		if ch == '\\' && i+1 < len(raw) {
+			next := raw[i+1]
+			if inString {
+				switch next {
+				case '"', '\\', '/', 'b', 'f', 'n', 'r', 't', 'u':
+					out.WriteByte(ch)
+					out.WriteByte(next)
+					i++
+				default:
+					// Skip invalid escape entirely
+					i++
+				}
+			} else {
+				// Skip backslash outside string
+				continue
+			}
+			continue
+		}
+
+		if inString && ch < 0x20 {
+			switch ch {
+			case '\n':
+				out.WriteString("\\n")
+			case '\r':
+				out.WriteString("\\r")
+			case '\t':
+				out.WriteString("\\t")
+			default:
+				out.WriteString(fmt.Sprintf("\\u%04x", ch))
+			}
+		} else {
+			out.WriteByte(ch)
+		}
+	}
 	return out.String()
 }

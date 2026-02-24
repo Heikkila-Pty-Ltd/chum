@@ -86,6 +86,7 @@ func detectTaskType(taskID, prompt string) string {
 		{[]string{"lint", "vet", "golangci"}, "lint"},
 		{[]string{"refactor", "rename", "extract"}, "refactor"},
 		{[]string{"fix", "bug", "error", "crash"}, "bugfix"},
+		{[]string{"json", "parse", "sanitize", "marshal", "unmarshal"}, "json-parsing"},
 		{[]string{"migrate", "migration", "schema"}, "migration"},
 		{[]string{"component", "widget", "ui"}, "component"},
 		{[]string{"api", "endpoint", "route", "handler"}, "api"},

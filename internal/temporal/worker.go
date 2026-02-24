@@ -21,6 +21,9 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 	if logger == nil {
 		logger = slog.Default()
 	}
+
+	// Seed operational lessons (octopus) on startup
+	SeedLessonsIfNeeded(st, logger)
 	if temporalHostPort == "" {
 		temporalHostPort = DefaultTemporalHostPort
 	}

@@ -50,6 +50,7 @@ release/*.log
 .tmp/
 *.tmp
 *.temp
+chum.toml.bak-*
 
 # OS files
 .DS_Store

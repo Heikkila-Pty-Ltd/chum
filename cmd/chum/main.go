@@ -278,6 +278,122 @@ func acquirePIDFile(pidPath, exe string, logger *slog.Logger) error {
 	return os.WriteFile(pidPath, []byte(content), 0644)
 }
 
+// runStopCommand reads the PID file, sends SIGTERM, waits for graceful shutdown,
+// and removes the PID file. Simple and reliable.
+func runStopCommand(logger *slog.Logger) error {
+	pidPath := filepath.Join(dataDir(), "chum.pid")
+	data, err := os.ReadFile(pidPath)
+	if err != nil {
+		return fmt.Errorf("no running chum found (no pid file at %s)", pidPath)
+	}
+
+	lines := strings.SplitN(string(data), "\n", 2)
+	pid, err := strconv.Atoi(strings.TrimSpace(lines[0]))
+	if err != nil {
+		os.Remove(pidPath)
+		return fmt.Errorf("invalid pid file, removed: %w", err)
+	}
+
+	process, err := os.FindProcess(pid)
+	if err != nil {
+		os.Remove(pidPath)
+		return fmt.Errorf("process %d not found, removed stale pid file", pid)
+	}
+
+	// Check if process is alive
+	if sigErr := process.Signal(syscall.Signal(0)); sigErr != nil {
+		os.Remove(pidPath)
+		logger.Info("process already dead, removed stale pid file", "pid", pid)
+		return nil
+	}
+
+	logger.Info("sending SIGTERM to chum worker", "pid", pid)
+	if err := process.Signal(syscall.SIGTERM); err != nil {
+		return fmt.Errorf("failed to send SIGTERM to pid %d: %w", pid, err)
+	}
+
+	// Wait up to 10 seconds for graceful shutdown
+	for i := 0; i < 20; i++ {
+		time.Sleep(500 * time.Millisecond)
+		if sigErr := process.Signal(syscall.Signal(0)); sigErr != nil {
+			os.Remove(pidPath)
+			logger.Info("chum worker stopped", "pid", pid)
+			return nil
+		}
+	}
+
+	// Force kill if still alive
+	logger.Warn("graceful shutdown timed out, sending SIGKILL", "pid", pid)
+	_ = process.Signal(syscall.SIGKILL)
+	time.Sleep(500 * time.Millisecond)
+	os.Remove(pidPath)
+	logger.Info("chum worker killed", "pid", pid)
+	return nil
+}
+
+// runRestartCommand stops any running instance and starts a new worker as a daemon.
+func runRestartCommand(args []string, logger *slog.Logger) error {
+	// Parse optional --config flag
+	fs := flag.NewFlagSet("restart", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	configPath := fs.String("config", "chum.toml", "path to config file")
+	if len(args) > 2 {
+		_ = fs.Parse(args[2:])
+	}
+
+	// Stop existing instance (ignore error if none running)
+	if err := runStopCommand(logger); err != nil {
+		logger.Info("no existing instance to stop", "detail", err.Error())
+	}
+
+	// Re-exec as daemon
+	exe, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("cannot find own executable: %w", err)
+	}
+
+	logPath := filepath.Join(dataDir(), "worker.log")
+	logFile, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("cannot open log file %s: %w", logPath, err)
+	}
+
+	workerArgs := []string{"worker", "--config", *configPath}
+	attr := &os.ProcAttr{
+		Dir:   filepath.Dir(*configPath),
+		Env:   os.Environ(),
+		Files: []*os.File{os.Stdin, logFile, logFile},
+		Sys:   &syscall.SysProcAttr{Setsid: true},
+	}
+
+	proc, err := os.StartProcess(exe, append([]string{exe}, workerArgs...), attr)
+	if err != nil {
+		logFile.Close()
+		return fmt.Errorf("failed to start worker: %w", err)
+	}
+
+	logger.Info("chum worker started", "pid", proc.Pid, "log", logPath)
+	_ = proc.Release()
+	logFile.Close()
+
+	// Wait a moment and verify it's running
+	time.Sleep(2 * time.Second)
+	pidPath := filepath.Join(dataDir(), "chum.pid")
+	if pidData, err := os.ReadFile(pidPath); err == nil {
+		logger.Info("chum worker confirmed running", "pidfile", string(pidData))
+	}
+
+	return nil
+}
+
+// dataDir returns the CHUM data directory (~/.local/share/chum).
+func dataDir() string {
+	home, _ := os.UserHomeDir()
+	dir := filepath.Join(home, ".local", "share", "chum")
+	os.MkdirAll(dir, 0755)
+	return dir
+}
+
 func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(logger)
@@ -292,6 +408,20 @@ func main() {
 	if len(os.Args) > 1 && (os.Args[1] == "ceremony" || os.Args[1] == "plan") {
 		if err := runCeremonyMode(os.Args, logger); err != nil {
 			logger.Error("planning ceremony failed", "error", err)
+			os.Exit(1)
+		}
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "stop" {
+		if err := runStopCommand(logger); err != nil {
+			logger.Error("stop failed", "error", err)
+			os.Exit(1)
+		}
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "restart" {
+		if err := runRestartCommand(os.Args, logger); err != nil {
+			logger.Error("restart failed", "error", err)
 			os.Exit(1)
 		}
 		return

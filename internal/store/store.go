@@ -546,6 +546,31 @@ CREATE INDEX IF NOT EXISTS idx_graph_trace_session ON graph_trace_events(session
 CREATE INDEX IF NOT EXISTS idx_graph_trace_parent ON graph_trace_events(parent_event_id);
 CREATE INDEX IF NOT EXISTS idx_graph_trace_type ON graph_trace_events(event_type);
 CREATE INDEX IF NOT EXISTS idx_graph_trace_terminal ON graph_trace_events(terminal_reward DESC) WHERE is_terminal = 1;
+
+CREATE TABLE IF NOT EXISTS cortex_memories (
+	memory_id TEXT PRIMARY KEY,
+	memory_type TEXT NOT NULL,
+	species TEXT NOT NULL DEFAULT '',
+	signature TEXT NOT NULL,
+	description TEXT NOT NULL DEFAULT '',
+	pattern_json TEXT NOT NULL DEFAULT '{}',
+	visit_count INTEGER NOT NULL DEFAULT 0,
+	win_count INTEGER NOT NULL DEFAULT 0,
+	total_reward REAL NOT NULL DEFAULT 0,
+	avg_reward REAL NOT NULL DEFAULT 0,
+	ucb1_score REAL NOT NULL DEFAULT 0,
+	source_sessions TEXT NOT NULL DEFAULT '[]',
+	last_reinforced_at DATETIME,
+	last_accessed_at DATETIME,
+	created_at DATETIME NOT NULL DEFAULT (datetime('now')),
+	updated_at DATETIME NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_cortex_memories_signature ON cortex_memories(signature);
+CREATE INDEX IF NOT EXISTS idx_cortex_memories_species_type ON cortex_memories(species, memory_type);
+CREATE INDEX IF NOT EXISTS idx_cortex_memories_ucb1 ON cortex_memories(ucb1_score DESC);
+CREATE INDEX IF NOT EXISTS idx_cortex_memories_species_ucb1 ON cortex_memories(species, ucb1_score DESC);
+CREATE INDEX IF NOT EXISTS idx_cortex_memories_type ON cortex_memories(memory_type);
 `
 
 // Open creates or opens a SQLite database at the given path and ensures the schema exists.
@@ -897,6 +922,10 @@ func migrate(db *sql.DB) error {
 
 	if err := migrateOrganismLogs(db); err != nil {
 		return fmt.Errorf("migrate organism logs: %w", err)
+	}
+
+	if err := migrateCortexMemories(db); err != nil {
+		return fmt.Errorf("migrate cortex memories: %w", err)
 	}
 
 	if _, err := db.Exec(`

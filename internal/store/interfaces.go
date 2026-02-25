@@ -258,6 +258,18 @@ type StingrayStore interface {
 	GetLatestRun(project string) (*StingrayRun, error)
 }
 
+// CortexMemoryStore tracks observational patterns with UCB1-based scoring.
+type CortexMemoryStore interface {
+	RecordCortexMemory(ctx context.Context, mem *CortexMemory) (string, error)
+	ReinforceCortexMemory(ctx context.Context, memoryID string, reward float64, sessionID string) error
+	GetCortexMemory(ctx context.Context, memoryID string) (*CortexMemory, error)
+	QueryCortexMemories(ctx context.Context, species, memType string, limit int) ([]*CortexMemory, error)
+	GetTopCortexMemories(ctx context.Context, species string, limit int) ([]*CortexMemory, error)
+	TouchCortexMemory(ctx context.Context, memoryID string) error
+	DecayCortexMemories(ctx context.Context, olderThan time.Time, factor float64) (int, error)
+}
+
 var _ StingrayStore = (*Store)(nil)
 var _ TraceStore = (*Store)(nil)
 var _ CrystalCandidateStore = (*Store)(nil)
+var _ CortexMemoryStore = (*Store)(nil)

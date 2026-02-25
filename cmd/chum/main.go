@@ -305,7 +305,7 @@ func runStopCommand(logger *slog.Logger) error {
 	if sigErr := process.Signal(syscall.Signal(0)); sigErr != nil {
 		os.Remove(pidPath)
 		logger.Info("process already dead, removed stale pid file", "pid", pid)
-		return nil
+		return nil //nolint:nilerr // dead process is success
 	}
 
 	logger.Info("sending SIGTERM to chum worker", "pid", pid)
@@ -319,7 +319,7 @@ func runStopCommand(logger *slog.Logger) error {
 		if sigErr := process.Signal(syscall.Signal(0)); sigErr != nil {
 			os.Remove(pidPath)
 			logger.Info("chum worker stopped", "pid", pid)
-			return nil
+			return nil //nolint:nilerr // dead process is success
 		}
 	}
 
@@ -339,7 +339,9 @@ func runRestartCommand(args []string, logger *slog.Logger) error {
 	fs.SetOutput(io.Discard)
 	configPath := fs.String("config", "chum.toml", "path to config file")
 	if len(args) > 2 {
-		_ = fs.Parse(args[2:])
+		if parseErr := fs.Parse(args[2:]); parseErr != nil {
+			logger.Warn("failed to parse restart flags", "error", parseErr)
+		}
 	}
 
 	// Stop existing instance (ignore error if none running)
@@ -354,7 +356,7 @@ func runRestartCommand(args []string, logger *slog.Logger) error {
 	}
 
 	logPath := filepath.Join(dataDir(), "worker.log")
-	logFile, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	logFile, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		return fmt.Errorf("cannot open log file %s: %w", logPath, err)
 	}
@@ -374,7 +376,9 @@ func runRestartCommand(args []string, logger *slog.Logger) error {
 	}
 
 	logger.Info("chum worker started", "pid", proc.Pid, "log", logPath)
-	_ = proc.Release()
+	if releaseErr := proc.Release(); releaseErr != nil {
+		logger.Warn("failed to release process handle", "error", releaseErr)
+	}
 	logFile.Close()
 
 	// Wait a moment and verify it's running
@@ -389,9 +393,12 @@ func runRestartCommand(args []string, logger *slog.Logger) error {
 
 // dataDir returns the CHUM data directory (~/.local/share/chum).
 func dataDir() string {
-	home, _ := os.UserHomeDir()
+	home, err := os.UserHomeDir()
+	if err != nil {
+		home = "/tmp"
+	}
 	dir := filepath.Join(home, ".local", "share", "chum")
-	os.MkdirAll(dir, 0755)
+	_ = os.MkdirAll(dir, 0o755) //nolint:errcheck // best-effort
 	return dir
 }
 

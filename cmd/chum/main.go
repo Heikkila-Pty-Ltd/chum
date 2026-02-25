@@ -445,33 +445,38 @@ func main() {
 		}
 
 		// --- Strategic Groom Cron (per-project, daily at 5 AM) ---
-		for name, project := range cfg.Projects { //nolint:gocritic // rangeValCopy: config.Project is a small value type used briefly
-			if !project.Enabled {
-				continue
-			}
-
-			workflowID := fmt.Sprintf("strategic-groom-%s", name)
-			req := temporal.StrategicGroomRequest{
-				Project: name,
-				WorkDir: config.ExpandHome(project.Workspace),
-				Tier:    "premium",
-			}
-
-			_, groomErr := tc.ExecuteWorkflow(ctx, tclient.StartWorkflowOptions{
-				ID:           workflowID,
-				TaskQueue:    "chum-task-queue",
-				CronSchedule: "0 5 * * *",
-			}, temporal.StrategicGroomWorkflow, req)
-			if groomErr != nil {
-				var alreadyStarted *serviceerror.WorkflowExecutionAlreadyStarted
-				if errors.As(groomErr, &alreadyStarted) {
-					logger.Info("strategic cron already running", "project", name, "workflow_id", workflowID)
+		// Only start if chief is enabled — strategic groom depends on LLM analysis.
+		if cfg.Chief.Enabled {
+			for name, project := range cfg.Projects { //nolint:gocritic // rangeValCopy: config.Project is a small value type used briefly
+				if !project.Enabled {
 					continue
 				}
-				logger.Error("failed to start strategic cron", "project", name, "error", groomErr)
-				continue
+
+				workflowID := fmt.Sprintf("strategic-groom-%s", name)
+				req := temporal.StrategicGroomRequest{
+					Project: name,
+					WorkDir: config.ExpandHome(project.Workspace),
+					Tier:    "premium",
+				}
+
+				_, groomErr := tc.ExecuteWorkflow(ctx, tclient.StartWorkflowOptions{
+					ID:           workflowID,
+					TaskQueue:    "chum-task-queue",
+					CronSchedule: "0 5 * * *",
+				}, temporal.StrategicGroomWorkflow, req)
+				if groomErr != nil {
+					var alreadyStarted *serviceerror.WorkflowExecutionAlreadyStarted
+					if errors.As(groomErr, &alreadyStarted) {
+						logger.Info("strategic cron already running", "project", name, "workflow_id", workflowID)
+						continue
+					}
+					logger.Error("failed to start strategic cron", "project", name, "error", groomErr)
+					continue
+				}
+				logger.Info("strategic cron registered", "project", name, "workflow_id", workflowID, "schedule", "0 5 * * *")
 			}
-			logger.Info("strategic cron registered", "project", name, "workflow_id", workflowID, "schedule", "0 5 * * *")
+		} else {
+			logger.Info("strategic groom disabled (chief not enabled)")
 		}
 
 		// --- Paleontologist Schedule (every 30 minutes, per-project) ---

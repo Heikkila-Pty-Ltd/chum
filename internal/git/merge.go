@@ -2,6 +2,7 @@ package git
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -149,6 +150,9 @@ func runSinglePostMergeCheck(workspace, command string) *CheckResult {
 	}
 	cmd := exec.Command("sh", "-c", command)
 	cmd.Dir = workspace
+	// Worktrees lack full VCS context — disable Go build's VCS stamping
+	// to prevent 'error obtaining VCS status: exit status 128'.
+	cmd.Env = append(os.Environ(), "GOFLAGS=-buildvcs=false")
 
 	output, err := cmd.CombinedOutput()
 	duration := time.Since(start)

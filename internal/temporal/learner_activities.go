@@ -118,8 +118,7 @@ If there are no meaningful lessons, return an empty array [].`,
 		existingContext,
 	)
 
-	agent := ResolveTierAgent(a.Tiers, req.Tier)
-	cliResult, err := runAgent(ctx, agent, prompt, req.WorkDir)
+	cliResult, _, err := a.runAgentWithFailover(ctx, req.Tier, prompt, req.WorkDir)
 	if err != nil {
 		logger.Warn(OctopusPrefix+" Lesson extraction LLM failed", "error", err)
 		return nil, nil // non-fatal
@@ -262,7 +261,7 @@ rules:
 			strings.Join(lesson.FilePaths, ", "),
 		)
 
-		cliResult, err := runAgent(ctx, ResolveTierAgent(a.Tiers, req.Tier), prompt, req.WorkDir)
+		cliResult, _, err := a.runAgentWithFailover(ctx, req.Tier, prompt, req.WorkDir)
 		if err != nil {
 			logger.Warn(OctopusPrefix+" Semgrep rule generation failed", "lesson", lesson.Summary, "error", err)
 			continue
@@ -581,8 +580,7 @@ func (a *Activities) CalcifyPatternActivity(ctx context.Context, req LearnerRequ
 
 	// Build compilation prompt and dispatch to premium model
 	compilationPrompt := buildCompilationPrompt(morselType, prompts)
-	agent := ResolveTierAgent(a.Tiers, "premium")
-	cliResult, err := runAgent(ctx, agent, compilationPrompt, req.WorkDir)
+	cliResult, _, err := a.runAgentWithFailover(ctx, "premium", compilationPrompt, req.WorkDir)
 	if err != nil {
 		logger.Warn(OctopusPrefix+" Calcification LLM failed", "error", err)
 		return false, nil // non-fatal

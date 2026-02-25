@@ -1,0 +1,26 @@
+rules:
+  - id: chum-os-remove-scope-check
+    paths:
+      include:
+        - "**/*.go"
+    patterns:
+      - pattern-either:
+        - pattern: |
+            os.Remove($PATH)
+        - pattern: |
+            os.RemoveAll($PATH)
+    message: |
+      NEVER DELETE FILES NOT IN THE MORSEL SPEC.
+
+      If a morsel says "add X", the diff should only add to relevant files,
+      not delete unrelated test or classifier files.
+
+      Shark deleted complexity_test.go, failure_classifier.go, seed_lessons.go
+      — none were mentioned in the morsel. Agents must treat existing files as
+      sacred unless the morsel explicitly targets them.
+
+      Before calling os.Remove/os.RemoveAll, verify the file is:
+      1. Created by this task (not pre-existing)
+      2. Explicitly mentioned in the morsel spec
+    languages: [go]
+    severity: WARNING

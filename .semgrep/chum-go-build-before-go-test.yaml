@@ -1,0 +1,24 @@
+rules:
+  - id: chum-go-build-before-go-test
+    paths:
+      include:
+        - internal/temporal/activities.go
+        - internal/temporal/workflow.go
+    patterns:
+      - pattern-either:
+        - pattern: |
+            exec.Command("go", "test", ...)
+    message: |
+      GO BUILD BEFORE GO TEST: Always run 'go build ./...' before 'go test ./...'.
+
+      go test compiles AND runs tests — if the code doesn't compile, the error
+      output is much harder to parse than from go build.
+
+      go build ./... gives clean, targeted compile error messages. Run it first,
+      fix errors, then run go test.
+
+      TRIPLE DoD FAIL PATTERN: If go test + go vet + golangci-lint all fail
+      simultaneously, the root cause is almost always a compilation error.
+      Fix the build first and the others will likely resolve.
+    languages: [go]
+    severity: WARNING

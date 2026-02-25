@@ -7,6 +7,84 @@ import (
 	"github.com/antigravity-dev/chum/internal/graph"
 )
 
+// CrystalCandidateStatus tracks whether a candidate trace is usable.
+type CrystalCandidateStatus string
+
+const (
+	CrystalCandidateStatusPending    CrystalCandidateStatus = "pending"
+	CrystalCandidateStatusActive     CrystalCandidateStatus = "active"
+	CrystalCandidateStatusDeprecated CrystalCandidateStatus = "deprecated"
+)
+
+// ExecutionTrace is a durable, stage-spanning trace of workflow execution.
+type ExecutionTrace struct {
+	ID            int64
+	TaskID        string
+	Species       string
+	GoalSignature string
+	Status        string
+	StartedAt     time.Time
+	CompletedAt   time.Time
+	Outcome       string
+	SupportCount  int
+	AttemptCount  int
+	SuccessRate   float64
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
+
+// TraceEvent stores one normalized event in a trace.
+type TraceEvent struct {
+	ID            int64
+	TraceID       int64
+	Stage         string
+	Step          string
+	Tool          string
+	Command       string
+	InputSummary  string
+	OutputSummary string
+	DurationMs    int64
+	Success       bool
+	ErrorContext  string
+	CreatedAt     time.Time
+}
+
+// CrystalCandidate is a reusable successful deterministic flow extracted from traces.
+type CrystalCandidate struct {
+	ID                 int64
+	Species            string
+	GoalSignature      string
+	Status             CrystalCandidateStatus
+	TemplateJSON       string
+	SupportCount       int
+	AttemptCount       int
+	SuccessCount       int
+	SuccessRate        float64
+	Preconditions      string
+	OrderedSteps       string
+	VerificationChecks string
+	RequiredInputs     string
+	LastSeenAt         time.Time
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+}
+
+// TraceStore tracks execution traces and trace events for workflow runs.
+type TraceStore interface {
+	StartExecutionTrace(taskID, species, goalSignature string) (int64, error)
+	AppendTraceEvent(traceID int64, event TraceEvent) error
+	CompleteExecutionTrace(traceID int64, status, outcome string, supportCount int, successCount int) error
+	ListExecutionTraces(taskID string) ([]ExecutionTrace, error)
+	GetTraceEvents(traceID int64) ([]TraceEvent, error)
+}
+
+// CrystalCandidateStore tracks reusable deterministic candidate flows.
+type CrystalCandidateStore interface {
+	UpsertCrystalCandidate(candidate CrystalCandidate) error
+	GetCrystalCandidatesBySpeciesAndGoal(species, goalSignature string) ([]CrystalCandidate, error)
+	GetCrystalCandidatesByStatus(status CrystalCandidateStatus) ([]CrystalCandidate, error)
+}
+
 // DispatchStore covers dispatch lifecycle: recording, querying, updating, and overflow queue management.
 type DispatchStore interface {
 	RecordDispatch(morselID, project, agent, provider, tier string, handle int, sessionName, prompt, logPath, branch, backend string) (int64, error)
@@ -181,3 +259,5 @@ type StingrayStore interface {
 }
 
 var _ StingrayStore = (*Store)(nil)
+var _ TraceStore = (*Store)(nil)
+var _ CrystalCandidateStore = (*Store)(nil)

@@ -1,0 +1,91 @@
+[
+  {
+    "title": "Define option graph schema v1",
+    "project": "chum",
+    "priority": 1,
+    "type": "task",
+    "estimate_minutes": 90,
+    "description": "Define canonical schema for atomic/composite execution options and typed edges.",
+    "acceptance_criteria": "Schema documents required/optional fields; edge semantics are explicit; examples included; tests prove schema acceptance/rejection cases."
+  },
+  {
+    "title": "Implement schema validator and lint rules",
+    "project": "chum",
+    "priority": 1,
+    "type": "feature",
+    "estimate_minutes": 120,
+    "description": "Build validator that catches cycles, missing nodes, invalid edge types, and malformed guards.",
+    "acceptance_criteria": "Validator fails invalid catalogs in CI with actionable errors; regression tests cover major failure modes.",
+    "depends_on_logical": ["Define option graph schema v1"]
+  },
+  {
+    "title": "Seed canonical YAML catalog with baseline pathways",
+    "project": "chum",
+    "priority": 1,
+    "type": "task",
+    "estimate_minutes": 120,
+    "description": "Add baseline option entries including react preflight and design review composites.",
+    "acceptance_criteria": "Seed catalog passes validator; pathway expansion produces deterministic ordered steps.",
+    "depends_on_logical": ["Define option graph schema v1", "Implement schema validator and lint rules"]
+  },
+  {
+    "title": "Build deterministic resolver contract",
+    "project": "chum",
+    "priority": 0,
+    "type": "feature",
+    "estimate_minutes": 180,
+    "description": "Implement resolver that selects option pathways and emits bounded execution bundles.",
+    "acceptance_criteria": "Identical inputs produce identical bundles; tie-break logic is explicit and tested.",
+    "depends_on_logical": ["Seed canonical YAML catalog with baseline pathways"]
+  },
+  {
+    "title": "Enforce resolver bundle gate in dispatch preflight",
+    "project": "chum",
+    "priority": 0,
+    "type": "feature",
+    "estimate_minutes": 150,
+    "description": "Block execution dispatch when resolver bundle is absent or invalid.",
+    "acceptance_criteria": "Dispatch rejects missing/invalid bundle with structured reason; integration tests cover gate behavior.",
+    "depends_on_logical": ["Build deterministic resolver contract"]
+  },
+  {
+    "title": "Build YAML to DB mirror pipeline",
+    "project": "chum",
+    "priority": 1,
+    "type": "feature",
+    "estimate_minutes": 180,
+    "description": "Implement mirror builder that materializes YAML canonical options into query-ready DB objects.",
+    "acceptance_criteria": "Mirror refresh is idempotent and deterministic; mirror can be fully rebuilt from YAML.",
+    "depends_on_logical": ["Seed canonical YAML catalog with baseline pathways"]
+  },
+  {
+    "title": "Add parity checks between YAML and DB mirror",
+    "project": "chum",
+    "priority": 1,
+    "type": "task",
+    "estimate_minutes": 120,
+    "description": "Add parity checks to detect semantic drift between canonical YAML and DB mirror representations.",
+    "acceptance_criteria": "Parity mismatch fails CI; drift report includes specific option IDs/fields.",
+    "depends_on_logical": ["Build YAML to DB mirror pipeline"]
+  },
+  {
+    "title": "Integrate trace-driven option scoring with safeguards",
+    "project": "chum",
+    "priority": 2,
+    "type": "feature",
+    "estimate_minutes": 150,
+    "description": "Use planning trace outcomes for option ranking with confidence/weight safeguards.",
+    "acceptance_criteria": "Score updates are bounded and explainable; poor-quality traces do not dominate ranking.",
+    "depends_on_logical": ["Enforce resolver bundle gate in dispatch preflight", "Add parity checks between YAML and DB mirror"]
+  },
+  {
+    "title": "Add observability report for option quality and drift",
+    "project": "chum",
+    "priority": 2,
+    "type": "task",
+    "estimate_minutes": 90,
+    "description": "Add report/dashboard output for option success, failures, drift incidents, and ranking movement.",
+    "acceptance_criteria": "Report exposes top regressions and most reliable pathways over rolling windows.",
+    "depends_on_logical": ["Integrate trace-driven option scoring with safeguards"]
+  }
+]

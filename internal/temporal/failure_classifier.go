@@ -17,6 +17,11 @@ import "strings"
 func classifyFailure(failures string) (category, summary string) {
 	lower := strings.ToLower(failures)
 
+	// Infrastructure failures first — these are NOT the shark's fault
+	if isInfrastructureFailure(lower) {
+		return "infrastructure_failure", extractInfraReason(lower)
+	}
+
 	switch {
 	// Temporal activity timeouts (Heartbeat, StartToClose) — must be before generic timeout check
 	case strings.Contains(lower, "heartbeat timeout") ||
@@ -74,6 +79,82 @@ func classifyFailure(failures string) (category, summary string) {
 			return "dod_check_failed", extractFirstLine(failures)
 		}
 		return "", ""
+	}
+}
+
+// isInfrastructureFailure returns true if the failure is environmental,
+// not caused by the shark's code changes. These failures should NOT burn
+// a retry attempt or be fed back as agent guidance.
+//
+// Infrastructure failures include:
+//   - golangci-lint parallel lock ("parallel golangci-lint is running")
+//   - golangci-lint exit 3 (config error, not code error)
+//   - semgrep exit 7 (config/download error)
+//   - tool not found in PATH
+//   - permission denied
+//   - disk full / no space left
+//   - git lock contention
+func isInfrastructureFailure(lower string) bool {
+	infraPatterns := []string{
+		"parallel golangci-lint is running",
+		"golangci-lint" + " " + "exit 3",  // config error
+		"golangci-lint" + " " + "exit -1", // signal kill (OOM)
+		"semgrep" + " " + "exit 7",        // config/download error
+		"exit -1",                          // any tool killed by signal (OOM, SIGKILL)
+		"error obtaining vcs status",       // golangci-lint in worktrees
+		"command not found",
+		"no such file or directory",
+		"permission denied",
+		"no space left on device",
+		"disk quota exceeded",
+		"git lock",
+		"index.lock",
+		"unable to create",
+		"fatal: unable to access",
+	}
+	for _, p := range infraPatterns {
+		if strings.Contains(lower, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// isTransientInfraFailure returns true if the infra failure is likely temporary
+// and worth one retry (e.g., lock contention). Returns false for persistent
+// issues (disk full, missing tools) that need human intervention.
+func isTransientInfraFailure(lower string) bool {
+	transientPatterns := []string{
+		"parallel golangci-lint is running",
+		"git lock",
+		"index.lock",
+		"unable to create",
+	}
+	for _, p := range transientPatterns {
+		if strings.Contains(lower, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// extractInfraReason returns a human-readable reason for the infrastructure failure.
+func extractInfraReason(lower string) string {
+	switch {
+	case strings.Contains(lower, "parallel golangci-lint"):
+		return "golangci-lint parallel lock (another instance running)"
+	case strings.Contains(lower, "golangci-lint") && strings.Contains(lower, "exit 3"):
+		return "golangci-lint config/runtime error (exit 3)"
+	case strings.Contains(lower, "semgrep") && strings.Contains(lower, "exit 7"):
+		return "semgrep config/download error (exit 7)"
+	case strings.Contains(lower, "command not found"):
+		return "required tool not found in PATH"
+	case strings.Contains(lower, "no space left") || strings.Contains(lower, "disk quota"):
+		return "disk full"
+	case strings.Contains(lower, "git lock") || strings.Contains(lower, "index.lock"):
+		return "git lock contention"
+	default:
+		return "infrastructure/environment error"
 	}
 }
 

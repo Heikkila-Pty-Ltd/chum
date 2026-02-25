@@ -133,6 +133,8 @@ type Provider struct {
 	Enabled           *bool   `toml:"enabled"` // nil = enabled (default true for backward compat)
 	Model             string  `toml:"model"`
 	CLI               string  `toml:"cli"`
+	Reviewer          string  `toml:"reviewer"`  // reviewer agent for cross-model review (empty = DefaultReviewer)
+	TokenCap          int     `toml:"token_cap"` // max output tokens per day (0 = unlimited)
 	CostInputPerMtok  float64 `toml:"cost_input_per_mtok"`
 	CostOutputPerMtok float64 `toml:"cost_output_per_mtok"`
 }
@@ -264,6 +266,11 @@ type DispatchGit struct {
 type DispatchCostControl struct {
 	Enabled                     bool     `toml:"enabled"`
 	SparkFirst                  bool     `toml:"spark_first"`
+	EnablePlannerV2             bool     `toml:"enable_planner_v2"`
+	PlanningCandidateTopK       int      `toml:"planning_candidate_top_k"`
+	PlanningSignalTimeout       Duration `toml:"planning_signal_timeout"`
+	PlanningSessionTimeout      Duration `toml:"planning_session_timeout"`
+	PlanningStaleBlockThreshold Duration `toml:"planning_stale_block_threshold"`
 	RetryEscalationAttempt      int      `toml:"retry_escalation_attempt"`
 	ComplexityEscalationMinutes int      `toml:"complexity_escalation_minutes"`
 	RiskyReviewLabels           []string `toml:"risky_review_labels"`
@@ -274,14 +281,23 @@ type DispatchCostControl struct {
 	StageAttemptWindow          Duration `toml:"stage_attempt_window"`
 	StageCooldown               Duration `toml:"stage_cooldown"`
 
-	// Escalation pause controls for system-level churn/token waste.
-	PauseOnChurn      bool     `toml:"pause_on_churn"`
-	ChurnPauseWindow  Duration `toml:"churn_pause_window"`
-	ChurnPauseFailure int      `toml:"churn_pause_failure_threshold"`
-	ChurnPauseTotal   int      `toml:"churn_pause_total_threshold"`
+	// Beached shark window: how long to exclude escalated tasks from re-dispatch.
+	// Default 24h. Set to "0s" to disable (allow immediate re-dispatch of escalated tasks).
+	BeachedSharkWindow Duration `toml:"beached_shark_window"`
 
 	PauseOnTokenWastage bool     `toml:"pause_on_token_waste"`
 	TokenWasteWindow    Duration `toml:"token_waste_window"`
+
+	// Higher-learning mode: fewer retries, faster escalation, maximum learning signal.
+	HigherLearning HigherLearning `toml:"higher_learning"`
+}
+
+// HigherLearning configures reduced-retry mode for overnight/unattended runs.
+// Fewer retries per tier → faster escalation → more diverse failure data per token.
+type HigherLearning struct {
+	Enabled     bool `toml:"enabled"`
+	MaxRetries  int  `toml:"max_retries"`  // per-tier retry cap (default 1 when enabled)
+	MaxHandoffs int  `toml:"max_handoffs"` // cross-model review handoff cap (default 1 when enabled)
 }
 
 // Chief configures the Chief Scrum Master coordination agent.

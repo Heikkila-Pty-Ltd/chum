@@ -15,6 +15,7 @@ import (
 //
 // All steps are non-fatal. Learner failure never blocks the main execution loop.
 func ContinuousLearnerWorkflow(ctx workflow.Context, req LearnerRequest) error {
+	startTime := workflow.Now(ctx)
 	logger := workflow.GetLogger(ctx)
 	logger.Info(OctopusPrefix+" ContinuousLearner starting", "TaskID", req.TaskID)
 
@@ -113,6 +114,10 @@ func ContinuousLearnerWorkflow(ctx workflow.Context, req LearnerRequest) error {
 		"Lessons", len(lessons),
 		"Rules", len(rules),
 	)
+
+	recordOrganismLog(ctx, "learner", req.TaskID, req.Project, "completed",
+		fmt.Sprintf("%d lessons, %d rules, calcified=%v", len(lessons), len(rules), calcified),
+		startTime, 6, "")
 
 	// Fire-and-forget notification.
 	notifyOpts := workflow.ActivityOptions{

@@ -1,0 +1,16 @@
+rules:
+  - id: chum-golangci-lint-new-from-rev
+    paths:
+      include:
+        - "**/*.go"
+    pattern-regex: "new-from-rev=HEAD~1"
+    message: |
+      GOLANGCI-LINT EXIT CODE 3: --new-from-rev=HEAD~1 fails when the worktree
+      HEAD has no parent (initial commit, shallow clone, or freshly created worktree).
+
+      Exit code 3 is a CONFIG ERROR, not a lint failure (which is exit 1).
+
+      Use --new-from-rev=main instead, or verify that HEAD~1 resolves to a valid
+      commit in the worktree before running.
+    languages: [go]
+    severity: WARNING

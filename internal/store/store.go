@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 
 	_ "modernc.org/sqlite"
 )
@@ -271,6 +272,130 @@ CREATE TABLE IF NOT EXISTS protein_folds (
 CREATE INDEX IF NOT EXISTS idx_folds_protein ON protein_folds(protein_id);
 CREATE INDEX IF NOT EXISTS idx_folds_project ON protein_folds(project);
 
+CREATE TABLE IF NOT EXISTS mcts_nodes (
+	node_key TEXT PRIMARY KEY,
+	node_type TEXT NOT NULL DEFAULT '',
+	metadata_json TEXT NOT NULL DEFAULT '{}',
+	created_at DATETIME NOT NULL DEFAULT (datetime('now')),
+	updated_at DATETIME NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_mcts_nodes_type ON mcts_nodes(node_type, updated_at);
+
+CREATE TABLE IF NOT EXISTS mcts_edges (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	parent_node_key TEXT NOT NULL,
+	child_node_key TEXT NOT NULL,
+	action_key TEXT NOT NULL,
+	metadata_json TEXT NOT NULL DEFAULT '{}',
+	created_at DATETIME NOT NULL DEFAULT (datetime('now')),
+	UNIQUE(parent_node_key, action_key)
+);
+CREATE INDEX IF NOT EXISTS idx_mcts_edges_parent ON mcts_edges(parent_node_key);
+CREATE INDEX IF NOT EXISTS idx_mcts_edges_child ON mcts_edges(child_node_key);
+
+CREATE TABLE IF NOT EXISTS mcts_rollouts (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	task_id TEXT NOT NULL DEFAULT '',
+	project TEXT NOT NULL DEFAULT '',
+	species TEXT NOT NULL DEFAULT '*',
+	parent_node_key TEXT NOT NULL,
+	action_key TEXT NOT NULL,
+	outcome TEXT NOT NULL DEFAULT '',
+	reward REAL NOT NULL DEFAULT 0,
+	cost_usd REAL NOT NULL DEFAULT 0,
+	duration_s REAL NOT NULL DEFAULT 0,
+	metadata_json TEXT NOT NULL DEFAULT '{}',
+	created_at DATETIME NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_mcts_rollouts_parent_species_created ON mcts_rollouts(parent_node_key, species, created_at);
+CREATE INDEX IF NOT EXISTS idx_mcts_rollouts_project_created ON mcts_rollouts(project, created_at);
+CREATE INDEX IF NOT EXISTS idx_mcts_rollouts_task ON mcts_rollouts(task_id, created_at);
+
+CREATE TABLE IF NOT EXISTS mcts_edge_stats (
+	parent_node_key TEXT NOT NULL,
+	species TEXT NOT NULL DEFAULT '*',
+	action_key TEXT NOT NULL,
+	visits INTEGER NOT NULL DEFAULT 0,
+	wins INTEGER NOT NULL DEFAULT 0,
+	total_reward REAL NOT NULL DEFAULT 0,
+	total_cost_usd REAL NOT NULL DEFAULT 0,
+	total_duration_s REAL NOT NULL DEFAULT 0,
+	last_outcome TEXT NOT NULL DEFAULT '',
+	updated_at DATETIME NOT NULL DEFAULT (datetime('now')),
+	PRIMARY KEY(parent_node_key, species, action_key)
+);
+CREATE INDEX IF NOT EXISTS idx_mcts_edge_stats_parent_species_updated ON mcts_edge_stats(parent_node_key, species, updated_at);
+
+CREATE TABLE IF NOT EXISTS planning_trace_events (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	session_id TEXT NOT NULL,
+	run_id TEXT NOT NULL DEFAULT '',
+	project TEXT NOT NULL DEFAULT '',
+	task_id TEXT NOT NULL DEFAULT '',
+	cycle INTEGER NOT NULL DEFAULT 0,
+	stage TEXT NOT NULL DEFAULT '',
+	node_id TEXT NOT NULL DEFAULT '',
+	parent_node_id TEXT NOT NULL DEFAULT '',
+	branch_id TEXT NOT NULL DEFAULT '',
+	option_id TEXT NOT NULL DEFAULT '',
+	event_type TEXT NOT NULL DEFAULT '',
+	actor TEXT NOT NULL DEFAULT '',
+	tool_name TEXT NOT NULL DEFAULT '',
+	tool_input TEXT NOT NULL DEFAULT '',
+	tool_output TEXT NOT NULL DEFAULT '',
+	prompt_text TEXT NOT NULL DEFAULT '',
+	response_text TEXT NOT NULL DEFAULT '',
+	summary_text TEXT NOT NULL DEFAULT '',
+	full_text TEXT NOT NULL DEFAULT '',
+	selected_option TEXT NOT NULL DEFAULT '',
+	reward REAL NOT NULL DEFAULT 0,
+	metadata_json TEXT NOT NULL DEFAULT '{}',
+	interaction_class TEXT NOT NULL DEFAULT '',
+	interaction_type TEXT NOT NULL DEFAULT '',
+	human_interactive INTEGER NOT NULL DEFAULT 0,
+	created_at DATETIME NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_planning_trace_session_created ON planning_trace_events(session_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_planning_trace_project_reward_created ON planning_trace_events(project, reward, created_at);
+CREATE INDEX IF NOT EXISTS idx_planning_trace_event_created ON planning_trace_events(event_type, created_at);
+CREATE INDEX IF NOT EXISTS idx_planning_trace_actor_created ON planning_trace_events(actor, created_at);
+CREATE INDEX IF NOT EXISTS idx_planning_trace_branch_created ON planning_trace_events(branch_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_planning_trace_node ON planning_trace_events(node_id);
+
+CREATE TABLE IF NOT EXISTS planning_state_snapshots (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	session_id TEXT NOT NULL,
+	run_id TEXT NOT NULL DEFAULT '',
+	project TEXT NOT NULL DEFAULT '',
+	task_id TEXT NOT NULL DEFAULT '',
+	cycle INTEGER NOT NULL DEFAULT 0,
+	stage TEXT NOT NULL DEFAULT '',
+	state_hash TEXT NOT NULL,
+	state_json TEXT NOT NULL DEFAULT '{}',
+	stable INTEGER NOT NULL DEFAULT 1,
+	reason TEXT NOT NULL DEFAULT '',
+	created_at DATETIME NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_planning_snapshots_session_created ON planning_state_snapshots(session_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_planning_snapshots_state_hash ON planning_state_snapshots(state_hash);
+
+CREATE TABLE IF NOT EXISTS planning_action_blacklist (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	session_id TEXT NOT NULL,
+	project TEXT NOT NULL DEFAULT '',
+	task_id TEXT NOT NULL DEFAULT '',
+	cycle INTEGER NOT NULL DEFAULT 0,
+	stage TEXT NOT NULL DEFAULT '',
+	state_hash TEXT NOT NULL,
+	action_hash TEXT NOT NULL,
+	reason TEXT NOT NULL DEFAULT '',
+	metadata_json TEXT NOT NULL DEFAULT '{}',
+	created_at DATETIME NOT NULL DEFAULT (datetime('now')),
+	UNIQUE(session_id, state_hash, action_hash)
+);
+CREATE INDEX IF NOT EXISTS idx_planning_blacklist_session_created ON planning_action_blacklist(session_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_planning_blacklist_state_action ON planning_action_blacklist(state_hash, action_hash);
+
 CREATE TABLE IF NOT EXISTS paleontology_runs (
 	id                     INTEGER PRIMARY KEY AUTOINCREMENT,
 	run_at                 DATETIME NOT NULL DEFAULT (datetime('now')),
@@ -281,6 +406,108 @@ CREATE TABLE IF NOT EXISTS paleontology_runs (
 	cost_alerts            INTEGER NOT NULL DEFAULT 0,
 	summary                TEXT NOT NULL DEFAULT ''
 );
+
+CREATE TABLE IF NOT EXISTS graph_trace_events (
+	event_id TEXT PRIMARY KEY,
+	parent_event_id TEXT,
+	session_id TEXT NOT NULL,
+	timestamp INTEGER NOT NULL,
+	depth INTEGER DEFAULT 0,
+	event_type TEXT NOT NULL,
+	phase TEXT,
+	model_name TEXT,
+	tokens_input INTEGER DEFAULT 0,
+	tokens_output INTEGER DEFAULT 0,
+	tool_name TEXT,
+	tool_success INTEGER,
+	human_message TEXT,
+	reward REAL DEFAULT 0.0,
+	terminal_reward REAL,
+	is_terminal INTEGER DEFAULT 0,
+	metadata TEXT,
+	FOREIGN KEY(parent_event_id) REFERENCES graph_trace_events(event_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_graph_trace_session ON graph_trace_events(session_id);
+CREATE INDEX IF NOT EXISTS idx_graph_trace_parent ON graph_trace_events(parent_event_id);
+CREATE INDEX IF NOT EXISTS idx_graph_trace_type ON graph_trace_events(event_type);
+CREATE INDEX IF NOT EXISTS idx_graph_trace_terminal ON graph_trace_events(terminal_reward DESC) WHERE is_terminal = 1;
+
+CREATE TABLE IF NOT EXISTS organism_logs (
+	id             INTEGER PRIMARY KEY AUTOINCREMENT,
+	organism_type  TEXT NOT NULL,
+	workflow_id    TEXT NOT NULL DEFAULT '',
+	task_id        TEXT NOT NULL DEFAULT '',
+	project        TEXT NOT NULL DEFAULT '',
+	status         TEXT NOT NULL DEFAULT '',
+	duration_s     REAL NOT NULL DEFAULT 0,
+	details        TEXT NOT NULL DEFAULT '',
+	steps          INTEGER NOT NULL DEFAULT 0,
+	error          TEXT NOT NULL DEFAULT '',
+	created_at     DATETIME NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_organism_logs_type ON organism_logs(organism_type, created_at);
+CREATE INDEX IF NOT EXISTS idx_organism_logs_project ON organism_logs(project, created_at);
+CREATE INDEX IF NOT EXISTS idx_organism_logs_task ON organism_logs(task_id);
+
+CREATE TABLE IF NOT EXISTS execution_traces (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	task_id TEXT NOT NULL,
+	species TEXT NOT NULL DEFAULT '',
+	goal_signature TEXT NOT NULL DEFAULT '',
+	status TEXT NOT NULL DEFAULT 'running',
+	outcome TEXT NOT NULL DEFAULT '',
+	attempt_count INTEGER NOT NULL DEFAULT 0,
+	success_count INTEGER NOT NULL DEFAULT 0,
+	support_count INTEGER NOT NULL DEFAULT 0,
+	success_rate REAL NOT NULL DEFAULT 0,
+	started_at DATETIME NOT NULL DEFAULT (datetime('now')),
+	completed_at DATETIME,
+	created_at DATETIME NOT NULL DEFAULT (datetime('now')),
+	updated_at DATETIME NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS trace_events (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	trace_id INTEGER NOT NULL REFERENCES execution_traces(id) ON DELETE CASCADE,
+	stage TEXT NOT NULL,
+	step TEXT NOT NULL,
+	tool TEXT NOT NULL,
+	command TEXT NOT NULL,
+	input_summary TEXT NOT NULL DEFAULT '',
+	output_summary TEXT NOT NULL DEFAULT '',
+	duration_ms INTEGER NOT NULL DEFAULT 0,
+	success INTEGER NOT NULL DEFAULT 0,
+	error_context TEXT NOT NULL DEFAULT '',
+	created_at DATETIME NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS crystal_candidates (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	species TEXT NOT NULL DEFAULT '',
+	goal_signature TEXT NOT NULL DEFAULT '',
+	status TEXT NOT NULL DEFAULT 'pending',
+	template_json TEXT NOT NULL DEFAULT '{}',
+	support_count INTEGER NOT NULL DEFAULT 0,
+	attempt_count INTEGER NOT NULL DEFAULT 0,
+	success_count INTEGER NOT NULL DEFAULT 0,
+	success_rate REAL NOT NULL DEFAULT 0,
+	preconditions TEXT NOT NULL DEFAULT '[]',
+	ordered_steps TEXT NOT NULL DEFAULT '[]',
+	verification_checks TEXT NOT NULL DEFAULT '[]',
+	required_inputs TEXT NOT NULL DEFAULT '[]',
+	last_seen_at DATETIME NOT NULL DEFAULT (datetime('now')),
+	created_at DATETIME NOT NULL DEFAULT (datetime('now')),
+	updated_at DATETIME NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_execution_traces_task ON execution_traces(task_id);
+CREATE INDEX IF NOT EXISTS idx_execution_traces_species ON execution_traces(species);
+CREATE INDEX IF NOT EXISTS idx_execution_traces_status ON execution_traces(status);
+CREATE INDEX IF NOT EXISTS idx_trace_events_trace_id ON trace_events(trace_id);
+CREATE INDEX IF NOT EXISTS idx_trace_events_stage ON trace_events(stage);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_crystal_candidates_species_goal_status ON crystal_candidates(species, goal_signature, status);
+CREATE INDEX IF NOT EXISTS idx_crystal_candidates_status ON crystal_candidates(status);
 
 CREATE TABLE IF NOT EXISTS graph_trace_events (
 	event_id TEXT PRIMARY KEY,
@@ -372,7 +599,7 @@ func Open(dbPath string) (*Store, error) {
 // verifySchema runs post-migration sanity checks on the DB schema.
 // Catches drift caused by multiple binaries hitting the same DB file.
 func (s *Store) verifySchema() error {
-	criticalTables := []string{"morsel_stages", "dispatches", "lessons", "genomes"}
+	criticalTables := []string{"morsel_stages", "dispatches", "lessons", "genomes", "execution_traces", "trace_events", "crystal_candidates"}
 	for _, table := range criticalTables {
 		var count int
 		err := s.db.QueryRow(
@@ -397,6 +624,11 @@ func (s *Store) verifySchema() error {
 		{"dispatches", "labels"},
 		{"genomes", "provider_genes"},
 		{"genomes", "hibernating"},
+		{"execution_traces", "success_rate"},
+		{"execution_traces", "goal_signature"},
+		{"execution_traces", "attempt_count"},
+		{"trace_events", "trace_id"},
+		{"crystal_candidates", "success_rate"},
 	}
 	for _, c := range colChecks {
 		var hasCol int
@@ -641,6 +873,100 @@ func migrate(db *sql.DB) error {
 	if err := migrateCalcifiedScripts(db); err != nil {
 		return fmt.Errorf("migrate calcified scripts: %w", err)
 	}
+	if err := migrateMCTSTables(db); err != nil {
+		return fmt.Errorf("migrate mcts tables: %w", err)
+	}
+	if err := migratePlanningTraceTables(db); err != nil {
+		return fmt.Errorf("migrate planning trace tables: %w", err)
+	}
+	if err := migratePlanningControlTables(db); err != nil {
+		return fmt.Errorf("migrate planning control tables: %w", err)
+	}
+
+	if err := migrateOrganismLogs(db); err != nil {
+		return fmt.Errorf("migrate organism logs: %w", err)
+	}
+
+	if _, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS execution_traces (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			task_id TEXT NOT NULL,
+			species TEXT NOT NULL DEFAULT '',
+			goal_signature TEXT NOT NULL DEFAULT '',
+			status TEXT NOT NULL DEFAULT 'running',
+			outcome TEXT NOT NULL DEFAULT '',
+			attempt_count INTEGER NOT NULL DEFAULT 0,
+			success_count INTEGER NOT NULL DEFAULT 0,
+			support_count INTEGER NOT NULL DEFAULT 0,
+			success_rate REAL NOT NULL DEFAULT 0,
+			started_at DATETIME NOT NULL DEFAULT (datetime('now')),
+			completed_at DATETIME,
+			created_at DATETIME NOT NULL DEFAULT (datetime('now')),
+			updated_at DATETIME NOT NULL DEFAULT (datetime('now'))
+		)`); err != nil {
+		return fmt.Errorf("create execution_traces table: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_execution_traces_task ON execution_traces(task_id)`); err != nil {
+		return fmt.Errorf("create execution_traces task index: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_execution_traces_species ON execution_traces(species)`); err != nil {
+		return fmt.Errorf("create execution_traces species index: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_execution_traces_status ON execution_traces(status)`); err != nil {
+		return fmt.Errorf("create execution_traces status index: %w", err)
+	}
+
+	if _, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS trace_events (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			trace_id INTEGER NOT NULL REFERENCES execution_traces(id),
+			stage TEXT NOT NULL,
+			step TEXT NOT NULL,
+			tool TEXT NOT NULL,
+			command TEXT NOT NULL,
+			input_summary TEXT NOT NULL DEFAULT '',
+			output_summary TEXT NOT NULL DEFAULT '',
+			duration_ms INTEGER NOT NULL DEFAULT 0,
+			success INTEGER NOT NULL DEFAULT 0,
+			error_context TEXT NOT NULL DEFAULT '',
+			created_at DATETIME NOT NULL DEFAULT (datetime('now'))
+		)`); err != nil {
+		return fmt.Errorf("create trace_events table: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_trace_events_trace_id ON trace_events(trace_id)`); err != nil {
+		return fmt.Errorf("create trace_events trace_id index: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_trace_events_stage ON trace_events(stage)`); err != nil {
+		return fmt.Errorf("create trace_events stage index: %w", err)
+	}
+
+	if _, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS crystal_candidates (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			species TEXT NOT NULL DEFAULT '',
+			goal_signature TEXT NOT NULL DEFAULT '',
+			status TEXT NOT NULL DEFAULT 'pending',
+			template_json TEXT NOT NULL DEFAULT '{}',
+			support_count INTEGER NOT NULL DEFAULT 0,
+			attempt_count INTEGER NOT NULL DEFAULT 0,
+			success_count INTEGER NOT NULL DEFAULT 0,
+			success_rate REAL NOT NULL DEFAULT 0,
+			preconditions TEXT NOT NULL DEFAULT '[]',
+			ordered_steps TEXT NOT NULL DEFAULT '[]',
+			verification_checks TEXT NOT NULL DEFAULT '[]',
+			required_inputs TEXT NOT NULL DEFAULT '[]',
+			last_seen_at DATETIME NOT NULL DEFAULT (datetime('now')),
+			created_at DATETIME NOT NULL DEFAULT (datetime('now')),
+			updated_at DATETIME NOT NULL DEFAULT (datetime('now'))
+		)`); err != nil {
+		return fmt.Errorf("create crystal_candidates table: %w", err)
+	}
+	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_crystal_candidates_species_goal_status ON crystal_candidates(species, goal_signature, status)`); err != nil {
+		return fmt.Errorf("create crystal_candidates species+goal+status index: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_crystal_candidates_status ON crystal_candidates(status)`); err != nil {
+		return fmt.Errorf("create crystal_candidates status index: %w", err)
+	}
 
 	return nil
 }
@@ -765,6 +1091,320 @@ func migrateMorselStagesTable(db *sql.DB) error {
 	}
 
 	return nil
+}
+
+// StartExecutionTrace creates a new trace row for a workflow task.
+func (s *Store) StartExecutionTrace(taskID, species, goalSignature string) (int64, error) {
+	taskID = strings.TrimSpace(taskID)
+	species = strings.TrimSpace(species)
+	goalSignature = strings.TrimSpace(goalSignature)
+
+	result, err := s.db.Exec(`
+		INSERT INTO execution_traces (task_id, species, goal_signature)
+		VALUES (?, ?, ?)`,
+		taskID, species, goalSignature,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("store: start execution trace: %w", err)
+	}
+
+	traceID, err := result.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("store: execution trace last insert id: %w", err)
+	}
+
+	return traceID, nil
+}
+
+// AppendTraceEvent appends a normalized event to an execution trace.
+func (s *Store) AppendTraceEvent(traceID int64, event TraceEvent) error {
+	_, err := s.db.Exec(`
+		INSERT INTO trace_events (
+			trace_id, stage, step, tool, command, input_summary, output_summary, duration_ms, success, error_context
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		traceID,
+		event.Stage,
+		event.Step,
+		event.Tool,
+		event.Command,
+		event.InputSummary,
+		event.OutputSummary,
+		event.DurationMs,
+		boolToInt(event.Success),
+		event.ErrorContext,
+	)
+	if err != nil {
+		return fmt.Errorf("store: append trace event: %w", err)
+	}
+	return nil
+}
+
+// CompleteExecutionTrace updates trace completion metadata.
+func (s *Store) CompleteExecutionTrace(traceID int64, status, outcome string, supportCount int, successCount int) error {
+	successRate := 0.0
+	if supportCount > 0 {
+		successRate = float64(successCount) / float64(supportCount)
+	}
+
+	_, err := s.db.Exec(`
+		UPDATE execution_traces
+		SET status = ?,
+			outcome = ?,
+			support_count = ?,
+			success_count = ?,
+			attempt_count = ?,
+			success_rate = ?,
+			completed_at = datetime('now'),
+			updated_at = datetime('now')
+		WHERE id = ?`,
+		status,
+		outcome,
+		supportCount,
+		successCount,
+		supportCount,
+		successRate,
+		traceID,
+	)
+	if err != nil {
+		return fmt.Errorf("store: complete execution trace: %w", err)
+	}
+	return nil
+}
+
+// ListExecutionTraces returns all traces for a task.
+func (s *Store) ListExecutionTraces(taskID string) ([]ExecutionTrace, error) {
+	rows, err := s.db.Query(`
+		SELECT id, task_id, species, goal_signature, status, started_at, completed_at, outcome,
+		       attempt_count, support_count, success_rate, created_at, updated_at
+		FROM execution_traces
+		WHERE task_id = ?
+		ORDER BY created_at ASC`,
+		taskID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("store: list execution traces: %w", err)
+	}
+	defer rows.Close()
+
+	var traces []ExecutionTrace
+	for rows.Next() {
+		var trace ExecutionTrace
+		var completed sql.NullTime
+		if err := rows.Scan(
+			&trace.ID,
+			&trace.TaskID,
+			&trace.Species,
+			&trace.GoalSignature,
+			&trace.Status,
+			&trace.StartedAt,
+			&completed,
+			&trace.Outcome,
+			&trace.AttemptCount,
+			&trace.SupportCount,
+			&trace.SuccessRate,
+			&trace.CreatedAt,
+			&trace.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("store: scan execution trace: %w", err)
+		}
+		if completed.Valid {
+			trace.CompletedAt = completed.Time
+		}
+		traces = append(traces, trace)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: list execution traces rows: %w", err)
+	}
+	return traces, nil
+}
+
+// GetTraceEvents returns canonical events for a trace id.
+func (s *Store) GetTraceEvents(traceID int64) ([]TraceEvent, error) {
+	rows, err := s.db.Query(`
+		SELECT id, trace_id, stage, step, tool, command, input_summary, output_summary, duration_ms, success, error_context, created_at
+		FROM trace_events
+		WHERE trace_id = ?
+		ORDER BY created_at ASC`,
+		traceID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("store: list trace events: %w", err)
+	}
+	defer rows.Close()
+
+	var events []TraceEvent
+	for rows.Next() {
+		var event TraceEvent
+		var success int
+		if err := rows.Scan(
+			&event.ID,
+			&event.TraceID,
+			&event.Stage,
+			&event.Step,
+			&event.Tool,
+			&event.Command,
+			&event.InputSummary,
+			&event.OutputSummary,
+			&event.DurationMs,
+			&success,
+			&event.ErrorContext,
+			&event.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("store: scan trace event: %w", err)
+		}
+		event.Success = success == 1
+		events = append(events, event)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: list trace events rows: %w", err)
+	}
+	return events, nil
+}
+
+// UpsertCrystalCandidate stores or updates a deterministic candidate flow.
+func (s *Store) UpsertCrystalCandidate(candidate CrystalCandidate) error {
+	if candidate.Status == "" {
+		candidate.Status = CrystalCandidateStatusPending
+	}
+
+	_, err := s.db.Exec(`
+		INSERT INTO crystal_candidates (
+			species, goal_signature, status, template_json, support_count, attempt_count,
+			success_count, success_rate, preconditions, ordered_steps, verification_checks,
+			required_inputs, last_seen_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+		ON CONFLICT(species, goal_signature, status) DO UPDATE SET
+			template_json = excluded.template_json,
+			support_count = crystal_candidates.support_count + excluded.support_count,
+			attempt_count = crystal_candidates.attempt_count + excluded.attempt_count,
+			success_count = crystal_candidates.success_count + excluded.success_count,
+			success_rate = CASE
+				WHEN (crystal_candidates.attempt_count + excluded.attempt_count) = 0 THEN 0
+				ELSE CAST(crystal_candidates.success_count + excluded.success_count AS REAL) /
+				     CAST(crystal_candidates.attempt_count + excluded.attempt_count AS REAL)
+			END,
+			preconditions = excluded.preconditions,
+			ordered_steps = excluded.ordered_steps,
+			verification_checks = excluded.verification_checks,
+			required_inputs = excluded.required_inputs,
+			updated_at = datetime('now'),
+			last_seen_at = datetime('now')
+	`,
+		candidate.Species,
+		candidate.GoalSignature,
+		candidate.Status,
+		candidate.TemplateJSON,
+		candidate.SupportCount,
+		candidate.AttemptCount,
+		candidate.SuccessCount,
+		candidate.SuccessRate,
+		candidate.Preconditions,
+		candidate.OrderedSteps,
+		candidate.VerificationChecks,
+		candidate.RequiredInputs,
+	)
+	if err != nil {
+		return fmt.Errorf("store: upsert crystal candidate: %w", err)
+	}
+	return nil
+}
+
+// GetCrystalCandidatesBySpeciesAndGoal returns candidates for a species/signature pair.
+func (s *Store) GetCrystalCandidatesBySpeciesAndGoal(species, goalSignature string) ([]CrystalCandidate, error) {
+	rows, err := s.db.Query(`
+		SELECT id, species, goal_signature, status, template_json, support_count, attempt_count,
+		       success_count, success_rate, preconditions, ordered_steps, verification_checks,
+		       required_inputs, last_seen_at, created_at, updated_at
+		FROM crystal_candidates
+		WHERE species = ? AND goal_signature = ?
+		ORDER BY support_count DESC, updated_at DESC`,
+		species, goalSignature,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("store: get crystal candidates by species/signature: %w", err)
+	}
+	defer rows.Close()
+
+	var candidates []CrystalCandidate
+	for rows.Next() {
+		var c CrystalCandidate
+		var status string
+		if err := rows.Scan(
+			&c.ID,
+			&c.Species,
+			&c.GoalSignature,
+			&status,
+			&c.TemplateJSON,
+			&c.SupportCount,
+			&c.AttemptCount,
+			&c.SuccessCount,
+			&c.SuccessRate,
+			&c.Preconditions,
+			&c.OrderedSteps,
+			&c.VerificationChecks,
+			&c.RequiredInputs,
+			&c.LastSeenAt,
+			&c.CreatedAt,
+			&c.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("store: scan crystal candidate: %w", err)
+		}
+		c.Status = CrystalCandidateStatus(status)
+		candidates = append(candidates, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: get crystal candidates by species/signature rows: %w", err)
+	}
+	return candidates, nil
+}
+
+// GetCrystalCandidatesByStatus returns all candidates in a lifecycle state.
+func (s *Store) GetCrystalCandidatesByStatus(status CrystalCandidateStatus) ([]CrystalCandidate, error) {
+	rows, err := s.db.Query(`
+		SELECT id, species, goal_signature, status, template_json, support_count, attempt_count,
+		       success_count, success_rate, preconditions, ordered_steps, verification_checks,
+		       required_inputs, last_seen_at, created_at, updated_at
+		FROM crystal_candidates
+		WHERE status = ?
+		ORDER BY success_rate DESC, support_count DESC`,
+		status,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("store: get crystal candidates by status: %w", err)
+	}
+	defer rows.Close()
+
+	var candidates []CrystalCandidate
+	for rows.Next() {
+		var c CrystalCandidate
+		var statusText string
+		if err := rows.Scan(
+			&c.ID,
+			&c.Species,
+			&c.GoalSignature,
+			&statusText,
+			&c.TemplateJSON,
+			&c.SupportCount,
+			&c.AttemptCount,
+			&c.SuccessCount,
+			&c.SuccessRate,
+			&c.Preconditions,
+			&c.OrderedSteps,
+			&c.VerificationChecks,
+			&c.RequiredInputs,
+			&c.LastSeenAt,
+			&c.CreatedAt,
+			&c.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("store: scan crystal candidate: %w", err)
+		}
+		c.Status = CrystalCandidateStatus(statusText)
+		candidates = append(candidates, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: get crystal candidates by status rows: %w", err)
+	}
+	return candidates, nil
 }
 
 // Close closes the database connection.

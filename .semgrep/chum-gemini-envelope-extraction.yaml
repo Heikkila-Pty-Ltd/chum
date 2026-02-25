@@ -1,0 +1,23 @@
+rules:
+  - id: chum-gemini-envelope-extraction
+    paths:
+      include:
+        - internal/temporal/agent_parsers.go
+    patterns:
+      - pattern-either:
+        - pattern: |
+            json.Unmarshal($DATA, &$VAR)
+        - pattern: |
+            robustParseJSON($DATA, &$VAR)
+    message: |
+      Gemini -o json wraps model output in an envelope:
+        {"session_id":"...","response":"<escaped model output>","stats":{...}}
+
+      The actual model content is inside the "response" field as an ESCAPED STRING.
+      If parseGeminiOutput doesn't extract this field, downstream extractJSON finds
+      the outer envelope instead of the model's actual JSON response.
+
+      Verify that the parsed struct extracts the "response" field and sets
+      CLIResult.Output = response, not the raw envelope.
+    languages: [go]
+    severity: WARNING

@@ -278,6 +278,122 @@ func acquirePIDFile(pidPath, exe string, logger *slog.Logger) error {
 	return os.WriteFile(pidPath, []byte(content), 0644)
 }
 
+// runStopCommand reads the PID file, sends SIGTERM, waits for graceful shutdown,
+// and removes the PID file. Simple and reliable.
+func runStopCommand(logger *slog.Logger) error {
+	pidPath := filepath.Join(dataDir(), "chum.pid")
+	data, err := os.ReadFile(pidPath)
+	if err != nil {
+		return fmt.Errorf("no running chum found (no pid file at %s)", pidPath)
+	}
+
+	lines := strings.SplitN(string(data), "\n", 2)
+	pid, err := strconv.Atoi(strings.TrimSpace(lines[0]))
+	if err != nil {
+		os.Remove(pidPath)
+		return fmt.Errorf("invalid pid file, removed: %w", err)
+	}
+
+	process, err := os.FindProcess(pid)
+	if err != nil {
+		os.Remove(pidPath)
+		return fmt.Errorf("process %d not found, removed stale pid file", pid)
+	}
+
+	// Check if process is alive
+	if sigErr := process.Signal(syscall.Signal(0)); sigErr != nil {
+		os.Remove(pidPath)
+		logger.Info("process already dead, removed stale pid file", "pid", pid)
+		return nil
+	}
+
+	logger.Info("sending SIGTERM to chum worker", "pid", pid)
+	if err := process.Signal(syscall.SIGTERM); err != nil {
+		return fmt.Errorf("failed to send SIGTERM to pid %d: %w", pid, err)
+	}
+
+	// Wait up to 10 seconds for graceful shutdown
+	for i := 0; i < 20; i++ {
+		time.Sleep(500 * time.Millisecond)
+		if sigErr := process.Signal(syscall.Signal(0)); sigErr != nil {
+			os.Remove(pidPath)
+			logger.Info("chum worker stopped", "pid", pid)
+			return nil
+		}
+	}
+
+	// Force kill if still alive
+	logger.Warn("graceful shutdown timed out, sending SIGKILL", "pid", pid)
+	_ = process.Signal(syscall.SIGKILL)
+	time.Sleep(500 * time.Millisecond)
+	os.Remove(pidPath)
+	logger.Info("chum worker killed", "pid", pid)
+	return nil
+}
+
+// runRestartCommand stops any running instance and starts a new worker as a daemon.
+func runRestartCommand(args []string, logger *slog.Logger) error {
+	// Parse optional --config flag
+	fs := flag.NewFlagSet("restart", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	configPath := fs.String("config", "chum.toml", "path to config file")
+	if len(args) > 2 {
+		_ = fs.Parse(args[2:])
+	}
+
+	// Stop existing instance (ignore error if none running)
+	if err := runStopCommand(logger); err != nil {
+		logger.Info("no existing instance to stop", "detail", err.Error())
+	}
+
+	// Re-exec as daemon
+	exe, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("cannot find own executable: %w", err)
+	}
+
+	logPath := filepath.Join(dataDir(), "worker.log")
+	logFile, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("cannot open log file %s: %w", logPath, err)
+	}
+
+	workerArgs := []string{"worker", "--config", *configPath}
+	attr := &os.ProcAttr{
+		Dir:   filepath.Dir(*configPath),
+		Env:   os.Environ(),
+		Files: []*os.File{os.Stdin, logFile, logFile},
+		Sys:   &syscall.SysProcAttr{Setsid: true},
+	}
+
+	proc, err := os.StartProcess(exe, append([]string{exe}, workerArgs...), attr)
+	if err != nil {
+		logFile.Close()
+		return fmt.Errorf("failed to start worker: %w", err)
+	}
+
+	logger.Info("chum worker started", "pid", proc.Pid, "log", logPath)
+	_ = proc.Release()
+	logFile.Close()
+
+	// Wait a moment and verify it's running
+	time.Sleep(2 * time.Second)
+	pidPath := filepath.Join(dataDir(), "chum.pid")
+	if pidData, err := os.ReadFile(pidPath); err == nil {
+		logger.Info("chum worker confirmed running", "pidfile", string(pidData))
+	}
+
+	return nil
+}
+
+// dataDir returns the CHUM data directory (~/.local/share/chum).
+func dataDir() string {
+	home, _ := os.UserHomeDir()
+	dir := filepath.Join(home, ".local", "share", "chum")
+	os.MkdirAll(dir, 0755)
+	return dir
+}
+
 func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(logger)
@@ -285,6 +401,27 @@ func main() {
 	if len(os.Args) > 1 && os.Args[1] == "admin" {
 		if err := runAdminMode(os.Args, logger); err != nil {
 			logger.Error("admin command failed", "error", err)
+			os.Exit(1)
+		}
+		return
+	}
+	if len(os.Args) > 1 && (os.Args[1] == "ceremony" || os.Args[1] == "plan") {
+		if err := runCeremonyMode(os.Args, logger); err != nil {
+			logger.Error("planning ceremony failed", "error", err)
+			os.Exit(1)
+		}
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "stop" {
+		if err := runStopCommand(logger); err != nil {
+			logger.Error("stop failed", "error", err)
+			os.Exit(1)
+		}
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "restart" {
+		if err := runRestartCommand(os.Args, logger); err != nil {
+			logger.Error("restart failed", "error", err)
 			os.Exit(1)
 		}
 		return
@@ -378,8 +515,8 @@ func main() {
 
 	temporalNamespace := resolveTemporalNamespace()
 	if registerErr := registerTemporalSearchAttributes(context.Background(), cfg.General.TemporalHostPort, temporalNamespace, logger); registerErr != nil {
-		logger.Error("failed to register temporal search attributes", "host", cfg.General.TemporalHostPort, "namespace", temporalNamespace, "error", registerErr)
-		os.Exit(1)
+		// Non-fatal: attributes may already exist in persistent store from a prior run.
+		logger.Warn("search attribute registration failed (may already exist)", "host", cfg.General.TemporalHostPort, "namespace", temporalNamespace, "error", registerErr)
 	}
 
 	// Start Temporal worker — now includes DispatcherWorkflow + ScanCandidatesActivity
@@ -445,33 +582,38 @@ func main() {
 		}
 
 		// --- Strategic Groom Cron (per-project, daily at 5 AM) ---
-		for name, project := range cfg.Projects { //nolint:gocritic // rangeValCopy: config.Project is a small value type used briefly
-			if !project.Enabled {
-				continue
-			}
-
-			workflowID := fmt.Sprintf("strategic-groom-%s", name)
-			req := temporal.StrategicGroomRequest{
-				Project: name,
-				WorkDir: config.ExpandHome(project.Workspace),
-				Tier:    "premium",
-			}
-
-			_, groomErr := tc.ExecuteWorkflow(ctx, tclient.StartWorkflowOptions{
-				ID:           workflowID,
-				TaskQueue:    "chum-task-queue",
-				CronSchedule: "0 5 * * *",
-			}, temporal.StrategicGroomWorkflow, req)
-			if groomErr != nil {
-				var alreadyStarted *serviceerror.WorkflowExecutionAlreadyStarted
-				if errors.As(groomErr, &alreadyStarted) {
-					logger.Info("strategic cron already running", "project", name, "workflow_id", workflowID)
+		// Only start if chief is enabled — strategic groom depends on LLM analysis.
+		if cfg.Chief.Enabled {
+			for name, project := range cfg.Projects { //nolint:gocritic // rangeValCopy: config.Project is a small value type used briefly
+				if !project.Enabled {
 					continue
 				}
-				logger.Error("failed to start strategic cron", "project", name, "error", groomErr)
-				continue
+
+				workflowID := fmt.Sprintf("strategic-groom-%s", name)
+				req := temporal.StrategicGroomRequest{
+					Project: name,
+					WorkDir: config.ExpandHome(project.Workspace),
+					Tier:    "premium",
+				}
+
+				_, groomErr := tc.ExecuteWorkflow(ctx, tclient.StartWorkflowOptions{
+					ID:           workflowID,
+					TaskQueue:    "chum-task-queue",
+					CronSchedule: "0 5 * * *",
+				}, temporal.StrategicGroomWorkflow, req)
+				if groomErr != nil {
+					var alreadyStarted *serviceerror.WorkflowExecutionAlreadyStarted
+					if errors.As(groomErr, &alreadyStarted) {
+						logger.Info("strategic cron already running", "project", name, "workflow_id", workflowID)
+						continue
+					}
+					logger.Error("failed to start strategic cron", "project", name, "error", groomErr)
+					continue
+				}
+				logger.Info("strategic cron registered", "project", name, "workflow_id", workflowID, "schedule", "0 5 * * *")
 			}
-			logger.Info("strategic cron registered", "project", name, "workflow_id", workflowID, "schedule", "0 5 * * *")
+		} else {
+			logger.Info("strategic groom disabled (chief not enabled)")
 		}
 
 		// --- Paleontologist Schedule (every 30 minutes, per-project) ---
@@ -574,10 +716,22 @@ func main() {
 	// Start turtle chat poller if configured
 	if turtleRoom := strings.TrimSpace(cfg.Reporter.TurtleRoom); turtleRoom != "" {
 		go func() {
+			var apiToken string
+			if cfg.API.Security.Enabled && len(cfg.API.Security.AllowedTokens) > 0 {
+				apiToken = cfg.API.Security.AllowedTokens[0]
+			}
+			planningClient, planningErr := newPlanningAPIClient(cfg.API.Bind, apiToken)
+			if planningErr != nil {
+				logger.Warn("planning control bridge disabled", "error", planningErr)
+			}
+
 			turtleHandler := &matrix.TurtleChatHandler{
-				Room:    turtleRoom,
-				WorkDir: filepath.Dir(*configPath),
-				Logger:  logger.With("component", "turtle-chat"),
+				Room:       turtleRoom,
+				WorkDir:    filepath.Dir(*configPath),
+				Logger:     logger.With("component", "turtle-chat"),
+				Planning:   planningClient,
+				BridgeRoom: strings.TrimSpace(cfg.Reporter.DefaultRoom),
+				ControlBot: "spritzbot",
 			}
 			turtleHandler.RunPoller(ctx)
 		}()

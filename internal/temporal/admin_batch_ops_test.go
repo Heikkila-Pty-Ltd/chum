@@ -57,7 +57,7 @@ func assertTerminationOp(t *testing.T, req *workflowservice.StartBatchOperationR
 
 func TestStartDrainAgentWorkflowsStartsSignalBatchOperation(t *testing.T) {
 	svc := &fakeBatchService{}
-	operationID, err := StartDrainAgentWorkflows(context.Background(), svc, "", "WorkflowType = 'ChumAgentWorkflow'")
+	operationID, err := StartDrainAgentWorkflows(t.Context(), svc, "", "WorkflowType = 'ChumAgentWorkflow'")
 	require.NoError(t, err)
 	require.NotEmpty(t, operationID)
 	require.Contains(t, operationID, "chum-admin-drain")
@@ -69,7 +69,7 @@ func TestStartDrainAgentWorkflowsStartsSignalBatchOperation(t *testing.T) {
 
 func TestStartResumeAgentWorkflowsStartsSignalBatchOperation(t *testing.T) {
 	svc := &fakeBatchService{}
-	operationID, err := StartResumeAgentWorkflows(context.Background(), svc, "ns", "ExecutionStatus = 'Running'")
+	operationID, err := StartResumeAgentWorkflows(t.Context(), svc, "ns", "ExecutionStatus = 'Running'")
 	require.NoError(t, err)
 	require.NotEmpty(t, operationID)
 	require.Contains(t, operationID, "chum-admin-resume")
@@ -81,7 +81,7 @@ func TestStartResumeAgentWorkflowsStartsSignalBatchOperation(t *testing.T) {
 
 func TestStartResetAgentWorkflowsStartsResetBatchOperation(t *testing.T) {
 	svc := &fakeBatchService{}
-	operationID, err := StartResetAgentWorkflows(context.Background(), svc, "", "Project = 'api'")
+	operationID, err := StartResetAgentWorkflows(t.Context(), svc, "", "Project = 'api'")
 	require.NoError(t, err)
 	require.NotEmpty(t, operationID)
 	require.Contains(t, operationID, "chum-admin-reset")
@@ -93,7 +93,7 @@ func TestStartResetAgentWorkflowsStartsResetBatchOperation(t *testing.T) {
 
 func TestStartTerminateAgentWorkflowsStartsTerminationBatchOperation(t *testing.T) {
 	svc := &fakeBatchService{}
-	operationID, err := StartTerminateAgentWorkflows(context.Background(), svc, "custom-ns", "CurrentStage = 'running'")
+	operationID, err := StartTerminateAgentWorkflows(t.Context(), svc, "custom-ns", "CurrentStage = 'running'")
 	require.NoError(t, err)
 	require.NotEmpty(t, operationID)
 	require.Contains(t, operationID, "chum-admin-terminate")
@@ -105,9 +105,9 @@ func TestStartTerminateAgentWorkflowsStartsTerminationBatchOperation(t *testing.
 
 func TestStartAgentWorkflowsRejectsMissingQuery(t *testing.T) {
 	svc := &fakeBatchService{}
-	_, err := StartResetAgentWorkflows(context.Background(), svc, "", "   ")
+	_, err := StartResetAgentWorkflows(t.Context(), svc, "", "   ")
 	require.Error(t, err)
 
-	_, err = StartTerminateAgentWorkflows(context.Background(), svc, "", "\t")
+	_, err = StartTerminateAgentWorkflows(t.Context(), svc, "", "\t")
 	require.Error(t, err)
 }

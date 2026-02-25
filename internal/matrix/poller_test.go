@@ -613,7 +613,7 @@ func TestPollerRunStopsOnContextCancel(t *testing.T) {
 		},
 	}, client, dispatcher, nil)
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	poller.Run(ctx)
 }

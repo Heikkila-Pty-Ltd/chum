@@ -282,6 +282,31 @@ CREATE TABLE IF NOT EXISTS paleontology_runs (
 	summary                TEXT NOT NULL DEFAULT ''
 );
 
+CREATE TABLE IF NOT EXISTS graph_trace_events (
+	event_id TEXT PRIMARY KEY,
+	parent_event_id TEXT,
+	session_id TEXT NOT NULL,
+	timestamp INTEGER NOT NULL,
+	depth INTEGER DEFAULT 0,
+	event_type TEXT NOT NULL,
+	phase TEXT,
+	model_name TEXT,
+	tokens_input INTEGER DEFAULT 0,
+	tokens_output INTEGER DEFAULT 0,
+	tool_name TEXT,
+	tool_success INTEGER,
+	human_message TEXT,
+	reward REAL DEFAULT 0.0,
+	terminal_reward REAL,
+	is_terminal INTEGER DEFAULT 0,
+	metadata TEXT,
+	FOREIGN KEY(parent_event_id) REFERENCES graph_trace_events(event_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_graph_trace_session ON graph_trace_events(session_id);
+CREATE INDEX IF NOT EXISTS idx_graph_trace_parent ON graph_trace_events(parent_event_id);
+CREATE INDEX IF NOT EXISTS idx_graph_trace_type ON graph_trace_events(event_type);
+CREATE INDEX IF NOT EXISTS idx_graph_trace_terminal ON graph_trace_events(terminal_reward DESC) WHERE is_terminal = 1;
 `
 
 // Open creates or opens a SQLite database at the given path and ensures the schema exists.

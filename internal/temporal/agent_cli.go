@@ -3,16 +3,86 @@ package temporal
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 
 	"go.temporal.io/sdk/activity"
 
 	"github.com/antigravity-dev/chum/internal/config"
 )
+
+// ErrModelExhausted is returned when a model hits its usage/rate limit.
+var ErrModelExhausted = errors.New("model exhausted (rate/usage limit)")
+
+// modelExhaustedPatterns are substrings that indicate rate/usage limits in CLI output.
+var modelExhaustedPatterns = []string{
+	"usage limit",
+	"rate limit",
+	"quota exceeded",
+	"try again at",
+	"rate_limit_exceeded",
+	"too many requests",
+	"capacity",
+}
+
+// IsModelExhausted checks whether CLI output indicates a rate/usage limit.
+func IsModelExhausted(output string) bool {
+	lower := strings.ToLower(output)
+	for _, pattern := range modelExhaustedPatterns {
+		if strings.Contains(lower, pattern) {
+			return true
+		}
+	}
+	return false
+}
+
+// agentFailureTracker tracks consecutive failures per agent for circuit breaking.
+// 3 consecutive failures of the same agent = circuit open, stop dispatching to it.
+type agentFailureTracker struct {
+	mu       sync.Mutex
+	failures map[string]int // agent -> consecutive failure count
+}
+
+var globalFailureTracker = &agentFailureTracker{
+	failures: make(map[string]int),
+}
+
+const agentCircuitBreakerThreshold = 3
+
+// recordFailure increments the consecutive failure count for an agent.
+// Returns true if the circuit breaker is now open (>= threshold).
+func (t *agentFailureTracker) recordFailure(agent string) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.failures[agent]++
+	return t.failures[agent] >= agentCircuitBreakerThreshold
+}
+
+// recordSuccess resets the consecutive failure count for an agent.
+func (t *agentFailureTracker) recordSuccess(agent string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	delete(t.failures, agent)
+}
+
+// isCircuitOpen returns true if the agent has hit the failure threshold.
+func (t *agentFailureTracker) isCircuitOpen(agent string) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.failures[agent] >= agentCircuitBreakerThreshold
+}
+
+// consecutiveFailures returns the current failure count for an agent.
+func (t *agentFailureTracker) consecutiveFailures(agent string) int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.failures[agent]
+}
 
 // ResolveTierAgent returns the first agent in the given tier's agent list.
 // Falls back to "codex" when the tier is unknown or has no agents configured.
@@ -63,7 +133,7 @@ func EscalationChain(tiers config.Tiers, startTier string) []string {
 		addUnique(tiers.Premium)
 	}
 	if len(chain) == 0 {
-		chain = []string{"codex-spark"}
+		chain = []string{"codex"}
 	}
 	return chain
 }
@@ -295,6 +365,10 @@ func (a *Activities) runCLI(ctx context.Context, agent, prompt string, cmd *exec
 					raw += "\n" + errOut
 				}
 				result := parseAgentOutput(agent, raw)
+				// Wrap with ErrModelExhausted if rate limit detected
+				if IsModelExhausted(raw) {
+					return result, fmt.Errorf("%s: %w: %w", agent, ErrModelExhausted, err)
+				}
 				return result, fmt.Errorf("%s exited with error: %w", agent, err)
 			}
 			return parseAgentOutput(agent, raw), nil
@@ -317,4 +391,102 @@ func (a *Activities) runAgentWithModel(ctx context.Context, agent, model, prompt
 // runReviewAgent executes a CLI agent in code review mode and returns a CLIResult.
 func (a *Activities) runReviewAgent(ctx context.Context, agent, prompt, workDir string) (CLIResult, error) {
 	return a.runCLI(ctx, agent, prompt, a.cliReviewCommand(agent, workDir))
+}
+
+// runAgentWithFailover tries each agent in the tier's escalation chain.
+// On any failure: records health event, sends Matrix alert, tries next agent.
+// 3 consecutive failures of the same agent: circuit breaker opens, agent skipped.
+//
+// This is the primary entry point for activities that want resilient agent execution.
+func (a *Activities) runAgentWithFailover(ctx context.Context, tier, prompt, workDir string) (CLIResult, string, error) {
+	logger := activity.GetLogger(ctx)
+	chain := EscalationChain(a.Tiers, tier)
+
+	var lastErr error
+	var lastResult CLIResult
+
+	for i, agent := range chain {
+		// Circuit breaker: skip agents that have hit 3 consecutive failures
+		if globalFailureTracker.isCircuitOpen(agent) {
+			logger.Warn("⚡ Circuit breaker OPEN — skipping agent",
+				"Agent", agent,
+				"ConsecutiveFailures", globalFailureTracker.consecutiveFailures(agent))
+			a.alertAgentFailure(ctx, agent, tier, "circuit_breaker_open",
+				fmt.Sprintf("Agent %s has %d consecutive failures — circuit breaker open, skipping",
+					agent, globalFailureTracker.consecutiveFailures(agent)))
+			continue
+		}
+
+		logger.Info("🦈 Trying agent", "Agent", agent, "Tier", tier,
+			"Position", fmt.Sprintf("%d/%d", i+1, len(chain)))
+
+		result, err := a.runAgent(ctx, agent, prompt, workDir)
+		if err == nil {
+			// Success — reset the failure counter
+			globalFailureTracker.recordSuccess(agent)
+			return result, agent, nil
+		}
+
+		// Failure — record it, alert, and try next
+		lastErr = err
+		lastResult = result
+
+		circuitOpen := globalFailureTracker.recordFailure(agent)
+		failCount := globalFailureTracker.consecutiveFailures(agent)
+
+		errKind := "agent_failure"
+		if errors.Is(err, ErrModelExhausted) {
+			errKind = "model_exhausted"
+		}
+
+		detail := fmt.Sprintf("Agent %s failed (tier=%s, attempt=%d/%d, consecutive=%d): %v",
+			agent, tier, i+1, len(chain), failCount, err)
+
+		logger.Error("🚨 Agent failure", "Agent", agent, "Tier", tier,
+			"ErrorKind", errKind, "ConsecutiveFailures", failCount,
+			"CircuitOpen", circuitOpen, "error", err)
+
+		// Record health event + Matrix alert for EVERY failure
+		a.alertAgentFailure(ctx, agent, tier, errKind, detail)
+
+		if circuitOpen {
+			logger.Error("⚡ CIRCUIT BREAKER TRIPPED — stopping agent",
+				"Agent", agent, "ConsecutiveFailures", failCount)
+			a.alertAgentFailure(ctx, agent, tier, "circuit_breaker_tripped",
+				fmt.Sprintf("🔴 CIRCUIT BREAKER: Agent %s has failed %d times consecutively. Machine stopped for this agent.",
+					agent, failCount))
+		}
+	}
+
+	// All agents exhausted
+	if lastErr != nil {
+		a.alertAgentFailure(ctx, "ALL", tier, "all_agents_exhausted",
+			fmt.Sprintf("🔴 ALL AGENTS EXHAUSTED in tier %s. Chain: %v. Last error: %v",
+				tier, chain, lastErr))
+		return lastResult, "", fmt.Errorf("all agents in tier %s exhausted: %w", tier, lastErr)
+	}
+	return CLIResult{}, "", fmt.Errorf("no agents available in tier %s (all circuit-broken)", tier)
+}
+
+// alertAgentFailure records a health event AND sends a Matrix notification.
+// This ensures agent failures are NEVER silent.
+func (a *Activities) alertAgentFailure(ctx context.Context, agent, tier, eventType, detail string) {
+	// Record to DB (health_events table) — queryable, persistent
+	if a.Store != nil {
+		_ = a.Store.RecordHealthEvent(eventType, detail)
+	}
+
+	// Send to Matrix — immediately visible
+	if a.Sender != nil && a.AdminRoom != "" {
+		emoji := "⚠️"
+		switch eventType {
+		case "circuit_breaker_tripped", "all_agents_exhausted":
+			emoji = "🔴"
+		case "model_exhausted":
+			emoji = "🟡"
+		}
+		msg := fmt.Sprintf("%s **%s** | `%s` (tier: %s)\n\n%s",
+			emoji, eventType, agent, tier, detail)
+		_ = a.Sender.SendMessage(ctx, a.AdminRoom, msg)
+	}
 }

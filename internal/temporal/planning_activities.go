@@ -55,7 +55,10 @@ Respond with ONLY a JSON object:
 Start wide — consider all possible areas of improvement. Then rank by impact.`, req.Project, targetItems)
 
 	agent := ResolveTierAgent(a.Tiers, req.Tier)
-	cliResult, err := a.runAgent(ctx, agent, prompt, req.WorkDir)
+	cliResult, usedAgent, err := a.runAgentWithFailover(ctx, req.Tier, prompt, req.WorkDir)
+	if usedAgent != "" {
+		agent = usedAgent
+	}
 	a.recordPlanningLLMCall(
 		ctx,
 		req,

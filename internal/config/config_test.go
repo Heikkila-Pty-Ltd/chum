@@ -91,7 +91,6 @@ func withReporterDefaultRoom(t *testing.T, cfg, room string) string {
 }
 
 func TestLoadValidConfig(t *testing.T) {
-	t.Fatal("intentional watcher failure for automation test")
 	path := writeTestConfig(t, validConfig)
 	cfg, err := Load(path)
 	if err != nil {

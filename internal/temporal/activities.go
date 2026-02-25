@@ -1001,60 +1001,72 @@ func (a *Activities) PushWorktreeActivity(ctx context.Context, wtDir string) err
 	return nil
 }
 
-// MergeToMainActivity squash-merges a feature branch into the base branch (default: main),
-// pushes the result, and cleans up the feature branch (local + remote).
-// If a merge conflict is detected, returns git.ErrMergeConflict so the workflow can escalate.
+// MergeToMainActivity creates a PR from the feature branch instead of merging
+// directly. Code reaches master only through reviewed PRs.
+// Uses `gh pr create` when available; falls back to logging the branch name.
 func (a *Activities) MergeToMainActivity(ctx context.Context, baseDir, featureBranch, taskSummary string) error {
 	logger := activity.GetLogger(ctx)
-	logger.Info(SharkPrefix+" Merging feature branch into main",
+	logger.Info(SharkPrefix+" Creating PR for feature branch",
 		"baseDir", baseDir, "featureBranch", featureBranch)
 
-	// Pull latest main to minimize stale-base conflicts.
-	pullCmd := exec.CommandContext(ctx, "git", "checkout", "main")
-	pullCmd.Dir = baseDir
-	if out, err := pullCmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("checkout main failed: %w\n%s", err, string(out))
+	// Check if gh CLI is available (best-effort: skip PR creation if missing).
+	ghAvailable := true
+	if _, e := exec.LookPath("gh"); e != nil {
+		ghAvailable = false
+	}
+	if !ghAvailable {
+		logger.Warn(SharkPrefix+" gh CLI not found — branch pushed but no PR created. Merge manually.",
+			"featureBranch", featureBranch)
+		return nil
 	}
 
-	pullOrigin := exec.CommandContext(ctx, "git", "pull", "--rebase", "origin", "main")
-	pullOrigin.Dir = baseDir
-	if out, err := pullOrigin.CombinedOutput(); err != nil {
-		logger.Warn(SharkPrefix+" pull --rebase origin main failed (proceeding anyway)", "error", err, "output", string(out))
-	}
+	// Create PR using gh CLI. The branch was already pushed by PushWorktreeActivity.
+	title := fmt.Sprintf("[CHUM] %s", truncate(taskSummary, 120))
+	body := fmt.Sprintf("Automated PR created by CHUM shark.\n\n**Branch:** `%s`\n**Summary:** %s",
+		featureBranch, taskSummary)
 
-	// Squash-merge the feature branch into main.
-	if err := git.MergeBranchIntoBase(baseDir, featureBranch, "main", "squash"); err != nil {
-		if errors.Is(err, git.ErrMergeConflict) {
-			logger.Warn(SharkPrefix+" Merge conflict detected — escalating",
-				"featureBranch", featureBranch, "error", err)
-			return err
+	prCmd := exec.CommandContext(ctx, "gh", "pr", "create",
+		"--base", "master",
+		"--head", featureBranch,
+		"--title", title,
+		"--body", body,
+		"--label", "chum",
+	)
+	prCmd.Dir = baseDir
+	out, err := prCmd.CombinedOutput()
+	if err != nil {
+		outStr := string(out)
+		// If a PR already exists, that's fine — not an error.
+		if strings.Contains(outStr, "already exists") {
+			logger.Info(SharkPrefix+" PR already exists for branch", "featureBranch", featureBranch)
+			return nil
 		}
-		return fmt.Errorf("merge failed: %w", err)
+		// If the label doesn't exist, retry without it.
+		if strings.Contains(outStr, "label") {
+			prCmd2 := exec.CommandContext(ctx, "gh", "pr", "create",
+				"--base", "master",
+				"--head", featureBranch,
+				"--title", title,
+				"--body", body,
+			)
+			prCmd2.Dir = baseDir
+			out2, err2 := prCmd2.CombinedOutput()
+			if err2 != nil {
+				logger.Warn(SharkPrefix+" gh pr create failed (branch pushed, merge manually)",
+					"error", err2, "output", string(out2), "featureBranch", featureBranch)
+				return nil // non-fatal: branch is pushed, human can merge
+			}
+			logger.Info(SharkPrefix+" PR created (without label)", "output", strings.TrimSpace(string(out2)))
+			return nil
+		}
+		logger.Warn(SharkPrefix+" gh pr create failed (branch pushed, merge manually)",
+			"error", err, "output", outStr, "featureBranch", featureBranch)
+		return nil // non-fatal: branch is pushed, human can merge
 	}
 
-	// The squash merge stages changes but git.MergeBranchIntoBase already commits
-	// for squash strategy. Push main to remote.
-	pushCmd := exec.CommandContext(ctx, "git", "push", "origin", "main")
-	pushCmd.Dir = baseDir
-	if out, err := pushCmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("push main failed: %w\n%s", err, string(out))
-	}
-
-	logger.Info(SharkPrefix+" Feature branch merged into main and pushed", "featureBranch", featureBranch)
-
-	// Cleanup: delete the local and remote feature branch.
-	delLocal := exec.CommandContext(ctx, "git", "branch", "-D", featureBranch)
-	delLocal.Dir = baseDir
-	if err := delLocal.Run(); err != nil {
-		logger.Debug(SharkPrefix+" Failed to delete local branch (best-effort)", "branch", featureBranch, "error", err)
-	}
-
-	delRemote := exec.CommandContext(ctx, "git", "push", "origin", "--delete", featureBranch)
-	delRemote.Dir = baseDir
-	if err := delRemote.Run(); err != nil {
-		logger.Debug(SharkPrefix+" Failed to delete remote branch (best-effort)", "branch", featureBranch, "error", err)
-	}
-
+	logger.Info(SharkPrefix+" PR created successfully",
+		"featureBranch", featureBranch,
+		"output", strings.TrimSpace(string(out)))
 	return nil
 }
 

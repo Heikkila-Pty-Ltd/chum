@@ -122,6 +122,11 @@ func (s *Store) SearchLessons(query string, limit int) ([]StoredLesson, error) {
 		limit = 10
 	}
 	query = sanitizeFTS5Query(query)
+	if query == "" {
+		// All tokens were stripped (e.g. pure metacharacters) — return
+		// empty results instead of sending an empty MATCH to SQLite.
+		return nil, nil
+	}
 	rows, err := s.db.Query(`
 		SELECT l.id, l.morsel_id, l.project, l.category, l.summary, l.detail,
 		       l.file_paths, l.labels, l.semgrep_rule_id, l.created_at

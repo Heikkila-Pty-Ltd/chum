@@ -75,6 +75,15 @@ func TestLessonsStoreAndSearch(t *testing.T) {
 		t.Fatal("expected at least 1 result for file path search")
 	}
 
+	// All-metachar query returns empty results (not an error)
+	results, err = st.SearchLessons("(***)", 10)
+	if err != nil {
+		t.Fatalf("SearchLessons with all-metachar query should not error: %v", err)
+	}
+	if len(results) != 0 {
+		t.Fatalf("expected 0 results for all-metachar query, got %d", len(results))
+	}
+
 	// Get by morsel
 	results, err = st.GetLessonsByMorsel("chum-abc")
 	if err != nil {

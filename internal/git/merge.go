@@ -225,7 +225,8 @@ func augmentPATH(env []string) []string {
 			return env
 		}
 	}
-	// No PATH found; set a reasonable default.
-	env = append(env, "PATH="+strings.Join(extraDirs, ":"))
+	// No PATH found; set a reasonable default including standard system dirs.
+	fallback := append([]string{"/usr/bin", "/bin", "/usr/sbin", "/sbin"}, extraDirs...)
+	env = append(env, "PATH="+strings.Join(fallback, ":"))
 	return env
 }

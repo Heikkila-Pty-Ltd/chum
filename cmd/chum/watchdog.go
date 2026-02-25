@@ -153,7 +153,7 @@ func runWatchdogCommand(args []string, logger *slog.Logger) error {
 
 	notify.send("🚑 WATCHDOG: Launching rescue agent (Claude Code Opus 4.6) to investigate and hotfix")
 
-	err = launchRescueAgent(report, reportJSON, workDir, logPath, pidFile, logger)
+	err = launchRescueAgent(report, reportJSON, workDir, logPath, pidFile, cfg, logger)
 
 	if err != nil {
 		notify.send(fmt.Sprintf("🚑 RESCUE FAILED: %v", err))
@@ -280,8 +280,8 @@ func runHealthCheck(db *sql.DB, logPath string, logger *slog.Logger) *SystemHeal
 	return report
 }
 
-func launchRescueAgent(report *SystemHealthReport, reportJSON []byte, workDir, logPath, pidFile string, logger *slog.Logger) error {
-	prompt := buildRescuePromptStandalone(report, reportJSON, workDir, logPath)
+func launchRescueAgent(report *SystemHealthReport, reportJSON []byte, workDir, logPath, pidFile string, cfg *config.Config, logger *slog.Logger) error {
+	prompt := buildRescuePromptStandalone(report, reportJSON, workDir, logPath, cfg)
 
 	// Write prompt to temp file.
 	promptFile, err := os.CreateTemp("", "chum-rescue-prompt-*.md")
@@ -331,7 +331,7 @@ func launchRescueAgent(report *SystemHealthReport, reportJSON []byte, workDir, l
 	return nil
 }
 
-func buildRescuePromptStandalone(report *SystemHealthReport, reportJSON []byte, workDir, logPath string) string {
+func buildRescuePromptStandalone(report *SystemHealthReport, reportJSON []byte, workDir, logPath string, cfg *config.Config) string {
 	var sb strings.Builder
 	sb.WriteString(`You are the CHUM rescue agent. The automated watchdog has detected a critical failure in the CHUM autonomous coding system.
 
@@ -395,6 +395,34 @@ Investigate, diagnose, and fix the issue so CHUM starts flowing work again.
 - Dispatcher: %s/internal/temporal/workflow_dispatcher.go
 - Planning: %s/internal/temporal/planning_workflow.go
 - Worker: %s/internal/temporal/worker.go
+- Matrix notifications: %s/internal/temporal/notify.go
+- Matrix HTTP sender: %s/internal/matrix/http_sender.go
+
+## Matrix Notifications Debugging
+
+CHUM sends status updates to Matrix via spritzbot. If notifications are broken:
+
+1. Check the OpenClaw config has valid credentials:
+   cat ~/.openclaw/openclaw.json | python3 -c "import sys,json; c=json.load(sys.stdin); [print(f'{a[\"name\"]}: token={a[\"access_token\"][:20]}...') for a in c.get('accounts',[])]"
+
+2. Test sending a message directly (replace token/homeserver as needed):
+   curl -s -X PUT "https://HOMESERVER/_matrix/client/v3/rooms/%%21adJhqAxLcYqQuYraGf%%3Avmi3041112.contaboserver.net/send/m.room.message/test-$(date +%%s)" \
+     -H "Authorization: Bearer ACCESS_TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{"msgtype":"m.text","body":"RESCUE: test notification"}'
+
+3. Verify spritzbot is in the room:
+   curl -s "https://HOMESERVER/_matrix/client/v3/joined_rooms" -H "Authorization: Bearer ACCESS_TOKEN"
+
+4. Check if the worker has a non-nil Sender by looking for "matrix notifications enabled" in startup logs.
+
+5. The DefaultRoom is: %s (from config reporter.default_room)
+   The AdminRoom is: %s (from config reporter.admin_room)
+
+6. Common fixes:
+   - If Sender is nil: check that reporter.matrix_bot_account and reporter.default_room are set in chum.toml
+   - If room send fails with M_FORBIDDEN: spritzbot needs to be invited and joined to the room
+   - If credentials expired: re-login via matrix client and update ~/.openclaw/openclaw.json
 
 ## CRITICAL RULES
 1. MINIMUM change needed to get work flowing
@@ -403,7 +431,8 @@ Investigate, diagnose, and fix the issue so CHUM starts flowing work again.
 4. Do NOT modify the watchdog system itself
 `, workDir, logPath,
 		workDir, workDir, workDir,
-		workDir, workDir, workDir, workDir, workDir))
+		workDir, workDir, workDir, workDir, workDir, workDir, workDir,
+		cfg.Reporter.DefaultRoom, cfg.Reporter.AdminRoom))
 
 	return sb.String()
 }

@@ -48,10 +48,10 @@ weekly_cap = 999999999       # effectively disabled
 weekly_headroom_pct = 1      # minimal headroom (can't be 0, defaults kicks in)
 
 # --- Codex only ---
-[providers.codex-spark]
+[providers.codex]
 tier = "fast"
 authed = true
-model = "gpt-5.3-codex-spark"
+model = "gpt-5.3-codex"
 cli = "codex"
 enabled = true
 
@@ -70,7 +70,7 @@ cli = "codex-high"
 enabled = true
 
 [tiers]
-fast = ["codex-spark"]
+fast = ["codex"]
 balanced = ["codex-medium"]
 premium = ["codex-high"]
 
@@ -124,7 +124,7 @@ retry_backend = "headless_cli"
 
 [dispatch.cost_control]
 enabled = true
-spark_first = true
+spark_first = false
 enable_planner_v2 = false
 planning_candidate_top_k = 5
 planning_signal_timeout = "10m"

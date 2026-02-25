@@ -18,7 +18,7 @@ type GraphTraceEvent struct {
 	EventID         string  `json:"event_id"`
 	ParentEventID   string  `json:"parent_event_id"`
 	SessionID       string  `json:"session_id"`
-	Timestamp       int64   `json:"timestamp"` // UnixNano for deterministic ordering
+	Timestamp       int64   `json:"timestamp"`
 	Depth           int     `json:"depth"`
 	EventType       string  `json:"event_type"` // 'llm_call' | 'tool_call' | 'human_feedback' | 'phase_boundary'
 	Phase           string  `json:"phase"`      // 'plan' | 'execute' | 'review' | 'dod' | 'record'
@@ -41,17 +41,14 @@ func (s *Store) RecordGraphTraceEvent(ctx context.Context, event *GraphTraceEven
 		event.EventID = generateEventID()
 	}
 	if event.Timestamp == 0 {
-		event.Timestamp = time.Now().UnixNano()
+		event.Timestamp = time.Now().Unix()
 	}
 
-	// Calculate depth from parent; reject invalid parent references.
-	if event.ParentEventID != "" {
+	// Calculate depth from parent
+	if event.ParentEventID != "" && event.Depth == 0 {
 		var parentDepth int
 		err := s.db.QueryRowContext(ctx, `SELECT depth FROM graph_trace_events WHERE event_id = ?`, event.ParentEventID).Scan(&parentDepth)
-		if err != nil {
-			return "", fmt.Errorf("parent_event_id %q not found: %w", event.ParentEventID, err)
-		}
-		if event.Depth == 0 {
+		if err == nil {
 			event.Depth = parentDepth + 1
 		}
 	}
@@ -93,43 +90,28 @@ func (s *Store) RecordGraphTraceEvent(ctx context.Context, event *GraphTraceEven
 	return event.EventID, nil
 }
 
-// GraphTraceEventUpdate holds optional fields for updating a trace event.
-// Pointer fields: nil means "don't update", non-nil sets the value (including zero/false).
-type GraphTraceEventUpdate struct {
-	Reward         *float64
-	TerminalReward *float64
-	IsTerminal     *bool
-	TokensOutput   *int
-	ToolSuccess    *bool
-	Metadata       *string
-}
-
 // UpdateGraphTraceEvent updates fields of an existing trace event.
-// Only non-nil fields in the update struct are written.
-func (s *Store) UpdateGraphTraceEvent(ctx context.Context, eventID string, updates GraphTraceEventUpdate) error {
+func (s *Store) UpdateGraphTraceEvent(ctx context.Context, eventID string, updates GraphTraceEvent) error {
+	// Build dynamic update based on which fields are set
 	query := `UPDATE graph_trace_events SET `
 	args := []interface{}{}
 	setClauses := []string{}
 
-	if updates.Reward != nil {
+	if updates.Reward != 0 {
 		setClauses = append(setClauses, "reward = ?")
-		args = append(args, *updates.Reward)
+		args = append(args, updates.Reward)
 	}
 	if updates.TerminalReward != nil {
 		setClauses = append(setClauses, "terminal_reward = ?")
 		args = append(args, *updates.TerminalReward)
 	}
-	if updates.IsTerminal != nil {
-		val := 0
-		if *updates.IsTerminal {
-			val = 1
-		}
+	if updates.IsTerminal {
 		setClauses = append(setClauses, "is_terminal = ?")
-		args = append(args, val)
+		args = append(args, 1)
 	}
-	if updates.TokensOutput != nil {
+	if updates.TokensOutput > 0 {
 		setClauses = append(setClauses, "tokens_output = ?")
-		args = append(args, *updates.TokensOutput)
+		args = append(args, updates.TokensOutput)
 	}
 	if updates.ToolSuccess != nil {
 		val := 0
@@ -139,9 +121,9 @@ func (s *Store) UpdateGraphTraceEvent(ctx context.Context, eventID string, updat
 		setClauses = append(setClauses, "tool_success = ?")
 		args = append(args, val)
 	}
-	if updates.Metadata != nil {
+	if updates.Metadata != "" {
 		setClauses = append(setClauses, "metadata = ?")
-		args = append(args, *updates.Metadata)
+		args = append(args, updates.Metadata)
 	}
 
 	if len(setClauses) == 0 {
@@ -159,37 +141,16 @@ func (s *Store) UpdateGraphTraceEvent(ctx context.Context, eventID string, updat
 	return err
 }
 
-// BackpropagateReward walks from terminalEventID up the parent chain, setting
-// terminal_reward on each ancestor. Only the path from terminal to root is
-// updated, so sibling branches in the same session are not poisoned.
-func (s *Store) BackpropagateReward(ctx context.Context, terminalEventID string, terminalReward float64) error {
-	currentID := terminalEventID
-	for currentID != "" {
-		if err := s.backpropStep(ctx, currentID, terminalReward); err != nil {
-			return err
-		}
-		currentID = s.parentOf(currentID)
-	}
-	return nil
-}
-
-func (s *Store) backpropStep(ctx context.Context, eventID string, reward float64) error {
+// BackpropagateReward walks up the tree from a terminal node and sets terminal_reward for all ancestors.
+func (s *Store) BackpropagateReward(ctx context.Context, sessionID string, terminalReward float64) error {
+	// Update all events in this session with the terminal reward
 	_, err := s.db.ExecContext(ctx, `
-		UPDATE graph_trace_events SET terminal_reward = ? WHERE event_id = ?
-	`, reward, eventID)
-	if err != nil {
-		return fmt.Errorf("backpropagate event %s: %w", eventID, err)
-	}
-	return nil
-}
+		UPDATE graph_trace_events
+		SET terminal_reward = ?
+		WHERE session_id = ?
+	`, terminalReward, sessionID)
 
-// parentOf returns the parent_event_id for the given event, or "" if none.
-func (s *Store) parentOf(eventID string) string {
-	var parentID *string
-	if err := s.db.QueryRow(`SELECT parent_event_id FROM graph_trace_events WHERE event_id = ?`, eventID).Scan(&parentID); err != nil || parentID == nil {
-		return ""
-	}
-	return *parentID
+	return err
 }
 
 // GetGraphTraceEvent retrieves a single event by ID.

@@ -185,7 +185,6 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 	// --- Turtle (Planning → Gate → Crab) ---
 	// Single-stage planning replaces the old 3-agent ceremony.
 	w.RegisterWorkflow(AutonomousPlanningCeremonyWorkflow)
-	w.RegisterWorkflow(PlanningCeremonyWorkflow)
 	w.RegisterActivity(acts.TurtlePlanArtifactActivity)
 	w.RegisterActivity(acts.TurtleExploreActivity)     // deprecated but kept for running workflows
 	w.RegisterActivity(acts.TurtleDeliberateActivity)   // deprecated but kept for running workflows

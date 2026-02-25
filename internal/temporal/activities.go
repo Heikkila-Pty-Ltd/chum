@@ -365,8 +365,13 @@ func (a *Activities) DoDVerifyActivity(ctx context.Context, req TaskRequest) (*D
 	// Catch corrupted/cleaned worktrees early instead of wasting retries.
 	if _, err := os.Stat(filepath.Join(req.WorkDir, ".git")); err != nil {
 		return &DoDResult{
-			Passed:   false,
-			Failures: []string{fmt.Sprintf("worktree integrity check failed: .git missing in %s (worktree may have been cleaned by janitor)", req.WorkDir)},
+			Passed: false,
+			Failures: []string{fmt.Sprintf(
+				"WORKTREE BROKEN: .git directory missing in %s. "+
+					"The worktree was likely deleted by the janitor while this workflow was still running "+
+					"(cross-project cleanup race). This is an infrastructure failure, not a code issue. "+
+					"Do NOT retry in this worktree — it must be recreated from scratch via SetupWorktreeActivity.",
+				req.WorkDir)},
 		}, nil
 	}
 
@@ -375,8 +380,13 @@ func (a *Activities) DoDVerifyActivity(ctx context.Context, req TaskRequest) (*D
 		if strings.Contains(check, "npm ") {
 			if _, err := os.Stat(filepath.Join(req.WorkDir, "package.json")); err != nil {
 				return &DoDResult{
-					Passed:   false,
-					Failures: []string{fmt.Sprintf("preflight failed: package.json missing in %s (required for: %s)", req.WorkDir, check)},
+					Passed: false,
+					Failures: []string{fmt.Sprintf(
+						"WORKTREE BROKEN: package.json missing in %s (required for DoD check: %s). "+
+							"The worktree source files are gone — only build artifacts may remain. "+
+							"This is an infrastructure failure, not a code issue. "+
+							"Do NOT retry in this worktree — it must be recreated.",
+						req.WorkDir, check)},
 				}, nil
 			}
 			break // only need to check once

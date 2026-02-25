@@ -26,8 +26,15 @@ func (a *Activities) JanitorSweepActivity(ctx context.Context, workspaces []stri
 	logger := activity.GetLogger(ctx)
 	result := &JanitorResult{}
 
+	// --- Phase 1: Collect ALL active worktrees across ALL workspaces ---
+	// This prevents cross-project deletion: before, processing workspace A
+	// would delete workspace B's worktrees because they weren't in A's
+	// git worktree list.
+	globalActiveWorktrees := make(map[string]bool)
+	globalActiveBranches := make(map[string]bool)
+
 	for _, baseDir := range workspaces {
-		// Step 1: Prune dead worktree refs from git's internal state.
+		// Prune dead worktree refs first
 		pruneCmd := exec.CommandContext(ctx, "git", "worktree", "prune")
 		pruneCmd.Dir = baseDir
 		if out, err := pruneCmd.CombinedOutput(); err != nil {
@@ -35,7 +42,6 @@ func (a *Activities) JanitorSweepActivity(ctx context.Context, workspaces []stri
 			continue
 		}
 
-		// Step 2: List active worktrees to know which branches are still in use.
 		listCmd := exec.CommandContext(ctx, "git", "worktree", "list", "--porcelain")
 		listCmd.Dir = baseDir
 		listOut, err := listCmd.Output()
@@ -44,36 +50,36 @@ func (a *Activities) JanitorSweepActivity(ctx context.Context, workspaces []stri
 			continue
 		}
 
-		activeWorktrees := make(map[string]bool)
-		activeBranches := make(map[string]bool)
 		for _, line := range strings.Split(string(listOut), "\n") {
 			if strings.HasPrefix(line, "worktree ") {
 				dir := strings.TrimPrefix(line, "worktree ")
-				activeWorktrees[dir] = true
+				globalActiveWorktrees[dir] = true
 			}
 			if strings.HasPrefix(line, "branch refs/heads/") {
 				branch := strings.TrimPrefix(line, "branch refs/heads/")
-				activeBranches[branch] = true
+				globalActiveBranches[branch] = true
 			}
 		}
+	}
 
-		// Step 3: Find orphaned /tmp/chum-wt-* directories not in git's worktree list.
-		pattern := filepath.Join(os.TempDir(), "chum-wt-*")
-		matches, _ := filepath.Glob(pattern)
-		for _, dir := range matches {
-			if activeWorktrees[dir] {
-				continue // Still active, skip
-			}
-			// Orphaned directory — remove it
-			logger.Info(JanitorPrefix+" Removing orphaned worktree dir", "dir", dir)
-			if err := os.RemoveAll(dir); err != nil {
-				result.Errors = append(result.Errors, fmt.Sprintf("rmdir %s: %v", dir, err))
-			} else {
-				result.DirsCleaned++
-			}
+	// --- Phase 2: Remove orphaned /tmp/chum-wt-* directories ---
+	// Now safe: globalActiveWorktrees contains entries from ALL projects.
+	pattern := filepath.Join(os.TempDir(), "chum-wt-*")
+	matches, _ := filepath.Glob(pattern)
+	for _, dir := range matches {
+		if globalActiveWorktrees[dir] {
+			continue // Active in some project, skip
 		}
+		logger.Info(JanitorPrefix+" Removing orphaned worktree dir", "dir", dir)
+		if err := os.RemoveAll(dir); err != nil {
+			result.Errors = append(result.Errors, fmt.Sprintf("rmdir %s: %v", dir, err))
+		} else {
+			result.DirsCleaned++
+		}
+	}
 
-		// Step 4: Delete stale chum/* branches with no active worktree.
+	// --- Phase 3: Delete stale chum/* branches per workspace ---
+	for _, baseDir := range workspaces {
 		branchCmd := exec.CommandContext(ctx, "git", "branch", "--list", "chum/*")
 		branchCmd.Dir = baseDir
 		branchOut, err := branchCmd.Output()
@@ -87,11 +93,10 @@ func (a *Activities) JanitorSweepActivity(ctx context.Context, workspaces []stri
 			if branch == "" || !strings.HasPrefix(branch, "chum/") {
 				continue
 			}
-			if activeBranches[branch] {
-				continue // Branch has an active worktree, keep it
+			if globalActiveBranches[branch] {
+				continue // Branch has an active worktree somewhere, keep it
 			}
 
-			// Stale branch — delete locally
 			logger.Info(JanitorPrefix+" Pruning stale branch", "branch", branch)
 			delCmd := exec.CommandContext(ctx, "git", "branch", "-D", branch)
 			delCmd.Dir = baseDir
@@ -108,7 +113,7 @@ func (a *Activities) JanitorSweepActivity(ctx context.Context, workspaces []stri
 		}
 	}
 
-	// Step 5: Prune worktrees one more time after cleanup.
+	// Final prune pass
 	for _, baseDir := range workspaces {
 		pruneCmd := exec.CommandContext(ctx, "git", "worktree", "prune")
 		pruneCmd.Dir = baseDir

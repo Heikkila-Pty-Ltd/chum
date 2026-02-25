@@ -863,133 +863,13 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 	}
 	recordStep("escalate", escalateStart, "ok")
 
-	// Close the task — it failed. New work = new morsel.
+	// Reset task to "ready" — it re-enters the top of the pipeline.
+	// The dispatcher sees PreviousErrors and routes it through PlanningCeremonyWorkflow,
+	// which replans, reslices via decomp, places into the DAG, and re-dispatches to sharks.
 	closeCtx := workflow.WithActivityOptions(ctx, recordOpts)
-	_ = workflow.ExecuteActivity(closeCtx, a.CloseTaskActivity, req.TaskID, "escalated").Get(ctx, nil)
-
-	recordOutcome(ctx, recordOpts, a, req, "escalated", 1,
-		handoffCount, false, strings.Join(allFailures, "\n"), startTime, totalTokens, activityTokens, stepMetrics)
-
-	// ===== FILE INVESTIGATION TASK — pipeline eats its own failures =====
-	investigateCtx := workflow.WithActivityOptions(ctx, recordOpts)
-	failureSummary := truncate(strings.Join(allFailures, "; "), 200)
-	_ = workflow.ExecuteActivity(investigateCtx, a.FileInvestigationTaskActivity, InvestigationRequest{
-		Category:    "escalation",
-		Title:       fmt.Sprintf("Investigate repeated failure: %s — %s", req.TaskID, truncate(plan.Summary, 60)),
-		Description: fmt.Sprintf("Task `%s` (project: %s) failed after %d attempts across all provider tiers.\n\nPlan: %s\n\nFailures:\n%s", req.TaskID, req.Project, escalationAttempt, plan.Summary, failureSummary),
-		Source:      workflow.GetInfo(ctx).WorkflowExecution.ID,
-		Project:     req.Project,
-		Severity:    "warning",
-	}).Get(ctx, nil)
-
-	// ===== SPAWN LEARNER ON FAILURE =====
-	// The octopus learns MORE from failures than successes.
-	// Failures carry antibodies: what went wrong, which files are risky,
-	// which errors repeated. This is the richest evolutionary data.
-	failureLearnerReq := LearnerRequest{
-		TaskID:         req.TaskID,
-		Project:        req.Project,
-		WorkDir:        baseWorkDir,
-		Agent:          req.Agent,
-		DoDPassed:      false,
-		FilesChanged:   plan.FilesToModify,
-		PreviousErrors: allFailures,
-		Tier:           "fast",
-	}
-	failureLearnerOpts := workflow.ChildWorkflowOptions{
-		ParentClosePolicy: enumspb.PARENT_CLOSE_POLICY_ABANDON,
-		WorkflowID:        fmt.Sprintf("learner-%s-%d", req.TaskID, workflow.Now(ctx).Unix()),
-	}
-	failureLearnerCtx := workflow.WithChildOptions(ctx, failureLearnerOpts)
-	failureLearnerFut := workflow.ExecuteChildWorkflow(failureLearnerCtx, ContinuousLearnerWorkflow, failureLearnerReq)
-	_ = failureLearnerFut.GetChildWorkflowExecution().Get(ctx, nil)
-	logger.Info(SharkPrefix+" Spawned failure learner — octopus will extract antibodies", "TaskID", req.TaskID)
-
-	// ===== GENOME EVOLUTION — escalation feeds antibodies =====
-	// The organism failed. Its approach becomes an antibody in the species genome.
-	// If this antibody appears 3+ times, it auto-promotes to fossil (EXTINCT).
-	species := classifySpecies(req.TaskID, req.Prompt, plan.FilesToModify)
-	genomeEntry := store.GenomeEntry{
-		Pattern: plan.Summary,
-		Reason:  fmt.Sprintf("escalated after %d attempts: %s", escalationAttempt, truncate(strings.Join(allFailures, "; "), 200)),
-		Files:   plan.FilesToModify,
-		Agent:   req.Agent,
-	}
-	genomeCtx := workflow.WithActivityOptions(ctx, recordOpts)
-	if err := workflow.ExecuteActivity(genomeCtx, a.EvolveGenomeActivity,
-		species, false, genomeEntry).Get(ctx, nil); err != nil {
-		logger.Warn(SharkPrefix+" Genome evolution failed (non-fatal)", "species", species, "error", err)
-	} else {
-		logger.Info(SharkPrefix+" Genome evolved — antibody added",
-			"Species", species, "Antibody", truncate(plan.Summary, 80))
-	}
-
-	// Flag species as hibernating (unless override)
-	// User requested golf-directory to never hibernate so it keeps trying.
-	if req.Project == "golf-directory" {
-		logger.Info(SharkPrefix+" Skipping hibernation for golf-directory (user override)", "Species", species)
-	} else {
-		hibernateCtx := workflow.WithActivityOptions(ctx, recordOpts)
-		if err := workflow.ExecuteActivity(hibernateCtx, a.HibernateGenomeActivity, species).Get(ctx, nil); err != nil {
-			logger.Warn(SharkPrefix+" Genome hibernation failed (non-fatal)", "species", species, "error", err)
-		}
-	}
-
-	// Guard: don't rescue a rescue — prevent exponential cascade overnight.
-	// Tasks with IDs starting with "rescue-" are already rescue attempts.
-	if strings.HasPrefix(req.TaskID, "rescue-") {
-		logger.Info(SharkPrefix+" Skipping rescue cascade for already-rescued task", "TaskID", req.TaskID)
-	} else {
-		var failureContext strings.Builder
-		failureContext.WriteString(fmt.Sprintf("BEACHED SHARK INVESTIGATION: Task `%s` failed after %d attempts across all provider tiers.\n\n", req.TaskID, escalationAttempt))
-		failureContext.WriteString(fmt.Sprintf("ORIGINAL PLAN: %s\n\n", plan.Summary))
-		failureContext.WriteString("FAILURE HISTORY:\n")
-		for i, f := range allFailures {
-			failureContext.WriteString(fmt.Sprintf("  %d. %s\n", i+1, truncate(f, 300)))
-		}
-		failureContext.WriteString("\nINSTRUCTION: Investigate why this task failed repeatedly. Consider:\n")
-		failureContext.WriteString("- Is the task scope too broad? Decompose into smaller, achievable morsels.\n")
-		failureContext.WriteString("- Are there missing prerequisites or dependencies?\n")
-		failureContext.WriteString("- Should the acceptance criteria be revised?\n")
-		failureContext.WriteString("- Is this task fundamentally blocked by infrastructure issues?\n")
-
-		slowStep := req.SlowStepThreshold
-		if slowStep <= 0 {
-			slowStep = defaultSlowStepThreshold
-		}
-		planningWorkflowID := fmt.Sprintf("rescue-%s-%d", req.TaskID, workflow.Now(ctx).Unix())
-		planningReq := PlanningRequest{
-			Project:           req.Project,
-			Agent:             req.Agent,
-			Tier:              "premium",
-			WorkDir:           baseWorkDir,
-			SignalTimeout:     defaultPlanningSignalTimeout,
-			SessionTimeout:    defaultPlanningSessionTimeout,
-			SlowStepThreshold: slowStep,
-			SeedTaskID:        fmt.Sprintf("rescue-%s", req.TaskID),
-			SeedTaskTitle:     fmt.Sprintf("Rescue plan for %s", normalizeTaskTitle(req.TaskID, req.TaskTitle, req.Prompt)),
-			SeedTaskPrompt:    failureContext.String(),
-			AutoMode:          true,
-			TraceSessionID:    planningWorkflowID,
-		}
-		planningOpts := workflow.ChildWorkflowOptions{
-			ParentClosePolicy: enumspb.PARENT_CLOSE_POLICY_ABANDON,
-			WorkflowID:        planningWorkflowID,
-		}
-		planningCtx := workflow.WithChildOptions(ctx, planningOpts)
-		planningFut := workflow.ExecuteChildWorkflow(planningCtx, PlanningCeremonyWorkflow, planningReq)
-		if err := planningFut.GetChildWorkflowExecution().Get(ctx, nil); err != nil {
-			logger.Warn(SharkPrefix+" Planning rescue ceremony failed to start", "error", err)
-		} else {
-			logger.Info(SharkPrefix+" Planning rescue spawned — beached shark will be investigated and rescoped",
-				"TaskID", req.TaskID, "PlanningWorkflowID", planningWorkflowID)
-			notify("planning_rescue", map[string]string{
-				"task":                req.TaskID,
-				"attempts":            fmt.Sprintf("%d", escalationAttempt),
-				"planning_session_id": planningWorkflowID,
-			})
-		}
-	}
+	_ = workflow.ExecuteActivity(closeCtx, a.CloseTaskActivity, req.TaskID, "ready").Get(ctx, nil)
+	logger.Info(SharkPrefix+" Task reset to ready — will be replanned and resliced",
+		"TaskID", req.TaskID, "Attempts", escalationAttempt)
 
 	cleanupWorktree()
 	return fmt.Errorf("task escalated after %d attempts: %s", escalationAttempt, strings.Join(allFailures, "; "))

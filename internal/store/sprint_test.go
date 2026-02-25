@@ -1,7 +1,6 @@
 package store
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -83,11 +82,11 @@ func TestGetBacklogMorsels(t *testing.T) {
 	defer s.Close()
 
 	dag := graph.NewDAG(s.DB())
-	if err := dag.EnsureSchema(context.Background()); err != nil {
+	if err := dag.EnsureSchema(t.Context()); err != nil {
 		t.Fatalf("EnsureSchema failed: %v", err)
 	}
 
-	ctx := context.Background()
+	ctx := t.Context()
 	_, err := dag.CreateTask(ctx, graph.Task{
 		Title:   "Backlog task",
 		Status:  "open",
@@ -112,11 +111,11 @@ func TestGetSprintContext(t *testing.T) {
 	defer s.Close()
 
 	dag := graph.NewDAG(s.DB())
-	if err := dag.EnsureSchema(context.Background()); err != nil {
+	if err := dag.EnsureSchema(t.Context()); err != nil {
 		t.Fatalf("EnsureSchema failed: %v", err)
 	}
 
-	ctx := context.Background()
+	ctx := t.Context()
 	sprintContext, err := s.GetSprintContext(ctx, dag, "test-project", 7)
 	if err != nil {
 		t.Fatalf("GetSprintContext failed: %v", err)

@@ -176,7 +176,7 @@ func TestCHUMNotSpawnedOnFailure(t *testing.T) {
 	env.OnWorkflow(ContinuousLearnerWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
 	env.OnWorkflow(TacticalGroomWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
 	// Failure path may spawn planning rescue after escalation.
-	env.OnWorkflow(AutonomousPlanningCeremonyWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnWorkflow(AutonomousPlanningCeremonyWorkflow, mock.Anything, mock.Anything).Return(&TurtlePlanningResult{}, nil).Maybe()
 	env.OnWorkflow(PlanningCeremonyWorkflow, mock.Anything, mock.Anything).Return(&TaskRequest{}, nil).Maybe()
 
 	env.OnActivity(a.AutoFixLintActivity, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
@@ -788,7 +788,7 @@ func TestStepDurationLoggingWhenReviewActivityFails(t *testing.T) {
 
 	env.OnWorkflow(ContinuousLearnerWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
 	env.OnWorkflow(TacticalGroomWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
-	env.OnWorkflow(AutonomousPlanningCeremonyWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnWorkflow(AutonomousPlanningCeremonyWorkflow, mock.Anything, mock.Anything).Return(&TurtlePlanningResult{}, nil).Maybe()
 	env.OnWorkflow(PlanningCeremonyWorkflow, mock.Anything, mock.Anything).Return(&TaskRequest{}, nil).Maybe()
 
 	var outcome OutcomeRecord
@@ -863,7 +863,7 @@ func TestStepDurationLoggingEscalation(t *testing.T) {
 
 	env.OnWorkflow(ContinuousLearnerWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
 	env.OnWorkflow(TacticalGroomWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
-	env.OnWorkflow(AutonomousPlanningCeremonyWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnWorkflow(AutonomousPlanningCeremonyWorkflow, mock.Anything, mock.Anything).Return(&TurtlePlanningResult{}, nil).Maybe()
 	env.OnWorkflow(PlanningCeremonyWorkflow, mock.Anything, mock.Anything).Return(&TaskRequest{}, nil).Maybe()
 
 	var outcome OutcomeRecord

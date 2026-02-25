@@ -21,6 +21,7 @@ import (
 	tclient "go.temporal.io/sdk/client"
 
 	"github.com/antigravity-dev/chum/internal/api"
+	"github.com/antigravity-dev/chum/internal/beadsfork"
 	"github.com/antigravity-dev/chum/internal/config"
 	"github.com/antigravity-dev/chum/internal/graph"
 	"github.com/antigravity-dev/chum/internal/matrix"
@@ -431,6 +432,10 @@ func main() {
 	dev := flag.Bool("dev", false, "use text log format (default is JSON)")
 	disableAnthropic := flag.Bool("disable-anthropic", false, "remove Anthropic/Claude providers from config and exit")
 	setTickInterval := flag.String("set-tick-interval", "", "set [general].tick_interval in config (e.g. 2m) and exit")
+	enableBeadsFork := flag.Bool("enable-beads-fork", false, "mirror POST /tasks creates to local Beads fork scaffold")
+	beadsForkWorkdir := flag.String("beads-fork-workdir", "", "working directory for bd mirror (default: directory containing --config)")
+	beadsForkBinary := flag.String("beads-fork-binary", beadsfork.DefaultBinary, "bd binary to use for mirror")
+	beadsForkPinnedVersion := flag.String("beads-fork-pinned-version", beadsfork.DefaultPinnedVersion, "expected bd version for mirror")
 	const defaultFallbackModel = "gpt-5.3-codex"
 	fallbackModel := flag.String("fallback-model", defaultFallbackModel, "fallback chief model used with -disable-anthropic")
 	flag.Parse()
@@ -471,6 +476,36 @@ func main() {
 	logger = configureLogger(cfg.General.LogLevel, *dev)
 	slog.SetDefault(logger)
 
+	var taskMirror api.TaskMirror
+	if *enableBeadsFork {
+		mirrorWorkDir := strings.TrimSpace(*beadsForkWorkdir)
+		if mirrorWorkDir == "" {
+			mirrorWorkDir = filepath.Dir(*configPath)
+		}
+		mirrorWorkDir = config.ExpandHome(mirrorWorkDir)
+
+		mirrorClient, mirrorErr := beadsfork.NewClient(beadsfork.Options{
+			Binary:        strings.TrimSpace(*beadsForkBinary),
+			WorkDir:       mirrorWorkDir,
+			PinnedVersion: strings.TrimSpace(*beadsForkPinnedVersion),
+		})
+		if mirrorErr != nil {
+			logger.Error("failed to initialize beads fork mirror client", "error", mirrorErr)
+			os.Exit(1)
+		}
+		if checkErr := mirrorClient.CheckPinnedVersion(context.Background()); checkErr != nil {
+			logger.Error("beads fork mirror version check failed", "error", checkErr, "hint", "use --beads-fork-pinned-version to override")
+			os.Exit(1)
+		}
+
+		taskMirror = api.NewBeadsForkTaskMirror(mirrorClient)
+		logger.Info("beads fork mirror enabled",
+			"workdir", mirrorWorkDir,
+			"binary", strings.TrimSpace(*beadsForkBinary),
+			"pinned_version", strings.TrimSpace(*beadsForkPinnedVersion),
+		)
+	}
+
 	// Open store
 	dbPath := config.ExpandHome(cfg.General.StateDB)
 	st, err := store.Open(dbPath)
@@ -491,7 +526,7 @@ func main() {
 	dag := graph.NewDAG(st.DB())
 	if schemaErr := dag.EnsureSchema(context.Background()); schemaErr != nil {
 		logger.Error("failed to ensure graph schema", "error", schemaErr)
-		os.Exit(1) //nolint:gocritic // exitAfterDefer: acceptable in main() startup
+		os.Exit(1)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -696,7 +731,9 @@ func main() {
 	}()
 
 	// Start API server
-	apiSrv, err := api.NewServer(cfg, st, dag, logger.With("component", "api"))
+	apiSrv, err := api.NewServerWithOptions(cfg, st, dag, logger.With("component", "api"), api.ServerOptions{
+		TaskMirror: taskMirror,
+	})
 	if err != nil {
 		logger.Error("failed to create api server", "error", err)
 		os.Exit(1)

@@ -327,11 +327,9 @@ func extractScriptContent(output string) string {
 }
 
 func detectScriptLanguage(content string) (lang, ext string) {
-	first := ""
+	first := content
 	if idx := strings.Index(content, "\n"); idx > 0 {
 		first = content[:idx]
-	} else {
-		first = content
 	}
 
 	switch {

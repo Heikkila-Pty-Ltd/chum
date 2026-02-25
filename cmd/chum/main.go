@@ -289,9 +289,9 @@ func main() {
 		}
 		return
 	}
-	if len(os.Args) > 1 && os.Args[1] == "ceremony" {
+	if len(os.Args) > 1 && (os.Args[1] == "ceremony" || os.Args[1] == "plan") {
 		if err := runCeremonyMode(os.Args, logger); err != nil {
-			logger.Error("ceremony command failed", "error", err)
+			logger.Error("planning ceremony failed", "error", err)
 			os.Exit(1)
 		}
 		return

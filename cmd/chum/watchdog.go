@@ -299,7 +299,10 @@ func launchRescueAgent(report *SystemHealthReport, reportJSON []byte, workDir, l
 		"work_dir", workDir,
 	)
 
-	cmd := exec.Command("claude",
+	claudeBin := findClaude()
+	logger.Info("resolved claude binary", "path", claudeBin)
+
+	cmd := exec.Command(claudeBin,
 		"--dangerously-skip-permissions",
 		"--model", "claude-opus-4-6",
 		"-p", prompt,
@@ -307,6 +310,17 @@ func launchRescueAgent(report *SystemHealthReport, reportJSON []byte, workDir, l
 	cmd.Dir = workDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+	// Build a clean env: usable PATH (cron strips it) and no CLAUDECODE (nested session guard).
+	var cleanEnv []string
+	for _, e := range os.Environ() {
+		if !strings.HasPrefix(e, "CLAUDECODE=") {
+			cleanEnv = append(cleanEnv, e)
+		}
+	}
+	cleanEnv = append(cleanEnv,
+		"PATH="+os.Getenv("PATH")+":/home/ubuntu/.local/bin:/usr/local/bin:/usr/bin:/bin",
+	)
+	cmd.Env = cleanEnv
 
 	if err := cmd.Start(); err != nil {
 		os.Remove(promptFile.Name())
@@ -480,4 +494,23 @@ func tailLogForErrors(path string, maxLines int) []string {
 		errors = errors[len(errors)-30:]
 	}
 	return errors
+}
+
+// findClaude resolves the claude CLI binary, checking common locations
+// since cron's PATH is minimal and won't include ~/.local/bin.
+func findClaude() string {
+	if p, err := exec.LookPath("claude"); err == nil {
+		return p
+	}
+	candidates := []string{
+		os.ExpandEnv("$HOME/.local/bin/claude"),
+		"/home/ubuntu/.local/bin/claude",
+		"/usr/local/bin/claude",
+	}
+	for _, c := range candidates {
+		if _, err := os.Stat(c); err == nil {
+			return c
+		}
+	}
+	return "claude" // fallback — let exec fail with a clear error
 }

@@ -120,6 +120,18 @@ func applyDefaults(cfg *Config, md toml.MetaData) {
 	}
 
 	// Dispatch cost-control defaults
+	if cfg.Dispatch.CostControl.PlanningCandidateTopK == 0 {
+		cfg.Dispatch.CostControl.PlanningCandidateTopK = 5
+	}
+	if cfg.Dispatch.CostControl.PlanningSignalTimeout.Duration == 0 {
+		cfg.Dispatch.CostControl.PlanningSignalTimeout.Duration = 10 * time.Minute
+	}
+	if cfg.Dispatch.CostControl.PlanningSessionTimeout.Duration == 0 {
+		cfg.Dispatch.CostControl.PlanningSessionTimeout.Duration = 30 * time.Minute
+	}
+	if cfg.Dispatch.CostControl.PlanningStaleBlockThreshold.Duration == 0 {
+		cfg.Dispatch.CostControl.PlanningStaleBlockThreshold.Duration = 35 * time.Minute
+	}
 	if cfg.Dispatch.CostControl.RetryEscalationAttempt == 0 {
 		cfg.Dispatch.CostControl.RetryEscalationAttempt = 2
 	}
@@ -141,17 +153,21 @@ func applyDefaults(cfg *Config, md toml.MetaData) {
 	if cfg.Dispatch.CostControl.StageCooldown.Duration == 0 {
 		cfg.Dispatch.CostControl.StageCooldown.Duration = 45 * time.Minute
 	}
-	if cfg.Dispatch.CostControl.ChurnPauseWindow.Duration == 0 {
-		cfg.Dispatch.CostControl.ChurnPauseWindow.Duration = 60 * time.Minute
-	}
-	if cfg.Dispatch.CostControl.ChurnPauseFailure == 0 {
-		cfg.Dispatch.CostControl.ChurnPauseFailure = 12
-	}
-	if cfg.Dispatch.CostControl.ChurnPauseTotal == 0 {
-		cfg.Dispatch.CostControl.ChurnPauseTotal = 24
+	if cfg.Dispatch.CostControl.BeachedSharkWindow.Duration == 0 {
+		cfg.Dispatch.CostControl.BeachedSharkWindow.Duration = 24 * time.Hour
 	}
 	if cfg.Dispatch.CostControl.TokenWasteWindow.Duration == 0 {
 		cfg.Dispatch.CostControl.TokenWasteWindow.Duration = 24 * time.Hour
+	}
+
+	// Higher-learning defaults: fewer retries, faster escalation
+	if cfg.Dispatch.CostControl.HigherLearning.Enabled {
+		if cfg.Dispatch.CostControl.HigherLearning.MaxRetries == 0 {
+			cfg.Dispatch.CostControl.HigherLearning.MaxRetries = 1
+		}
+		if cfg.Dispatch.CostControl.HigherLearning.MaxHandoffs == 0 {
+			cfg.Dispatch.CostControl.HigherLearning.MaxHandoffs = 1
+		}
 	}
 
 	// Dispatch log retention

@@ -1,0 +1,38 @@
+[
+  {
+    "project": "chum",
+    "option_id": "catalog-runtime-resolver",
+    "score_adjustment": 8,
+    "successes": 1,
+    "failures": 0,
+    "last_reason": "plan_agreed",
+    "updated_at": "2026-02-25T19:08:25Z"
+  },
+  {
+    "project": "chum",
+    "option_id": "catalog-docs-only",
+    "score_adjustment": 0,
+    "successes": 0,
+    "failures": 0,
+    "last_reason": "candidate_deferred",
+    "updated_at": "2026-02-25T19:04:05Z"
+  },
+  {
+    "project": "chum",
+    "option_id": "catalog-db-first",
+    "score_adjustment": 1,
+    "successes": 0,
+    "failures": 0,
+    "last_reason": "novel_pathway_candidate",
+    "updated_at": "2026-02-25T19:09:05Z"
+  },
+  {
+    "project": "chum",
+    "option_id": "catalog-protein-only",
+    "score_adjustment": -2,
+    "successes": 0,
+    "failures": 0,
+    "last_reason": "candidate_pruned",
+    "updated_at": "2026-02-25T19:03:05Z"
+  }
+]

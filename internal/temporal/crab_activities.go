@@ -2,7 +2,6 @@ package temporal
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -148,7 +147,7 @@ Respond with ONLY a JSON array:
 	)
 
 	agent := ResolveTierAgent(a.Tiers, req.Tier)
-	cliResult, err := runAgent(ctx, agent, prompt, req.WorkDir)
+	cliResult, err := a.runAgent(ctx, agent, prompt, req.WorkDir)
 	if err != nil {
 		logger.Warn(CrabPrefix+" Chief LLM clarification failed", "error", err)
 		// Fall through to tier 3 with all unresolved items.
@@ -162,7 +161,7 @@ Respond with ONLY a JSON array:
 				Answer    string `json:"answer"`
 				Source    string `json:"source"`
 			}
-			if parseErr := json.Unmarshal([]byte(jsonStr), &chiefAnswers); parseErr != nil {
+			if parseErr := robustParseJSONArray(jsonStr, &chiefAnswers); parseErr != nil {
 				logger.Warn(CrabPrefix+" Failed to parse chief clarification JSON", "error", parseErr)
 			} else {
 				var stillUnresolved []ScopeItem
@@ -294,6 +293,10 @@ Rules:
 4. Include file hints where possible
 5. Specify dependencies between morsels (by index)
 6. Do NOT duplicate work already covered by existing morsels
+7. STRUCTURAL/FEATURE SPLIT: If a morsel touches >5 files, split it into TWO morsels:
+   a. A "structural" morsel: zero behavior change (rename, move, re-signature, add unused fields). All existing tests must pass unchanged.
+   b. A "feature" morsel: wires the new behavior, adds new tests. Depends on the structural morsel.
+   This pattern applies to: DI refactors, schema migrations, config additions, interface extractions, package moves, observability wiring.
 
 Respond with ONLY a JSON array of whales:
 [
@@ -328,7 +331,7 @@ Respond with ONLY a JSON array of whales:
 	activity.RecordHeartbeat(ctx, "calling-llm-decompose")
 
 	agent := ResolveTierAgent(a.Tiers, req.Tier)
-	cliResult, err := runAgent(ctx, agent, prompt, req.WorkDir)
+	cliResult, err := a.runAgent(ctx, agent, prompt, req.WorkDir)
 	if err != nil {
 		return nil, fmt.Errorf("decomposition LLM call failed: %w", err)
 	}
@@ -340,7 +343,7 @@ Respond with ONLY a JSON array of whales:
 
 	sanitized := sanitizeLLMJSON(jsonStr)
 	var whales []CandidateWhale
-	if err := json.Unmarshal([]byte(sanitized), &whales); err != nil {
+	if err := robustParseJSONArray(sanitized, &whales); err != nil {
 		return nil, fmt.Errorf("failed to parse decomposition JSON: %w\nRaw: %s", err, truncate(sanitized, 500))
 	}
 
@@ -421,6 +424,10 @@ Rules:
 3. If a morsel is too small, note it but don't merge (merging risks scope creep)
 4. Preserve dependency indices (update if splits occur)
 5. Preserve all existing fields
+6. STRUCTURAL/FEATURE SPLIT: Any morsel touching >5 files MUST be split into:
+   a. A structural morsel (zero behavior change, all tests pass unchanged)
+   b. A feature morsel (new behavior, new tests, depends on structural morsel)
+   The structural morsel should be described without using "and" — one concern only.
 
 Respond with ONLY a JSON array of whales (same format as input, with adjustments):
 [
@@ -448,7 +455,7 @@ Respond with ONLY a JSON array of whales (same format as input, with adjustments
 	)
 
 	agent := ResolveTierAgent(a.Tiers, req.Tier)
-	cliResult, err := runAgent(ctx, agent, prompt, req.WorkDir)
+	cliResult, err := a.runAgent(ctx, agent, prompt, req.WorkDir)
 	if err != nil {
 		return nil, fmt.Errorf("scope review LLM call failed: %w", err)
 	}
@@ -459,7 +466,7 @@ Respond with ONLY a JSON array of whales (same format as input, with adjustments
 	}
 
 	var scopedWhales []CandidateWhale
-	if err := json.Unmarshal([]byte(jsonStr), &scopedWhales); err != nil {
+	if err := robustParseJSONArray(jsonStr, &scopedWhales); err != nil {
 		return nil, fmt.Errorf("failed to parse scope review JSON: %w\nRaw: %s", err, truncate(jsonStr, 500))
 	}
 
@@ -558,7 +565,7 @@ Respond with ONLY a JSON array of sized morsels:
 	)
 
 	agent := ResolveTierAgent(a.Tiers, req.Tier)
-	cliResult, err := runAgent(ctx, agent, prompt, req.WorkDir)
+	cliResult, err := a.runAgent(ctx, agent, prompt, req.WorkDir)
 	if err != nil {
 		return nil, fmt.Errorf("sizing LLM call failed: %w", err)
 	}
@@ -569,7 +576,7 @@ Respond with ONLY a JSON array of sized morsels:
 	}
 
 	var sizedMorsels []SizedMorsel
-	if err := json.Unmarshal([]byte(jsonStr), &sizedMorsels); err != nil {
+	if err := robustParseJSONArray(jsonStr, &sizedMorsels); err != nil {
 		return nil, fmt.Errorf("failed to parse sizing JSON: %w\nRaw: %s", err, truncate(jsonStr, 500))
 	}
 

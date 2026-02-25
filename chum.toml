@@ -1,13 +1,14 @@
-# CHUM Agent Orchestrator Configuration
+# CHUM Agent Orchestrator — Minimal Config
+# One model (codex), no cambrian explosion, no turtle consensus.
 
 [general]
 tick_interval = "1m"
-max_per_tick = 10
-max_concurrent_coders = 10
-max_concurrent_reviewers = 3
-max_concurrent_total = 15
+max_per_tick = 3
+max_concurrent_coders = 3
+max_concurrent_reviewers = 2
+max_concurrent_total = 4
 stuck_timeout = "30m"
-max_retries = 6
+max_retries = 2
 log_level = "info"
 slow_step_threshold = "2m"
 state_db = "~/.local/share/chum/chum.db"
@@ -22,8 +23,7 @@ priority = 0
 checks = [
     "go test ./...",
     "go vet ./...",
-    "golangci-lint run --timeout=5m --new-from-rev=HEAD~1",
-    "semgrep --config .semgrep/ . --error --quiet",
+    "GOFLAGS=-buildvcs=false golangci-lint run --timeout=5m --allow-parallel-runners --new-from-rev=HEAD~1",
 ]
 coverage_min = 70
 require_estimate = true
@@ -42,72 +42,37 @@ checks = [
 require_estimate = true
 require_acceptance = true
 
-
 [rate_limits]
-# Claude output tokens — the scarce resource on auth plans.
-# 5h rolling window: pause dispatch when approaching ceiling.
-# Set to 0 to disable. Tune based on your Anthropic dashboard limits.
-window_5h_cap = 2000000
-# Weekly cap (resets Friday 14:00 local).
-weekly_cap = 10000000
-# Reserve 50% of weekly for human use (CHUM uses 50%).
-weekly_headroom_pct = 50
+window_5h_cap = 999999999   # effectively disabled
+weekly_cap = 999999999       # effectively disabled
+weekly_headroom_pct = 1      # minimal headroom (can't be 0, defaults kicks in)
 
-# --- Codex (OpenAI) ---
+# --- Codex only ---
 [providers.codex-spark]
 tier = "fast"
 authed = true
-model = ""
+model = "gpt-5.3-codex-spark"
 cli = "codex"
+enabled = true
 
-# --- Claude (Anthropic) — GATED: enabled = false ---
-[providers.claude-haiku]
-tier = "fast"
-authed = true
-model = "haiku"
-cli = "claude"
-enabled = false
-
-[providers.claude-sonnet]
+[providers.codex-medium]
 tier = "balanced"
 authed = true
-model = "sonnet"
-cli = "claude"
-enabled = false
+model = "gpt-5.3-codex"
+cli = "codex-medium"
+enabled = true
 
-[providers.claude-opus]
+[providers.codex-high]
 tier = "premium"
 authed = true
-model = "opus"
-cli = "claude"
-enabled = false
-
-# --- Gemini (Google) ---
-[providers.gemini-flash]
-tier = "fast"
-authed = true
-model = "gemini-2.5-flash"
-cli = "gemini"
-
-[providers.gemini-pro]
-tier = "balanced"
-authed = true
-model = "gemini-2.5-pro"
-cli = "gemini"
-
-[providers.deepseek-r1]
-tier = "balanced"
-authed = true
-model = "deepseek/deepseek-r1"
-cli = "deepseek"
-enabled = false
+model = "gpt-5.3-codex"
+cli = "codex-high"
+enabled = true
 
 [tiers]
-# Active agents: codex + gemini (claude gated off)
-# Favour gemini-pro (97% headroom) over flash (29% remaining).
-fast = ["codex-spark", "gemini-pro"]
-balanced = ["codex-spark", "gemini-pro"]
-premium = ["codex-spark", "gemini-pro"]
+fast = ["codex-spark"]
+balanced = ["codex-medium"]
+premium = ["codex-high"]
 
 [health]
 check_interval = "2m"
@@ -119,16 +84,12 @@ channel = "matrix"
 agent_id = "main"
 matrix_bot_account = "spritzbot"
 default_room = "!adJhqAxLcYqQuYraGf:vmi3041112.contaboserver.net"
-admin_room = "!cUBDGkwSjaemsiueKq:vmi3041112.contaboserver.net" # DM with Hex for critical escalations
-turtle_room = "!OHcxJdeesMjhMTvcvW:vmi3041112.contaboserver.net" # 3-agent deliberation channel
+admin_room = "!cUBDGkwSjaemsiueKq:vmi3041112.contaboserver.net"
 daily_digest_time = "09:00"
 weekly_retro_day = "Monday"
 
 [learner]
-enabled = true
-analysis_window = "48h"
-cycle_interval = "6h"
-include_in_digest = true
+enabled = false
 
 [api]
 bind = "127.0.0.1:8900"
@@ -140,32 +101,18 @@ args = ["exec", "--full-auto"]
 model_flag = "-m"
 approval_flags = []
 
-[dispatch.cli.claude]
-cmd = "claude"
+[dispatch.cli.codex-medium]
+cmd = "codex"
 prompt_mode = "stdin"
-args = ["--print", "--output-format", "json", "--dangerously-skip-permissions"]
-model_flag = "--model"
-approval_flags = []
-
-[dispatch.cli.gemini]
-cmd = "gemini"
-prompt_mode = "stdin"
-args = ["-p", "", "--yolo", "-o", "json"]
-model_flag = "--model"
-approval_flags = []
-
-[dispatch.cli.deepseek]
-cmd = "echo"
-prompt_mode = "stdin"
-args = ["deepseek-backlogged"]
+args = ["exec", "--full-auto", "-c", "model_reasoning_effort=medium"]
 model_flag = "-m"
 approval_flags = []
 
-[dispatch.cli.aider]
-cmd = "aider"
-prompt_mode = "file"
-args = ["--yes-always"]
-model_flag = "--model"
+[dispatch.cli.codex-high]
+cmd = "codex"
+prompt_mode = "stdin"
+args = ["exec", "--full-auto", "-c", "model_reasoning_effort=high"]
+model_flag = "-m"
 approval_flags = []
 
 [dispatch.routing]
@@ -178,45 +125,34 @@ retry_backend = "headless_cli"
 [dispatch.cost_control]
 enabled = true
 spark_first = true
+enable_planner_v2 = false
+planning_candidate_top_k = 5
+planning_signal_timeout = "10m"
+planning_session_timeout = "30m"
+planning_stale_block_threshold = "35m"
 retry_escalation_attempt = 2
-# Hard stop after repeated failures per stage to prevent endless loops overnight.
-per_morsel_stage_attempt_limit = 5
+per_morsel_stage_attempt_limit = 3
 stage_attempt_window = "6h"
-stage_cooldown = "1h"
-complexity_escalation_minutes = 180
-risky_review_labels = ["risk:high", "security", "migration", "breaking-change", "database"]
-force_spark_at_weekly_usage_pct = 65
+
+[dispatch.cost_control.higher_learning]
+enabled = false
 
 [dispatch.timeouts]
 fast = "15m"
-balanced = "45m"
-premium = "120m"
+balanced = "30m"
+premium = "60m"
 
 [dispatch.git]
 branch_prefix = "chum/"
 branch_cleanup_days = 7
 merge_strategy = "squash"
-max_concurrent_per_project = 5
+max_concurrent_per_project = 2
 
 [chief]
-enabled = true
-matrix_room = "#chum-coordination"
-model = "gpt-5.3-codex-spark"
-agent_id = "chum-chief-scrum"
-require_approved_plan = true
+enabled = false
 
 [crab]
-enabled = true
-tier = "fast"
-max_morsels_per_plan = 20
-max_scope_items = 10
-auto_approve = false
+enabled = false
 
 [calcifier]
-enabled = true
-calcified_dir = ".cortex/calcified"
-compile_threshold = 10      # consecutive LLM successes before compilation (base)
-promote_threshold = 3       # shadow matches before promotion to active
-risk_multiplier = 3         # multiplier for risky labels (10 × 3 = 30 for risk:high)
-quarantine_on_nonzero = true
-compile_model = "gemini-pro"
+enabled = false

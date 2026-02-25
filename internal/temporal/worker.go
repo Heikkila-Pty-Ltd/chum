@@ -38,13 +38,11 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 	defer c.Close()
 
 	if err := RegisterChumSearchAttributesWithNamespace(context.Background(), c, ns); err != nil {
-		return err
+		logger.Warn("search attribute registration failed in worker (may already exist)", "namespace", ns, "error", err)
 	}
 
 	w := worker.New(c, DefaultTaskQueue, worker.Options{
-		// Concurrency tuning for Cambrian Explosion (6 concurrent workflows).
-		// Default MaxConcurrentActivityExecutionSize is 1000 but the single
-		// poller can't keep up — bump pollers so activities get picked up faster.
+		// Concurrency tuning for planning + execution lanes.
 		MaxConcurrentActivityExecutionSize:     20,
 		MaxConcurrentWorkflowTaskExecutionSize: 10,
 		MaxConcurrentActivityTaskPollers:       4,
@@ -59,9 +57,15 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 		logger.Info("matrix notifications enabled", "account", cfg.Reporter.MatrixBotAccount, "room", cfg.Reporter.DefaultRoom)
 	}
 
+	// Preflight: validate CLI binaries exist for enabled providers.
+	if warnings := PreflightCLIs(cfg, logger); len(warnings) > 0 {
+		logger.Warn("CLI preflight warnings", "count", len(warnings))
+	}
+
 	acts := &Activities{
 		Store:       st,
 		Tiers:       tiers,
+		CfgMgr:      cfgMgr,
 		DAG:         dag,
 		Sender:      sender,
 		DefaultRoom: cfg.Reporter.DefaultRoom,
@@ -78,8 +82,8 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 	// --- Primary Workflows ---
 	w.RegisterWorkflow(ChumAgentWorkflow)
 	w.RegisterWorkflow(PlanningCeremonyWorkflow)
-	w.RegisterWorkflow(CambrianExplosionWorkflow)
 	w.RegisterWorkflow(DispatcherWorkflow)
+	w.RegisterWorkflow(PlannerV2Workflow)
 
 	// --- CHUM Workflows ---
 	w.RegisterWorkflow(ContinuousLearnerWorkflow)
@@ -99,10 +103,18 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 	w.RegisterActivity(acts.RecordOutcomeActivity)
 	w.RegisterActivity(acts.CloseTaskActivity)
 	w.RegisterActivity(acts.RecordHealthEventActivity)
+	w.RegisterActivity(acts.RecordOrganismLogActivity)
 	w.RegisterActivity(acts.EscalateActivity)
 	w.RegisterActivity(acts.GroomBacklogActivity)
 	w.RegisterActivity(acts.GenerateQuestionsActivity)
 	w.RegisterActivity(acts.SummarizePlanActivity)
+	w.RegisterActivity(acts.RecordPlanningTraceActivity)
+	w.RegisterActivity(acts.RecordPlanningSnapshotActivity)
+	w.RegisterActivity(acts.GetLatestStablePlanningSnapshotActivity)
+	w.RegisterActivity(acts.AddPlanningBlacklistEntryActivity)
+	w.RegisterActivity(acts.IsPlanningActionBlacklistedActivity)
+	w.RegisterActivity(acts.LoadPlanningCandidateScoresActivity)
+	w.RegisterActivity(acts.AdjustPlanningCandidateScoreActivity)
 	w.RegisterActivity(acts.NotifyActivity)
 	w.RegisterActivity(acts.MergeToMainActivity)
 	w.RegisterActivity(acts.GetWorktreeDiffActivity)
@@ -110,6 +122,7 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 
 	// --- Dispatcher Activities ---
 	w.RegisterActivity(dispatchActs.ScanCandidatesActivity)
+	w.RegisterActivity(dispatchActs.RecordPlannerOutcomeActivity)
 
 	// --- CHUM Learner Activities ---
 	w.RegisterActivity(acts.ExtractLessonsActivity)
@@ -120,6 +133,7 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 	w.RegisterActivity(acts.CommitAndPushLearnerOutputsActivity)
 	w.RegisterActivity(acts.RecordEscalationActivity)
 	w.RegisterActivity(acts.AutoFixLintActivity)
+	w.RegisterActivity(acts.FailureTriageActivity)
 
 	// --- Paleontologist Activities ---
 	w.RegisterWorkflow(PaleontologistWorkflow)
@@ -139,6 +153,9 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 	w.RegisterActivity(acts.GetProteinInstructionsActivity)
 	w.RegisterActivity(acts.RecordProteinFoldActivity)
 	w.RegisterActivity(acts.MoleculeRetroActivity)
+	w.RegisterActivity(acts.SynthesizeProteinActivity)
+	w.RegisterActivity(acts.MutateProteinActivity)
+	w.RegisterActivity(acts.SynthesizeProteinCandidatesActivity)
 
 	// --- Genome Evolution ---
 	w.RegisterActivity(acts.EvolveGenomeActivity)
@@ -153,6 +170,8 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 	w.RegisterActivity(acts.GenerateMorningBriefingActivity)
 	w.RegisterActivity(acts.ApplyStrategicMutationsActivity)
 	w.RegisterActivity(acts.RecordFailureActivity)
+	w.RegisterActivity(acts.FileInvestigationTaskActivity)
+	w.RegisterActivity(acts.SentinelScanActivity)
 
 	// --- Crab Decomposition ---
 	w.RegisterWorkflow(CrabDecompositionWorkflow)
@@ -163,12 +182,14 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 	w.RegisterActivity(acts.SizeMorselsActivity)
 	w.RegisterActivity(acts.EmitMorselsActivity)
 
-	// --- Turtle (Autonomous Planning Ceremony) ---
+	// --- Turtle (Planning → Gate → Crab) ---
+	// Single-stage planning replaces the old 3-agent ceremony.
 	w.RegisterWorkflow(AutonomousPlanningCeremonyWorkflow)
+	w.RegisterWorkflow(PlanningCeremonyWorkflow)
 	w.RegisterActivity(acts.TurtlePlanArtifactActivity)
-	w.RegisterActivity(acts.TurtleExploreActivity)
-	w.RegisterActivity(acts.TurtleDeliberateActivity)
-	w.RegisterActivity(acts.TurtleConvergeActivity)
+	w.RegisterActivity(acts.TurtleExploreActivity)     // deprecated but kept for running workflows
+	w.RegisterActivity(acts.TurtleDeliberateActivity)   // deprecated but kept for running workflows
+	w.RegisterActivity(acts.TurtleConvergeActivity)     // deprecated but kept for running workflows
 	w.RegisterActivity(acts.TurtleDecomposeActivity)
 	w.RegisterActivity(acts.TurtleEmitActivity)
 	w.RegisterActivity(acts.TurtleSendAsActivity)

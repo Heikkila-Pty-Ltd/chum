@@ -1,0 +1,14 @@
+[
+  {
+    "session_id": "planning-chum-20260225-execution-option-catalog-manual",
+    "project": "chum",
+    "task_id": "catalog-runtime-resolver",
+    "cycle": 1,
+    "stage": "posthoc_review",
+    "state_hash": "f0c27f955f089fd9289fb42014a20e5fb9eb6ed3f89b89ab2908046a27340dcc",
+    "action_hash": "7bba1f4ce9d6a61f09e9f2d51a2ac0f6e195f022fbbf07290d87beaf0579ea53",
+    "reason": "insufficient_exploration_one_shot",
+    "metadata_json": "{\"note\":\"One-shot architecture planning path blacklisted for this session\",\"policy\":\"require_multi_round_exploration\"}",
+    "created_at": "2026-02-25T19:10:40Z"
+  }
+]

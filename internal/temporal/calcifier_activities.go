@@ -176,7 +176,7 @@ func (a *Activities) CompileCalcifiedScriptActivity(ctx context.Context, candida
 	compilationPrompt := buildCompilationPrompt(candidate.MorselType, prompts)
 
 	// Dispatch to premium model to generate the deterministic script
-	cliResult, err := runAgentWithModel(ctx, "gemini", "gemini-2.5-pro", compilationPrompt, "")
+	cliResult, err := a.runAgentWithModel(ctx, "gemini", "gemini-2.5-pro", compilationPrompt, "")
 	if err != nil {
 		return nil, fmt.Errorf("compile script via LLM: %w (output: %s)", err, truncate(cliResult.Output, 500))
 	}

@@ -94,7 +94,7 @@ Respond with ONLY a JSON object:
 			truncate(hit.Acceptance, 200),
 		)
 
-		cliResult, runErr := runAgent(ctx, agent, prompt, req.WorkDir)
+		cliResult, runErr := a.runAgent(ctx, agent, prompt, req.WorkDir)
 		if runErr != nil {
 			logger.Warn(RemoraPrefix+" LLM check failed for task", "task", hit.ID, "error", runErr)
 			continue
@@ -648,7 +648,7 @@ Be opinionated. Say what matters most and why.`,
 	)
 
 	agent := ResolveTierAgent(a.Tiers, req.Tier)
-	cliResult, err := runAgent(ctx, agent, prompt, req.WorkDir)
+	cliResult, err := a.runAgent(ctx, agent, prompt, req.WorkDir)
 	if err != nil {
 		return nil, fmt.Errorf("strategic analysis failed: %w", err)
 	}

@@ -12,11 +12,18 @@ import (
 	"sync"
 	"time"
 
+	tclient "go.temporal.io/sdk/client"
+
 	"github.com/antigravity-dev/chum/internal/config"
 	"github.com/antigravity-dev/chum/internal/dispatch"
 	"github.com/antigravity-dev/chum/internal/graph"
 	"github.com/antigravity-dev/chum/internal/store"
 )
+
+// temporalDial creates a Temporal client for signalling workflows.
+func temporalDial(hostPort string) (tclient.Client, error) {
+	return tclient.Dial(tclient.Options{HostPort: hostPort})
+}
 
 const (
 	defaultPollInterval = 30 * time.Second
@@ -43,6 +50,7 @@ const (
 	scrumCommandPriority
 	scrumCommandCancel
 	scrumCommandCreate
+	scrumCommandTiebreak
 )
 
 type scrumCommand struct {
@@ -52,6 +60,8 @@ type scrumCommand struct {
 	dispatchID  int64
 	title       string
 	description string
+	workflowID  string // for tiebreak
+	decision    string // for tiebreak: "proceed" or "reject"
 }
 
 // InboundMessage is a normalized inbound Matrix message.
@@ -83,6 +93,7 @@ type PollerConfig struct {
 	CommandSenders []string
 	DAG            *graph.DAG
 	Turtle         *TurtleChatHandler // interactive turtle bot handler (nil = disabled)
+	TemporalHost   string             // temporal host:port for tiebreak signals
 }
 
 // Poller polls Matrix rooms and routes inbound messages to project scrum agents.
@@ -408,6 +419,8 @@ func (p *Poller) runScrumCommand(ctx context.Context, msg InboundMessage, cmd sc
 		return p.handleCancelCommand(ctx, cmd.dispatchID)
 	case scrumCommandCreate:
 		return p.handleCreateCommand(msg.Project, cmd.title, cmd.description)
+	case scrumCommandTiebreak:
+		return p.handleTiebreakCommand(ctx, cmd.workflowID, cmd.decision)
 	default:
 		return "", fmt.Errorf("unsupported command type")
 	}
@@ -534,6 +547,25 @@ func (p *Poller) handleCreateCommand(project, title, description string) (string
 	return fmt.Sprintf("Created new task %s", id), nil
 }
 
+func (p *Poller) handleTiebreakCommand(ctx context.Context, workflowID, decision string) (string, error) {
+	host := strings.TrimSpace(p.cfg.TemporalHost)
+	if host == "" {
+		host = "localhost:7233"
+	}
+
+	tc, err := temporalDial(host)
+	if err != nil {
+		return "", fmt.Errorf("failed to connect to temporal: %w", err)
+	}
+	defer tc.Close()
+
+	if err := tc.SignalWorkflow(ctx, workflowID, "", "turtle-tiebreak", decision); err != nil {
+		return "", fmt.Errorf("signal failed: %w", err)
+	}
+
+	return fmt.Sprintf("🐢 Tiebreak signal sent: %s → %s", workflowID, decision), nil
+}
+
 func parseScrumCommand(raw string) (scrumCommand, bool, error) {
 	text := strings.TrimSpace(raw)
 	if text == "" {
@@ -584,6 +616,16 @@ func parseScrumCommand(raw string) (scrumCommand, bool, error) {
 			return scrumCommand{}, true, errors.New(`create task command requires quoted title and description. Usage: create task "<title>" "<description>"`)
 		}
 		return scrumCommand{kind: scrumCommandCreate, title: matches[1], description: matches[2]}, true, nil
+	case "tiebreak":
+		if len(parts) != 3 {
+			return scrumCommand{}, true, errors.New("malformed tiebreak command. Usage: tiebreak <workflow-id> proceed|reject")
+		}
+		wfID := strings.TrimSpace(parts[1])
+		decision := strings.ToLower(strings.TrimSpace(parts[2]))
+		if decision != "proceed" && decision != "reject" {
+			return scrumCommand{}, true, errors.New("tiebreak decision must be 'proceed' or 'reject'. Usage: tiebreak <workflow-id> proceed|reject")
+		}
+		return scrumCommand{kind: scrumCommandTiebreak, workflowID: wfID, decision: decision}, true, nil
 	default:
 		return scrumCommand{}, false, nil
 	}
@@ -606,6 +648,7 @@ func commandUsageMessage() string {
 - priority <morsel-id> <p0|p1|p2|p3|p4>
 - cancel <dispatch-id>
 - create task "<title>" "<description>"
+- tiebreak <workflow-id> proceed|reject
 
 Usage:
 - status
@@ -615,7 +658,9 @@ Usage:
 - cancel <dispatch-id>
   - Cancels a running dispatch by id.
 - create task "<title>" "<description>"
-  - Creates a new task morsel with the provided title and description.`
+  - Creates a new task morsel with the provided title and description.
+- tiebreak <workflow-id> proceed|reject
+  - Sends a tiebreak signal to an in-flight turtle planning ceremony.`
 }
 
 func (p *Poller) cursor(room string) string {

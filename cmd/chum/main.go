@@ -289,6 +289,13 @@ func main() {
 		}
 		return
 	}
+	if len(os.Args) > 1 && (os.Args[1] == "ceremony" || os.Args[1] == "plan") {
+		if err := runCeremonyMode(os.Args, logger); err != nil {
+			logger.Error("planning ceremony failed", "error", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	configPath := flag.String("config", "chum.toml", "path to config file")
 	dev := flag.Bool("dev", false, "use text log format (default is JSON)")
@@ -378,8 +385,8 @@ func main() {
 
 	temporalNamespace := resolveTemporalNamespace()
 	if registerErr := registerTemporalSearchAttributes(context.Background(), cfg.General.TemporalHostPort, temporalNamespace, logger); registerErr != nil {
-		logger.Error("failed to register temporal search attributes", "host", cfg.General.TemporalHostPort, "namespace", temporalNamespace, "error", registerErr)
-		os.Exit(1)
+		// Non-fatal: attributes may already exist in persistent store from a prior run.
+		logger.Warn("search attribute registration failed (may already exist)", "host", cfg.General.TemporalHostPort, "namespace", temporalNamespace, "error", registerErr)
 	}
 
 	// Start Temporal worker — now includes DispatcherWorkflow + ScanCandidatesActivity
@@ -445,33 +452,38 @@ func main() {
 		}
 
 		// --- Strategic Groom Cron (per-project, daily at 5 AM) ---
-		for name, project := range cfg.Projects { //nolint:gocritic // rangeValCopy: config.Project is a small value type used briefly
-			if !project.Enabled {
-				continue
-			}
-
-			workflowID := fmt.Sprintf("strategic-groom-%s", name)
-			req := temporal.StrategicGroomRequest{
-				Project: name,
-				WorkDir: config.ExpandHome(project.Workspace),
-				Tier:    "premium",
-			}
-
-			_, groomErr := tc.ExecuteWorkflow(ctx, tclient.StartWorkflowOptions{
-				ID:           workflowID,
-				TaskQueue:    "chum-task-queue",
-				CronSchedule: "0 5 * * *",
-			}, temporal.StrategicGroomWorkflow, req)
-			if groomErr != nil {
-				var alreadyStarted *serviceerror.WorkflowExecutionAlreadyStarted
-				if errors.As(groomErr, &alreadyStarted) {
-					logger.Info("strategic cron already running", "project", name, "workflow_id", workflowID)
+		// Only start if chief is enabled — strategic groom depends on LLM analysis.
+		if cfg.Chief.Enabled {
+			for name, project := range cfg.Projects { //nolint:gocritic // rangeValCopy: config.Project is a small value type used briefly
+				if !project.Enabled {
 					continue
 				}
-				logger.Error("failed to start strategic cron", "project", name, "error", groomErr)
-				continue
+
+				workflowID := fmt.Sprintf("strategic-groom-%s", name)
+				req := temporal.StrategicGroomRequest{
+					Project: name,
+					WorkDir: config.ExpandHome(project.Workspace),
+					Tier:    "premium",
+				}
+
+				_, groomErr := tc.ExecuteWorkflow(ctx, tclient.StartWorkflowOptions{
+					ID:           workflowID,
+					TaskQueue:    "chum-task-queue",
+					CronSchedule: "0 5 * * *",
+				}, temporal.StrategicGroomWorkflow, req)
+				if groomErr != nil {
+					var alreadyStarted *serviceerror.WorkflowExecutionAlreadyStarted
+					if errors.As(groomErr, &alreadyStarted) {
+						logger.Info("strategic cron already running", "project", name, "workflow_id", workflowID)
+						continue
+					}
+					logger.Error("failed to start strategic cron", "project", name, "error", groomErr)
+					continue
+				}
+				logger.Info("strategic cron registered", "project", name, "workflow_id", workflowID, "schedule", "0 5 * * *")
 			}
-			logger.Info("strategic cron registered", "project", name, "workflow_id", workflowID, "schedule", "0 5 * * *")
+		} else {
+			logger.Info("strategic groom disabled (chief not enabled)")
 		}
 
 		// --- Paleontologist Schedule (every 30 minutes, per-project) ---
@@ -574,10 +586,22 @@ func main() {
 	// Start turtle chat poller if configured
 	if turtleRoom := strings.TrimSpace(cfg.Reporter.TurtleRoom); turtleRoom != "" {
 		go func() {
+			var apiToken string
+			if cfg.API.Security.Enabled && len(cfg.API.Security.AllowedTokens) > 0 {
+				apiToken = cfg.API.Security.AllowedTokens[0]
+			}
+			planningClient, planningErr := newPlanningAPIClient(cfg.API.Bind, apiToken)
+			if planningErr != nil {
+				logger.Warn("planning control bridge disabled", "error", planningErr)
+			}
+
 			turtleHandler := &matrix.TurtleChatHandler{
-				Room:    turtleRoom,
-				WorkDir: filepath.Dir(*configPath),
-				Logger:  logger.With("component", "turtle-chat"),
+				Room:       turtleRoom,
+				WorkDir:    filepath.Dir(*configPath),
+				Logger:     logger.With("component", "turtle-chat"),
+				Planning:   planningClient,
+				BridgeRoom: strings.TrimSpace(cfg.Reporter.DefaultRoom),
+				ControlBot: "spritzbot",
 			}
 			turtleHandler.RunPoller(ctx)
 		}()

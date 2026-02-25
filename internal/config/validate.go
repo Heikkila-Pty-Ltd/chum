@@ -475,28 +475,31 @@ func validateProjectMergeConfig(projectName string, project Project) error {
 }
 
 func validateDispatchCostControlConfig(cc DispatchCostControl) error {
-	if cc.PauseOnChurn {
-		if cc.ChurnPauseWindow.Duration <= 0 {
-			return fmt.Errorf("churn_pause_window must be > 0 when pause_on_churn is enabled")
-		}
-		if cc.ChurnPauseFailure <= 0 {
-			return fmt.Errorf("churn_pause_failure_threshold must be > 0 when pause_on_churn is enabled")
-		}
-		if cc.ChurnPauseTotal <= 0 {
-			return fmt.Errorf("churn_pause_total_threshold must be > 0 when pause_on_churn is enabled")
-		}
-	}
-	if cc.ChurnPauseFailure < 0 {
-		return fmt.Errorf("churn_pause_failure_threshold cannot be negative")
-	}
-	if cc.ChurnPauseTotal < 0 {
-		return fmt.Errorf("churn_pause_total_threshold cannot be negative")
-	}
-	if cc.ChurnPauseWindow.Duration < 0 {
-		return fmt.Errorf("churn_pause_window cannot be negative")
+	if cc.BeachedSharkWindow.Duration < 0 {
+		return fmt.Errorf("beached_shark_window cannot be negative")
 	}
 	if cc.RetryEscalationAttempt < 0 {
 		return fmt.Errorf("retry_escalation_attempt cannot be negative")
+	}
+	if cc.PlanningCandidateTopK < 0 {
+		return fmt.Errorf("planning_candidate_top_k cannot be negative")
+	}
+	if cc.PlanningCandidateTopK > 20 {
+		return fmt.Errorf("planning_candidate_top_k cannot exceed 20")
+	}
+	if cc.PlanningSignalTimeout.Duration < 0 {
+		return fmt.Errorf("planning_signal_timeout cannot be negative")
+	}
+	if cc.PlanningSessionTimeout.Duration < 0 {
+		return fmt.Errorf("planning_session_timeout cannot be negative")
+	}
+	if cc.PlanningStaleBlockThreshold.Duration < 0 {
+		return fmt.Errorf("planning_stale_block_threshold cannot be negative")
+	}
+	if cc.PlanningSessionTimeout.Duration > 0 &&
+		cc.PlanningStaleBlockThreshold.Duration > 0 &&
+		cc.PlanningStaleBlockThreshold.Duration <= cc.PlanningSessionTimeout.Duration {
+		return fmt.Errorf("planning_stale_block_threshold must be greater than planning_session_timeout")
 	}
 	if cc.ComplexityEscalationMinutes < 0 {
 		return fmt.Errorf("complexity_escalation_minutes cannot be negative")

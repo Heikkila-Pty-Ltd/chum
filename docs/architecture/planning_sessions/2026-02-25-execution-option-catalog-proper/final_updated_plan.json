@@ -1,0 +1,81 @@
+{
+  "session": {
+    "session_id": "planning-chum-20260225-execution-option-catalog-proper",
+    "run_id": "manual-run-20260225-03",
+    "status": "completed",
+    "completed_at": "2026-02-25T04:23:08Z"
+  },
+  "decisions": {
+    "step1_objective_profile": {
+      "decision_id": "step1-001",
+      "value": "Research-Heavy"
+    },
+    "step2_evaluation_mode": {
+      "decision_id": "step2-001",
+      "value": "Hybrid"
+    },
+    "step3_architecture_package": {
+      "decision_id": "step3-001",
+      "value": "Dual-Track"
+    },
+    "step4_rollout_shape": {
+      "decision_id": "step4-001",
+      "value": "Two-Phase Rollout"
+    }
+  },
+  "architecture": {
+    "canonical_source": "YAML option catalog in repo",
+    "runtime_query_model": "Immediate DB mirror built from canonical YAML",
+    "resolver_contract": "Planner emits bounded pre-context bundle (ordered steps, gates, constraints)",
+    "parity_requirement": "YAML and DB mirror must remain semantically equivalent"
+  },
+  "phase_plan": [
+    {
+      "phase": "A",
+      "title": "Canonical + Resolver Baseline",
+      "deliverables": [
+        "Versioned YAML schema for atomic/composite options and typed edges",
+        "Seed catalog entries for scripts + proteins + checklists",
+        "Resolver API that emits deterministic execution bundle"
+      ],
+      "exit_gates": [
+        "Schema validator blocks invalid graphs (missing nodes, invalid edges, cycles)",
+        "Resolver is deterministic for identical inputs",
+        "At least two composites resolve end-to-end (react preflight, design review)"
+      ]
+    },
+    {
+      "phase": "B",
+      "title": "DB Mirror + Parity + Scoring",
+      "deliverables": [
+        "DB mirror builder from YAML catalog",
+        "Parity checks between YAML canonical and DB mirror",
+        "Trace-driven score adjustments integrated into candidate ranking"
+      ],
+      "exit_gates": [
+        "Mirror refresh is reproducible and idempotent",
+        "Parity checks fail CI on semantic drift",
+        "Ranking reflects persisted score adjustments from planning outcomes"
+      ]
+    }
+  ],
+  "risk_register": [
+    {
+      "risk": "Dual-track drift between YAML and DB",
+      "mitigation": "Strict parity checks and CI gate before deploy"
+    },
+    {
+      "risk": "Resolver bypass by dispatcher path",
+      "mitigation": "Mandatory pre-context bundle gate in dispatch preflight"
+    },
+    {
+      "risk": "Scoring noise from poor traces",
+      "mitigation": "Use weighted outcomes and confidence thresholds"
+    }
+  ],
+  "next_actions": [
+    "Create tasks for Phase A and Phase B workstreams",
+    "Implement schema validator and resolver baseline first",
+    "Implement mirror + parity checks before enabling score-influenced ranking in production"
+  ]
+}

@@ -35,12 +35,11 @@ func (f *fakeSearchAttributeRegistrar) AddSearchAttributes(
 func TestChumSearchAttributeDefsHaveExactContract(t *testing.T) {
 	defs := chumSearchAttributeDefs()
 
-	require.Len(t, defs, 5)
+	require.Len(t, defs, 4)
 	require.Equal(t, enumspb.INDEXED_VALUE_TYPE_KEYWORD, defs[SearchAttributeProject])
 	require.Equal(t, enumspb.INDEXED_VALUE_TYPE_INT, defs[SearchAttributePriority])
 	require.Equal(t, enumspb.INDEXED_VALUE_TYPE_KEYWORD, defs[SearchAttributeAgent])
 	require.Equal(t, enumspb.INDEXED_VALUE_TYPE_KEYWORD, defs[SearchAttributeCurrentStage])
-	require.Equal(t, enumspb.INDEXED_VALUE_TYPE_TEXT, defs[SearchAttributeTaskTitle])
 }
 
 func TestRegisterSearchAttributesSkipsAlreadyExistsError(t *testing.T) {
@@ -118,6 +117,5 @@ func TestUpsertChumWorkflowSearchAttributesNormalizesRequest(t *testing.T) {
 	require.Equal(t, "unknown", capturedAttrs[SearchAttributeProject])
 	require.Equal(t, 4, capturedAttrs[SearchAttributePriority])
 	require.Equal(t, "claude", capturedAttrs[SearchAttributeAgent])
-	require.Equal(t, "task-42", capturedAttrs[SearchAttributeTaskTitle])
 	require.Equal(t, chumWorkflowStatusPlan, capturedAttrs[SearchAttributeCurrentStage])
 }

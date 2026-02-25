@@ -2042,3 +2042,115 @@ func TestGetTokenUsageByDispatch_Empty(t *testing.T) {
 		t.Errorf("expected 0 records for nonexistent dispatch, got %d", len(records))
 	}
 }
+
+func TestTraceAndCrystalCandidateStores(t *testing.T) {
+	s := tempStore(t)
+
+	traceID, err := s.StartExecutionTrace("task-trace-1", "species-go", "goal-signature")
+	if err != nil {
+		t.Fatalf("StartExecutionTrace failed: %v", err)
+	}
+
+	if err := s.AppendTraceEvent(traceID, TraceEvent{
+		Stage:         "plan",
+		Step:          "parse",
+		Tool:          "codex",
+		Command:       "plan",
+		InputSummary:  "prompt",
+		OutputSummary: "plan",
+		DurationMs:    10,
+		Success:       true,
+		ErrorContext:  "",
+	}); err != nil {
+		t.Fatalf("AppendTraceEvent failed: %v", err)
+	}
+
+	if err := s.CompleteExecutionTrace(traceID, "completed", "success", 1, 1); err != nil {
+		t.Fatalf("CompleteExecutionTrace failed: %v", err)
+	}
+
+	traces, err := s.ListExecutionTraces("task-trace-1")
+	if err != nil {
+		t.Fatalf("ListExecutionTraces failed: %v", err)
+	}
+	if len(traces) != 1 {
+		t.Fatalf("expected 1 trace, got %d", len(traces))
+	}
+	if traces[0].Status != "completed" {
+		t.Fatalf("expected trace status completed, got %q", traces[0].Status)
+	}
+	if traces[0].Outcome != "success" {
+		t.Fatalf("expected trace outcome success, got %q", traces[0].Outcome)
+	}
+
+	events, err := s.GetTraceEvents(traceID)
+	if err != nil {
+		t.Fatalf("GetTraceEvents failed: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	if !events[0].Success {
+		t.Fatal("expected event success=true")
+	}
+
+	candidate := CrystalCandidate{
+		Species:            "species-go",
+		GoalSignature:      "goal-signature",
+		Status:             CrystalCandidateStatusActive,
+		TemplateJSON:       "{}",
+		SupportCount:       1,
+		AttemptCount:       1,
+		SuccessCount:       1,
+		SuccessRate:        1,
+		Preconditions:      "[]",
+		OrderedSteps:       "[]",
+		VerificationChecks: "[]",
+		RequiredInputs:     "[]",
+	}
+	if err := s.UpsertCrystalCandidate(candidate); err != nil {
+		t.Fatalf("UpsertCrystalCandidate failed: %v", err)
+	}
+
+	if err := s.UpsertCrystalCandidate(CrystalCandidate{
+		Species:       "species-go",
+		GoalSignature: "goal-signature",
+		Status:        CrystalCandidateStatusActive,
+		SupportCount:  1,
+		AttemptCount:  1,
+		SuccessCount:  0,
+		TemplateJSON:  "{}",
+		Preconditions: "[]",
+		OrderedSteps:  "[]",
+	}); err != nil {
+		t.Fatalf("UpsertCrystalCandidate update failed: %v", err)
+	}
+
+	candidates, err := s.GetCrystalCandidatesBySpeciesAndGoal("species-go", "goal-signature")
+	if err != nil {
+		t.Fatalf("GetCrystalCandidatesBySpeciesAndGoal failed: %v", err)
+	}
+	if len(candidates) != 1 {
+		t.Fatalf("expected 1 candidate, got %d", len(candidates))
+	}
+	if candidates[0].SupportCount != 2 {
+		t.Fatalf("expected support_count=2, got %d", candidates[0].SupportCount)
+	}
+	if candidates[0].AttemptCount != 2 {
+		t.Fatalf("expected attempt_count=2, got %d", candidates[0].AttemptCount)
+	}
+	if candidates[0].SuccessCount != 1 {
+		t.Fatalf("expected success_count=1, got %d", candidates[0].SuccessCount)
+	}
+	if candidates[0].SuccessRate <= 0.49 || candidates[0].SuccessRate >= 0.51 {
+		t.Fatalf("expected success_rate around 0.5, got %f", candidates[0].SuccessRate)
+	}
+
+	active, err := s.GetCrystalCandidatesByStatus(CrystalCandidateStatusActive)
+	if err != nil {
+		t.Fatalf("GetCrystalCandidatesByStatus failed: %v", err)
+	}
+	if len(active) != 1 {
+		t.Fatalf("expected 1 active candidate, got %d", len(active))
+	}
+}

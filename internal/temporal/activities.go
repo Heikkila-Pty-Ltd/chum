@@ -361,6 +361,28 @@ func (a *Activities) DoDVerifyActivity(ctx context.Context, req TaskRequest) (*D
 		checks = []string{"go build ./..."}
 	}
 
+	// --- Preflight: validate worktree integrity before running checks ---
+	// Catch corrupted/cleaned worktrees early instead of wasting retries.
+	if _, err := os.Stat(filepath.Join(req.WorkDir, ".git")); err != nil {
+		return &DoDResult{
+			Passed:   false,
+			Failures: []string{fmt.Sprintf("worktree integrity check failed: .git missing in %s (worktree may have been cleaned by janitor)", req.WorkDir)},
+		}, nil
+	}
+
+	// For npm-based checks, verify package.json exists before attempting build.
+	for _, check := range checks {
+		if strings.Contains(check, "npm ") {
+			if _, err := os.Stat(filepath.Join(req.WorkDir, "package.json")); err != nil {
+				return &DoDResult{
+					Passed:   false,
+					Failures: []string{fmt.Sprintf("preflight failed: package.json missing in %s (required for: %s)", req.WorkDir, check)},
+				}, nil
+			}
+			break // only need to check once
+		}
+	}
+
 	gitResult, err := git.RunPostMergeChecks(req.WorkDir, checks)
 	if err != nil {
 		return nil, fmt.Errorf("DoD check execution failed: %w", err)

@@ -140,7 +140,6 @@ planning_stale_block_threshold = "35m"
 retry_escalation_attempt = 2
 per_morsel_stage_attempt_limit = 3
 stage_attempt_window = "6h"
-beached_shark_window = "6h"
 
 [dispatch.cost_control.higher_learning]
 enabled = false

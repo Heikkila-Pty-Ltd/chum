@@ -23,8 +23,16 @@ func setupTestRepo(t *testing.T) string {
 	}
 
 	// Configure git user (required for commits)
-	exec.Command("git", "config", "user.name", "Test User").Dir = tmpDir
-	exec.Command("git", "config", "user.email", "test@example.com").Dir = tmpDir
+	cmd = exec.Command("git", "config", "user.name", "Test User")
+	cmd.Dir = tmpDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to set git user.name: %v", err)
+	}
+	cmd = exec.Command("git", "config", "user.email", "test@example.com")
+	cmd.Dir = tmpDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to set git user.email: %v", err)
+	}
 
 	// Create an initial commit
 	testFile := filepath.Join(tmpDir, "README.md")

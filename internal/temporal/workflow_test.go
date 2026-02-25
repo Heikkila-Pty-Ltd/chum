@@ -161,6 +161,7 @@ func TestCHUMNotSpawnedOnFailure(t *testing.T) {
 	// Register the child workflows but they should NOT be called
 	env.OnWorkflow(ContinuousLearnerWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
 	env.OnWorkflow(TacticalGroomWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnWorkflow(AutonomousPlanningCeremonyWorkflow, mock.Anything, mock.Anything).Return(&TurtlePlanningResult{}, nil).Maybe()
 
 	env.ExecuteWorkflow(ChumAgentWorkflow, TaskRequest{
 		TaskID:  "test-morsel-fail",
@@ -760,6 +761,7 @@ func TestStepDurationLoggingWhenReviewActivityFails(t *testing.T) {
 
 	env.OnWorkflow(ContinuousLearnerWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
 	env.OnWorkflow(TacticalGroomWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnWorkflow(AutonomousPlanningCeremonyWorkflow, mock.Anything, mock.Anything).Return(&TurtlePlanningResult{}, nil).Maybe()
 
 	var outcome OutcomeRecord
 	env.OnActivity((*Activities)(nil).RecordOutcomeActivity, mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
@@ -828,6 +830,7 @@ func TestStepDurationLoggingEscalation(t *testing.T) {
 
 	env.OnWorkflow(ContinuousLearnerWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
 	env.OnWorkflow(TacticalGroomWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnWorkflow(AutonomousPlanningCeremonyWorkflow, mock.Anything, mock.Anything).Return(&TurtlePlanningResult{}, nil).Maybe()
 
 	var outcome OutcomeRecord
 	env.OnActivity(a.RecordOutcomeActivity, mock.Anything, mock.Anything).Run(func(args mock.Arguments) {

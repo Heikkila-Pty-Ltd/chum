@@ -291,17 +291,15 @@ type SemgrepRule struct {
 	Category string `json:"category"`  // error-handling, security, performance, etc.
 }
 
-
-
 // TacticalGroomRequest is passed to TacticalGroomWorkflow after a task completes.
 type TacticalGroomRequest struct {
 	TaskID       string   `json:"task_id"`
 	Project      string   `json:"project"`
 	WorkDir      string   `json:"work_dir"`
-	Tier         string   `json:"tier"`                        // "fast" for tactical
-	FilesChanged []string `json:"files_changed,omitempty"`     // files modified by the landed morsel
-	DiffSummary  string   `json:"diff_summary,omitempty"`      // git diff --stat output
-	TaskTitle    string   `json:"task_title,omitempty"`         // title of the completed morsel
+	Tier         string   `json:"tier"`                    // "fast" for tactical
+	FilesChanged []string `json:"files_changed,omitempty"` // files modified by the landed morsel
+	DiffSummary  string   `json:"diff_summary,omitempty"`  // git diff --stat output
+	TaskTitle    string   `json:"task_title,omitempty"`    // title of the completed morsel
 }
 
 // MorselMutation is a single mutation the groombot wants to apply to the backlog.
@@ -431,13 +429,14 @@ type ScanCandidatesResult struct {
 
 // CrabDecompositionRequest starts a crab decomposition workflow.
 type CrabDecompositionRequest struct {
-	PlanID             string `json:"plan_id"`
-	Project            string `json:"project"`
-	WorkDir            string `json:"work_dir"`
-	PlanMarkdown       string `json:"plan_markdown"`
-	Tier               string `json:"tier"`                      // LLM tier: "fast", "balanced", or "premium"
-	ParentWhaleID      string `json:"parent_whale_id,omitempty"` // optional parent whale to nest under
-	RequireHumanReview bool   `json:"require_human_review"`      // if true, block at Phase 6 for human signal; default: auto-approve
+	PlanID                  string `json:"plan_id"`
+	Project                 string `json:"project"`
+	WorkDir                 string `json:"work_dir"`
+	PlanMarkdown            string `json:"plan_markdown"`
+	Tier                    string `json:"tier"`                      // LLM tier: "fast", "balanced", or "premium"
+	ParentWhaleID           string `json:"parent_whale_id,omitempty"` // optional parent whale to nest under
+	RequireHumanReview      bool   `json:"require_human_review"`      // if true, block at Phase 6 for human signal; default: auto-approve
+	DisableTurtleEscalation bool   `json:"disable_turtle_escalation"` // if true, return failed instead of crab->turtle escalation (prevents recursion)
 }
 
 // ParsedPlan is the output of deterministic markdown parsing.

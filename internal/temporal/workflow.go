@@ -780,7 +780,7 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 		WorkDir:     baseWorkDir,
 		Description: failureContext.String(),
 		Context:     plan.FilesToModify,
-		Tier:        "balanced", // quality matters for rescue planning
+		Tier:        "premium", // turtle planning is single-agent high-tier
 	}
 	turtleOpts := workflow.ChildWorkflowOptions{
 		ParentClosePolicy: enumspb.PARENT_CLOSE_POLICY_ABANDON,

@@ -45,10 +45,10 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 		// Concurrency tuning for Cambrian Explosion (6 concurrent workflows).
 		// Default MaxConcurrentActivityExecutionSize is 1000 but the single
 		// poller can't keep up — bump pollers so activities get picked up faster.
-		MaxConcurrentActivityExecutionSize:      20,
-		MaxConcurrentWorkflowTaskExecutionSize:  10,
-		MaxConcurrentActivityTaskPollers:         4,
-		MaxConcurrentWorkflowTaskPollers:         2,
+		MaxConcurrentActivityExecutionSize:     20,
+		MaxConcurrentWorkflowTaskExecutionSize: 10,
+		MaxConcurrentActivityTaskPollers:       4,
+		MaxConcurrentWorkflowTaskPollers:       2,
 	})
 
 	// Wire Matrix notifications (nil sender = notifications disabled).
@@ -165,6 +165,7 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 
 	// --- Turtle (Autonomous Planning Ceremony) ---
 	w.RegisterWorkflow(AutonomousPlanningCeremonyWorkflow)
+	w.RegisterActivity(acts.TurtlePlanArtifactActivity)
 	w.RegisterActivity(acts.TurtleExploreActivity)
 	w.RegisterActivity(acts.TurtleDeliberateActivity)
 	w.RegisterActivity(acts.TurtleConvergeActivity)

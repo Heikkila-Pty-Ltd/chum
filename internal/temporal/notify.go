@@ -43,7 +43,7 @@ func (a *Activities) TurtleSendAsActivity(ctx context.Context, req TurtleSendAsR
 		room = a.DefaultRoom // fallback
 	}
 	if room == "" {
-		logger.Warn(TurtlePrefix+" No Matrix room configured, skipping per-agent send")
+		logger.Warn(TurtlePrefix + " No Matrix room configured, skipping per-agent send")
 		return nil
 	}
 
@@ -176,13 +176,18 @@ func themed(event, taskID string, extra map[string]string) string {
 	// --- Turtle (Autonomous Planning Ceremony) ---
 	case "turtle_start":
 		desc := get("description")
-		return fmt.Sprintf("🐢 **turtle planning ceremony** — 3 agents deliberating on `%s`: %s", taskID, desc)
+		return fmt.Sprintf("🐢 **turtle planning ceremony** — single high-tier planner drafting `%s`: %s", taskID, desc)
+
+	case "turtle_artifact":
+		title := get("title")
+		scopeItems := get("scope_items")
+		return fmt.Sprintf("🐢 **artifact drafted** — `%s` (%s scope items) is ready for crab slicing", title, scopeItems)
 
 	case "turtle_done":
+		whales := get("whales")
 		morsels := get("morsels")
-		score := get("score")
 		duration := get("duration")
-		return fmt.Sprintf("🐢 **consensus reached** — `%s`: %s morsels emitted (%s%% confidence, %s)", taskID, morsels, score, duration)
+		return fmt.Sprintf("🐢 **artifact handed to crabs** — `%s`: %s whales, %s morsels emitted (%s)", taskID, whales, morsels, duration)
 
 	case "turtle_disagreement":
 		score := get("score")

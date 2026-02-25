@@ -11,6 +11,192 @@ import (
 	"go.temporal.io/sdk/activity"
 )
 
+// TurtlePlanArtifactActivity generates a crab-parseable markdown plan artifact
+// using a single premium-tier planner. If the model output is malformed, this
+// activity falls back to a deterministic scaffold so crabs can still proceed.
+func (a *Activities) TurtlePlanArtifactActivity(ctx context.Context, req TurtlePlanningRequest) (*TurtlePlanArtifact, error) {
+	logger := activity.GetLogger(ctx)
+	logger.Info(TurtlePrefix+" Generating turtle plan artifact", "TaskID", req.TaskID, "Project", req.Project)
+
+	agent := ResolveTierAgent(a.Tiers, "premium")
+	prompt := fmt.Sprintf(`You are a principal engineer creating a decomposition artifact for crab workflow ingestion.
+
+TASK ID: %s
+PROJECT: %s
+
+TASK DESCRIPTION:
+%s
+
+CONTEXT FILES:
+%s
+
+Output ONLY markdown in this exact schema (no JSON, no prose before/after):
+
+# Plan: <short title>
+## Context
+<1-3 short paragraphs with concrete implementation context and constraints>
+
+## Scope
+- [ ] <deliverable 1>
+- [ ] <deliverable 2>
+- [ ] <deliverable 3>
+
+## Acceptance Criteria
+- <criterion 1>
+- <criterion 2>
+
+## Out of Scope
+- <item 1>
+- <item 2>
+
+Rules:
+- This is a planning artifact for crabs to slice into whales/morsels.
+- Do NOT emit final morsels.
+- Do NOT mention consensus, rounds, or multi-agent deliberation.
+- Scope items must be concrete and implementation-oriented.`,
+		req.TaskID, req.Project, req.Description, strings.Join(req.Context, "\n"))
+
+	cliResult, err := runAgent(ctx, agent, prompt, req.WorkDir)
+	if err != nil {
+		logger.Warn(TurtlePrefix+" Planner invocation failed, using deterministic fallback", "error", err)
+		fallback := buildFallbackTurtlePlan(req)
+		parsed, parseErr := ParseMarkdownPlan(fallback)
+		if parseErr != nil {
+			return nil, fmt.Errorf("planner failed and fallback artifact invalid: %w", parseErr)
+		}
+		return &TurtlePlanArtifact{
+			Title:        parsed.Title,
+			PlanMarkdown: fallback,
+			ScopeItems:   len(parsed.ScopeItems),
+		}, nil
+	}
+
+	candidates := turtlePlanCandidates(cliResult.Output)
+	for _, candidate := range candidates {
+		parsed, parseErr := ParseMarkdownPlan(candidate)
+		if parseErr == nil {
+			return &TurtlePlanArtifact{
+				Title:        parsed.Title,
+				PlanMarkdown: candidate,
+				ScopeItems:   len(parsed.ScopeItems),
+				Tokens:       cliResult.Tokens,
+			}, nil
+		}
+	}
+
+	logger.Warn(TurtlePrefix+" Planner output was not crab-parseable, using deterministic fallback",
+		"OutputLen", len(cliResult.Output))
+	fallback := buildFallbackTurtlePlan(req)
+	parsed, parseErr := ParseMarkdownPlan(fallback)
+	if parseErr != nil {
+		return nil, fmt.Errorf("fallback artifact invalid: %w", parseErr)
+	}
+
+	return &TurtlePlanArtifact{
+		Title:        parsed.Title,
+		PlanMarkdown: fallback,
+		ScopeItems:   len(parsed.ScopeItems),
+		Tokens:       cliResult.Tokens,
+	}, nil
+}
+
+func turtlePlanCandidates(raw string) []string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return nil
+	}
+
+	var candidates []string
+	seen := make(map[string]struct{})
+	add := func(s string) {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			return
+		}
+		if _, ok := seen[s]; ok {
+			return
+		}
+		seen[s] = struct{}{}
+		candidates = append(candidates, s)
+	}
+
+	add(trimmed)
+	add(extractFirstFencedBlock(trimmed))
+
+	if idx := strings.Index(trimmed, "# Plan:"); idx >= 0 {
+		add(trimmed[idx:])
+	}
+	if idx := strings.Index(trimmed, "# "); idx >= 0 {
+		add(trimmed[idx:])
+	}
+
+	return candidates
+}
+
+func extractFirstFencedBlock(raw string) string {
+	start := strings.Index(raw, "```")
+	if start < 0 {
+		return ""
+	}
+	rest := raw[start+3:]
+	if nl := strings.Index(rest, "\n"); nl >= 0 {
+		rest = rest[nl+1:]
+	}
+	end := strings.Index(rest, "```")
+	if end < 0 {
+		return ""
+	}
+	return strings.TrimSpace(rest[:end])
+}
+
+func buildFallbackTurtlePlan(req TurtlePlanningRequest) string {
+	title := strings.TrimSpace(req.TaskID)
+	if title == "" {
+		title = "turtle-artifact"
+	}
+	title = strings.ReplaceAll(title, "\n", " ")
+
+	var context strings.Builder
+	context.WriteString(fmt.Sprintf("Task `%s` in project `%s` needs a decomposition-ready planning artifact for crab workflow.\n",
+		title, strings.TrimSpace(req.Project)))
+	if len(req.Context) > 0 {
+		context.WriteString("\nRelevant files:\n")
+		for i, f := range req.Context {
+			if i >= 5 {
+				break
+			}
+			context.WriteString("- ")
+			context.WriteString(strings.TrimSpace(f))
+			context.WriteString("\n")
+		}
+	}
+	desc := strings.TrimSpace(req.Description)
+	if desc == "" {
+		desc = "No task description provided."
+	}
+	context.WriteString("\nTask details:\n")
+	context.WriteString(truncate(desc, 1400))
+
+	return fmt.Sprintf(`# Plan: %s
+## Context
+%s
+
+## Scope
+- [ ] Convert the task intent into implementation deliverables with explicit boundaries.
+- [ ] Define dependency order and sequencing so crab decomposition can slice safely.
+- [ ] Capture verification expectations and constraints needed before execution.
+
+## Acceptance Criteria
+- Plan uses crab-parseable markdown structure with concrete unchecked scope items.
+- Scope items are implementation-oriented and decomposable into whales/morsels.
+- Context captures constraints and intended artifact outcomes clearly.
+
+## Out of Scope
+- Direct code implementation by turtle.
+- Consensus rounds or multi-agent planning ceremony behavior.
+`, title, context.String())
+}
+
 // TurtleExploreActivity runs all 3 planning agents in parallel to independently
 // analyze the task. Each agent produces an approach, scope, risks, and morsel breakdown.
 func (a *Activities) TurtleExploreActivity(ctx context.Context, req TurtlePlanningRequest) ([]TurtleProposal, error) {

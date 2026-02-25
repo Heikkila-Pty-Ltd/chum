@@ -346,6 +346,20 @@ func (a *Activities) runCLI(ctx context.Context, agent, prompt string, cmd *exec
 	cmd.Stderr = &stderr
 	cmd.Stdin = promptFile
 
+	// Defensive: ensure the working directory exists before exec.
+	// /tmp worktrees can disappear after reboots or cleanup jobs; without
+	// this guard the chdir fails and the entire activity errors out.
+	if cmd.Dir != "" {
+		if _, statErr := os.Stat(cmd.Dir); os.IsNotExist(statErr) {
+			activity.GetLogger(ctx).Warn("⚠️ CLI workdir missing — creating it defensively (investigate root cause)",
+				"WorkDir", cmd.Dir, "Agent", agent)
+			if mkErr := os.MkdirAll(cmd.Dir, 0o755); mkErr != nil {
+				promptFile.Close()
+				return CLIResult{}, fmt.Errorf("failed to create workdir %s: %w", cmd.Dir, mkErr)
+			}
+		}
+	}
+
 	if err := cmd.Start(); err != nil {
 		promptFile.Close()
 		return CLIResult{}, fmt.Errorf("failed to start %s: %w", agent, err)

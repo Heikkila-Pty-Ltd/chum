@@ -308,9 +308,6 @@ func recordCrabHealth(ctx workflow.Context, opts workflow.ActivityOptions, a *Ac
 	planID, project, status, details string) {
 
 	logger := workflow.GetLogger(ctx)
-	if a.Store == nil {
-		return
-	}
 	actCtx := workflow.WithActivityOptions(ctx, opts)
 	eventType := fmt.Sprintf("crab_%s", status)
 	fullDetails := fmt.Sprintf("[%s] %s: %s", project, planID, details)

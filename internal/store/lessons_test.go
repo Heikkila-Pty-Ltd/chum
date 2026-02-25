@@ -99,3 +99,30 @@ func TestLessonsStoreAndSearch(t *testing.T) {
 		t.Fatalf("expected 2 recent lessons, got %d", len(results))
 	}
 }
+
+func TestSanitizeFTS5Query(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{"operators preserved", "scope too-large OR underestimated OR missing-deps",
+			`"scope" "too-large" OR "underestimated" OR "missing-deps"`},
+		{"simple terms quoted", "error handling defer",
+			`"error" "handling" "defer"`},
+		{"AND NOT preserved", "foo AND bar NOT baz",
+			`"foo" AND "bar" NOT "baz"`},
+		{"already quoted stripped and re-quoted", `"hello" world`,
+			`"hello" "world"`},
+		{"empty string", "", ""},
+		{"single term", "large", `"large"`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := sanitizeFTS5Query(tt.input)
+			if got != tt.expected {
+				t.Errorf("sanitizeFTS5Query(%q) = %q, want %q", tt.input, got, tt.expected)
+			}
+		})
+	}
+}

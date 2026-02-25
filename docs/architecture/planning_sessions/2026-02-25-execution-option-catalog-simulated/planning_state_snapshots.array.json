@@ -1,0 +1,54 @@
+[
+  {
+    "session_id": "planning-chum-20260225-execution-option-catalog-manual",
+    "run_id": "manual-run-20260225-01",
+    "project": "chum",
+    "task_id": "catalog-runtime-resolver",
+    "cycle": 1,
+    "stage": "groom_backlog",
+    "state_hash": "7e49ab0f8f9c8ec82dd5a6d1a2b9488564fbbcd4698ef3d6abb84f71a8ff2f12",
+    "state_json": "{\"cycle\":1,\"stage\":\"groom_backlog\"}",
+    "stable": true,
+    "reason": "backlog_gate_passed",
+    "created_at": "2026-02-25T19:01:45Z"
+  },
+  {
+    "session_id": "planning-chum-20260225-execution-option-catalog-manual",
+    "run_id": "manual-run-20260225-01",
+    "project": "chum",
+    "task_id": "catalog-runtime-resolver",
+    "cycle": 1,
+    "stage": "selection",
+    "state_hash": "3be0107641275d68365cc6e1707e6f937f712183af266f2fa2f7f03f6d12f20b",
+    "state_json": "{\"cycle\":1,\"stage\":\"selection\",\"selected_id\":\"catalog-runtime-resolver\",\"selected_title\":\"YAML catalog + runtime resolver\",\"selected_option\":\"catalog-runtime-resolver\"}",
+    "stable": true,
+    "reason": "selection_gate_passed",
+    "created_at": "2026-02-25T19:04:25Z"
+  },
+  {
+    "session_id": "planning-chum-20260225-execution-option-catalog-manual",
+    "run_id": "manual-run-20260225-01",
+    "project": "chum",
+    "task_id": "catalog-runtime-resolver",
+    "cycle": 1,
+    "stage": "question_answer",
+    "state_hash": "b5f580c9a8789c31eeb7f78e91a20653f3a81bd13d0d2200b74a8e0de2b1e1ad",
+    "state_json": "{\"cycle\":1,\"stage\":\"question_answer\",\"selected_id\":\"catalog-runtime-resolver\",\"selected_title\":\"YAML catalog + runtime resolver\",\"selected_option\":\"catalog-runtime-resolver\",\"answers\":{\"1\":\"Versioned YAML in-repo with schema validation and CI enforcement.\",\"2\":\"Planner-side resolver emits pre-context bundle before execution dispatch.\",\"3\":\"Execute only declared bundle steps unless gate failure or missing dependency triggers replanning.\",\"4\":\"Adjust option score from planning trace outcomes including gate_fail, retries, rollback, and plan_agreed.\"}}",
+    "stable": true,
+    "reason": "questions_gate_passed",
+    "created_at": "2026-02-25T19:06:25Z"
+  },
+  {
+    "session_id": "planning-chum-20260225-execution-option-catalog-manual",
+    "run_id": "manual-run-20260225-01",
+    "project": "chum",
+    "task_id": "catalog-runtime-resolver",
+    "cycle": 1,
+    "stage": "summary",
+    "state_hash": "fc8bd9f3c86d82f4f636dd5d4679d0be5c3e73df5cb0e3269db0d8279bc6dc38",
+    "state_json": "{\"cycle\":1,\"stage\":\"summary\",\"selected_id\":\"catalog-runtime-resolver\",\"selected_title\":\"YAML catalog + runtime resolver\",\"selected_option\":\"catalog-runtime-resolver\",\"summary_what\":\"Implement execution option catalog with deterministic pre-context bundles\",\"summary_why\":\"Reduce tool-selection drift and make pathways queryable before execution\",\"summary_effort\":\"2-3 days\"}",
+    "stable": true,
+    "reason": "summary_gate_passed",
+    "created_at": "2026-02-25T19:07:05Z"
+  }
+]

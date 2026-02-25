@@ -19,7 +19,6 @@ const (
 	SearchAttributePriority     = "priority"
 	SearchAttributeAgent        = "agent"
 	SearchAttributeCurrentStage = "current_stage"
-	SearchAttributeTaskTitle    = "task_title"
 
 	// Signal names used by admin operations.
 	ChumAgentDrainSignalName  = "admin-drain"
@@ -40,7 +39,6 @@ var chumSearchAttributeDefsMap = map[string]enumspb.IndexedValueType{
 	SearchAttributePriority:     enumspb.INDEXED_VALUE_TYPE_INT,
 	SearchAttributeAgent:        enumspb.INDEXED_VALUE_TYPE_KEYWORD,
 	SearchAttributeCurrentStage: enumspb.INDEXED_VALUE_TYPE_KEYWORD,
-	SearchAttributeTaskTitle:    enumspb.INDEXED_VALUE_TYPE_TEXT,
 }
 
 var chumRunningStages = []string{
@@ -107,7 +105,6 @@ func upsertChumWorkflowSearchAttributes(ctx workflow.Context, req TaskRequest, s
 		SearchAttributePriority:     searchMetadata.Priority,
 		SearchAttributeAgent:        searchMetadata.Agent,
 		SearchAttributeCurrentStage: status,
-		SearchAttributeTaskTitle:    searchMetadata.TaskTitle,
 	}
 	return upsertChumSearchAttributesFn(ctx, attrs)
 }

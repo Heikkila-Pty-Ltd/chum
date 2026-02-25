@@ -264,6 +264,11 @@ type DispatchGit struct {
 type DispatchCostControl struct {
 	Enabled                     bool     `toml:"enabled"`
 	SparkFirst                  bool     `toml:"spark_first"`
+	EnablePlannerV2             bool     `toml:"enable_planner_v2"`
+	PlanningCandidateTopK       int      `toml:"planning_candidate_top_k"`
+	PlanningSignalTimeout       Duration `toml:"planning_signal_timeout"`
+	PlanningSessionTimeout      Duration `toml:"planning_session_timeout"`
+	PlanningStaleBlockThreshold Duration `toml:"planning_stale_block_threshold"`
 	RetryEscalationAttempt      int      `toml:"retry_escalation_attempt"`
 	ComplexityEscalationMinutes int      `toml:"complexity_escalation_minutes"`
 	RiskyReviewLabels           []string `toml:"risky_review_labels"`

@@ -289,6 +289,13 @@ func main() {
 		}
 		return
 	}
+	if len(os.Args) > 1 && os.Args[1] == "ceremony" {
+		if err := runCeremonyMode(os.Args, logger); err != nil {
+			logger.Error("ceremony command failed", "error", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	configPath := flag.String("config", "chum.toml", "path to config file")
 	dev := flag.Bool("dev", false, "use text log format (default is JSON)")
@@ -574,10 +581,22 @@ func main() {
 	// Start turtle chat poller if configured
 	if turtleRoom := strings.TrimSpace(cfg.Reporter.TurtleRoom); turtleRoom != "" {
 		go func() {
+			var apiToken string
+			if cfg.API.Security.Enabled && len(cfg.API.Security.AllowedTokens) > 0 {
+				apiToken = cfg.API.Security.AllowedTokens[0]
+			}
+			planningClient, planningErr := newPlanningAPIClient(cfg.API.Bind, apiToken)
+			if planningErr != nil {
+				logger.Warn("planning control bridge disabled", "error", planningErr)
+			}
+
 			turtleHandler := &matrix.TurtleChatHandler{
-				Room:    turtleRoom,
-				WorkDir: filepath.Dir(*configPath),
-				Logger:  logger.With("component", "turtle-chat"),
+				Room:       turtleRoom,
+				WorkDir:    filepath.Dir(*configPath),
+				Logger:     logger.With("component", "turtle-chat"),
+				Planning:   planningClient,
+				BridgeRoom: strings.TrimSpace(cfg.Reporter.DefaultRoom),
+				ControlBot: "spritzbot",
 			}
 			turtleHandler.RunPoller(ctx)
 		}()

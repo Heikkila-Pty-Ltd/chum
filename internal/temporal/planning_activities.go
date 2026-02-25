@@ -19,9 +19,18 @@ func (a *Activities) GroomBacklogActivity(ctx context.Context, req PlanningReque
 	logger := activity.GetLogger(ctx)
 	logger.Info("Grooming backlog", "Project", req.Project, "Agent", req.Agent)
 
+	candidateTopK := normalizePlanningCandidateTopK(req.CandidateTopK)
+	targetItems := candidateTopK + 2 // keep alternatives beyond the shortlist
+	if targetItems > maxPlanningCandidateTopK {
+		targetItems = maxPlanningCandidateTopK
+	}
+	if targetItems < 3 {
+		targetItems = 3
+	}
+
 	prompt := fmt.Sprintf(`You are a Chief Scrum Master analyzing the backlog for project "%s".
 
-Identify the 3-5 highest-impact work items. For each item, explain:
+Identify the %d highest-impact work items. For each item, explain:
 - WHY it matters (business impact)
 - How much EFFORT it requires (low/medium/high)
 - Whether you RECOMMEND it as the next focus
@@ -43,10 +52,21 @@ Respond with ONLY a JSON object:
   "rationale": "Overall: here's what we think the priority should be and why"
 }
 
-Start wide — consider all possible areas of improvement. Then rank by impact.`, req.Project)
+Start wide — consider all possible areas of improvement. Then rank by impact.`, req.Project, targetItems)
 
 	agent := ResolveTierAgent(a.Tiers, req.Tier)
 	cliResult, err := runAgent(ctx, agent, prompt, req.WorkDir)
+	a.recordPlanningLLMCall(
+		ctx,
+		req,
+		"groom_backlog",
+		"",
+		agent,
+		prompt,
+		cliResult,
+		err,
+		"Backlog grooming call completed",
+	)
 	if err != nil {
 		return nil, fmt.Errorf("backlog grooming failed: %w", err)
 	}
@@ -64,6 +84,18 @@ Start wide — consider all possible areas of improvement. Then rank by impact.`
 	if len(backlog.Items) == 0 {
 		return nil, fmt.Errorf("chief produced empty backlog")
 	}
+
+	a.recordPlanningTrace(ctx, PlanningTraceRecord{
+		SessionID:   req.TraceSessionID,
+		Project:     req.Project,
+		TaskID:      backlog.Items[0].ID,
+		Cycle:       req.TraceCycle,
+		Stage:       "groom_backlog",
+		EventType:   "backlog_result",
+		Actor:       agent,
+		SummaryText: backlog.Rationale,
+		FullText:    jsonStr,
+	})
 
 	logger.Info("Backlog groomed",
 		"Items", len(backlog.Items),
@@ -112,6 +144,17 @@ Think carefully. These questions prevent wasted tokens and wrong assumptions.`,
 
 	agent := ResolveTierAgent(a.Tiers, req.Tier)
 	cliResult, err := runAgent(ctx, agent, prompt, req.WorkDir)
+	a.recordPlanningLLMCall(
+		ctx,
+		req,
+		"generate_questions",
+		item.ID,
+		agent,
+		prompt,
+		cliResult,
+		err,
+		"Question generation call completed",
+	)
 	if err != nil {
 		return nil, fmt.Errorf("question generation failed: %w", err)
 	}
@@ -134,6 +177,19 @@ Think carefully. These questions prevent wasted tokens and wrong assumptions.`,
 	if len(questions) > 5 {
 		questions = questions[:5]
 	}
+
+	questionsJSON, _ := json.Marshal(questions)
+	a.recordPlanningTrace(ctx, PlanningTraceRecord{
+		SessionID:   req.TraceSessionID,
+		Project:     req.Project,
+		TaskID:      item.ID,
+		Cycle:       req.TraceCycle,
+		Stage:       "generate_questions",
+		EventType:   "questions_result",
+		Actor:       agent,
+		SummaryText: fmt.Sprintf("Generated %d planning questions", len(questions)),
+		FullText:    string(questionsJSON),
+	})
 
 	logger.Info("Questions generated", "Count", len(questions))
 	return questions, nil
@@ -178,6 +234,17 @@ Be specific. The implementation team needs to know EXACTLY what to build.`,
 
 	agent := ResolveTierAgent(a.Tiers, req.Tier)
 	cliResult, err := runAgent(ctx, agent, prompt, req.WorkDir)
+	a.recordPlanningLLMCall(
+		ctx,
+		req,
+		"summarize_plan",
+		item.ID,
+		agent,
+		prompt,
+		cliResult,
+		err,
+		"Plan summarization call completed",
+	)
 	if err != nil {
 		return nil, fmt.Errorf("plan summary failed: %w", err)
 	}
@@ -191,6 +258,19 @@ Be specific. The implementation team needs to know EXACTLY what to build.`,
 	if err := json.Unmarshal([]byte(jsonStr), &summary); err != nil {
 		return nil, fmt.Errorf("failed to parse summary JSON: %w", err)
 	}
+
+	summaryJSON, _ := json.Marshal(summary)
+	a.recordPlanningTrace(ctx, PlanningTraceRecord{
+		SessionID:   req.TraceSessionID,
+		Project:     req.Project,
+		TaskID:      item.ID,
+		Cycle:       req.TraceCycle,
+		Stage:       "summarize_plan",
+		EventType:   "plan_summary_result",
+		Actor:       agent,
+		SummaryText: summary.What,
+		FullText:    string(summaryJSON),
+	})
 
 	logger.Info("Plan summarized",
 		"What", summary.What,

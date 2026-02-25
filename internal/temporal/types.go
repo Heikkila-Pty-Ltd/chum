@@ -24,7 +24,8 @@ type TaskRequest struct {
 	MaxRetriesOverride  int              `json:"max_retries_override,omitempty"`  // if >0, overrides retriesForTier for ALL tiers
 	MaxHandoffsOverride int              `json:"max_handoffs_override,omitempty"` // if >0, overrides maxHandoffs constant
 	PreviousErrors      []string         `json:"previous_errors,omitempty"`
-	ExplosionID       string           `json:"explosion_id,omitempty"` // If set, workflow runs in isolated sandbox mode (Cambrian Explosion)
+	ExplosionID       string           `json:"explosion_id,omitempty"`    // If set, workflow runs in isolated sandbox mode (Cambrian Explosion)
+	TraceSessionID    string           `json:"trace_session_id,omitempty"` // Graph-Brain trace session ID
 }
 
 // EscalationTier defines one level in the fail-upward chain.

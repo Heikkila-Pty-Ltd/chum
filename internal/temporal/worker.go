@@ -173,6 +173,10 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 	w.RegisterActivity(acts.FileInvestigationTaskActivity)
 	w.RegisterActivity(acts.SentinelScanActivity)
 
+	// --- Graph-Brain Trace Activities ---
+	w.RegisterActivity(acts.RecordGraphTraceEventActivity)
+	w.RegisterActivity(acts.BackpropagateRewardActivity)
+
 	// --- Crab Decomposition ---
 	w.RegisterWorkflow(CrabDecompositionWorkflow)
 	w.RegisterActivity(acts.ParsePlanActivity)

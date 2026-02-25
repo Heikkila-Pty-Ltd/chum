@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -152,7 +153,12 @@ func runSinglePostMergeCheck(workspace, command string) *CheckResult {
 	cmd.Dir = workspace
 	// Worktrees lack full VCS context — disable Go build's VCS stamping
 	// to prevent 'error obtaining VCS status: exit status 128'.
-	cmd.Env = append(os.Environ(), "GOFLAGS=-buildvcs=false")
+	// Augment PATH with common Go tool directories so golangci-lint et al.
+	// are findable even in restricted dispatch shells (systemd, cron).
+	env := os.Environ()
+	env = append(env, "GOFLAGS=-buildvcs=false")
+	env = augmentPATH(env)
+	cmd.Env = env
 
 	output, err := cmd.CombinedOutput()
 	duration := time.Since(start)
@@ -190,4 +196,36 @@ func LatestCommitSHA(workspace string) (string, error) {
 		return "", fmt.Errorf("failed to read HEAD commit: %w (%s)", err, strings.TrimSpace(string(out)))
 	}
 	return strings.TrimSpace(string(out)), nil
+}
+
+// augmentPATH appends common Go tool directories to PATH in the env slice.
+// This ensures golangci-lint and other Go tools are discoverable even when
+// the dispatch shell has a minimal PATH (systemd, cron, restricted shells).
+func augmentPATH(env []string) []string {
+	extraDirs := []string{
+		"/usr/local/bin",
+		"/usr/local/go/bin",
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		extraDirs = append(extraDirs,
+			filepath.Join(home, "go", "bin"),
+			filepath.Join(home, ".local", "bin"),
+		)
+	}
+
+	for i, e := range env {
+		if strings.HasPrefix(e, "PATH=") {
+			current := strings.TrimPrefix(e, "PATH=")
+			for _, d := range extraDirs {
+				if !strings.Contains(current, d) {
+					current += ":" + d
+				}
+			}
+			env[i] = "PATH=" + current
+			return env
+		}
+	}
+	// No PATH found; set a reasonable default.
+	env = append(env, "PATH="+strings.Join(extraDirs, ":"))
+	return env
 }

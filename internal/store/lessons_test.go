@@ -124,6 +124,18 @@ func TestSanitizeFTS5Query(t *testing.T) {
 			`"plan" "and" "execute"`},
 		{"mixed case Not is quoted", "Not applicable",
 			`"Not" "applicable"`},
+		{"parentheses stripped", "fix error(s) in store",
+			`"fix" "errors" "in" "store"`},
+		{"asterisk stripped", "store*.go",
+			`"store.go"`},
+		{"braces and caret stripped", "{foo} ^bar",
+			`"foo" "bar"`},
+		{"colon stripped", "file:path",
+			`"filepath"`},
+		{"all-special-chars becomes empty and is dropped", "(***)",
+			``},
+		{"mixed special with operators", "fix OR error(s) AND test*",
+			`"fix" OR "errors" AND "test"`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

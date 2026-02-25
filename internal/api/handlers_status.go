@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -93,8 +92,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		"recent_events": recentEvents,
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	writeJSON(w, resp)
 }
 
 // GET /recommendations - Returns recent system recommendations

@@ -268,10 +268,16 @@ func scanLessons(rows *sql.Rows) ([]StoredLesson, error) {
 	return lessons, rows.Err()
 }
 
+// fts5MetaChars are characters that have special meaning in FTS5 MATCH
+// expressions and must be stripped from user input to prevent query errors.
+const fts5MetaChars = `()*{}^~:`
+
 // sanitizeFTS5Query quotes each non-operator term in an FTS5 query to prevent
 // bare words from being misinterpreted as column names (e.g. "large", "phase").
-// Only already-uppercase OR, AND, NOT are preserved as FTS5 boolean operators;
-// lowercase variants (e.g. "not found") are treated as search terms.
+// FTS5 metacharacters like (, ), *, {, }, ^, ~, : are stripped to prevent
+// malformed MATCH expressions. Only already-uppercase OR, AND, NOT are
+// preserved as FTS5 boolean operators; lowercase variants are treated as
+// search terms.
 func sanitizeFTS5Query(query string) string {
 	words := strings.Fields(query)
 	if len(words) == 0 {
@@ -285,11 +291,22 @@ func sanitizeFTS5Query(query string) string {
 			out = append(out, w)
 			continue
 		}
-		// Strip existing quotes, then re-quote.
+		// Strip existing quotes and FTS5 metacharacters.
 		w = strings.Trim(w, `"`)
+		w = stripChars(w, fts5MetaChars)
 		if w != "" {
 			out = append(out, `"`+w+`"`)
 		}
 	}
 	return strings.Join(out, " ")
+}
+
+// stripChars removes all characters in chars from s.
+func stripChars(s, chars string) string {
+	return strings.Map(func(r rune) rune {
+		if strings.ContainsRune(chars, r) {
+			return -1
+		}
+		return r
+	}, s)
 }

@@ -2051,7 +2051,7 @@ func TestTraceStores(t *testing.T) {
 		t.Fatalf("StartExecutionTrace failed: %v", err)
 	}
 
-	if err := s.AppendTraceEvent(traceID, TraceEvent{
+	err = s.AppendTraceEvent(traceID, TraceEvent{
 		Stage:         "plan",
 		Step:          "parse",
 		Tool:          "codex",
@@ -2061,11 +2061,13 @@ func TestTraceStores(t *testing.T) {
 		DurationMs:    10,
 		Success:       true,
 		ErrorContext:  "",
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatalf("AppendTraceEvent failed: %v", err)
 	}
 
-	if err := s.CompleteExecutionTrace(traceID, "completed", "success", 1, 1); err != nil {
+	err = s.CompleteExecutionTrace(traceID, "completed", "success", 1, 1)
+	if err != nil {
 		t.Fatalf("CompleteExecutionTrace failed: %v", err)
 	}
 

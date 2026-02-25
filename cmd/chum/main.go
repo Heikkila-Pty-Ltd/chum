@@ -491,7 +491,7 @@ func main() {
 	dag := graph.NewDAG(st.DB())
 	if schemaErr := dag.EnsureSchema(context.Background()); schemaErr != nil {
 		logger.Error("failed to ensure graph schema", "error", schemaErr)
-		os.Exit(1) //nolint:gocritic // exitAfterDefer: acceptable in main() startup
+		os.Exit(1)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

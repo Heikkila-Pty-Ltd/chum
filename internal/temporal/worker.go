@@ -176,13 +176,14 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 	w.RegisterActivity(acts.SizeMorselsActivity)
 	w.RegisterActivity(acts.EmitMorselsActivity)
 
-	// --- Turtle (Autonomous Planning Ceremony) ---
-	// Turtles define (explore, deliberate, converge). Crabs slice (decompose, emit).
+	// --- Turtle (Planning → Gate → Crab) ---
+	// Single-stage planning replaces the old 3-agent ceremony.
 	w.RegisterWorkflow(AutonomousPlanningCeremonyWorkflow)
 	w.RegisterWorkflow(TurtleToCrabWorkflow)
-	w.RegisterActivity(acts.TurtleExploreActivity)
-	w.RegisterActivity(acts.TurtleDeliberateActivity)
-	w.RegisterActivity(acts.TurtleConvergeActivity)
+	w.RegisterActivity(acts.TurtlePlanActivity)
+	w.RegisterActivity(acts.TurtleExploreActivity)     // deprecated but kept for running workflows
+	w.RegisterActivity(acts.TurtleDeliberateActivity)   // deprecated but kept for running workflows
+	w.RegisterActivity(acts.TurtleConvergeActivity)     // deprecated but kept for running workflows
 	w.RegisterActivity(acts.TurtleSendAsActivity)
 
 	// --- Calcifier (Stochastic→Deterministic) ---

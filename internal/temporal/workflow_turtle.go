@@ -84,48 +84,23 @@ type TurtlePlanningResult struct {
 	TotalTokens     TokenUsage       `json:"total_tokens"`
 }
 
-// AutonomousPlanningCeremonyWorkflow runs a 3-agent deliberation to decompose
-// complex tasks into shark-sized morsels. The ceremony runs autonomously:
-// - Phase 1: EXPLORE — 3 agents independently analyze the task
-// - Phase 2: DELIBERATE — up to 5 rounds of cross-review
-// - Phase 3: CONVERGE — consensus check (≥80% → auto-proceed)
-// - Phase 4: DECOMPOSE — break into morsels (recursive if complex)
-// - Phase 5: EMIT — write to DAG
+// AutonomousPlanningCeremonyWorkflow produces a high-level plan for complex
+// tasks via a single LLM call. The result is a TurtleConsensus that callers
+// (typically TurtleToCrabWorkflow) feed to a crab for decomposition into morsels.
 //
-// All phases are posted to a Matrix channel for human visibility.
-// Only disagreements escalate to human — consensus auto-proceeds.
+// This replaces the old 3-agent deliberation ceremony (Explore→Deliberate→Converge)
+// with a single-stage approach: one agent, one call, one plan.
 func AutonomousPlanningCeremonyWorkflow(ctx workflow.Context, req TurtlePlanningRequest) (*TurtlePlanningResult, error) {
 	startTime := workflow.Now(ctx)
 	logger := workflow.GetLogger(ctx)
-	logger.Info(TurtlePrefix+" Autonomous planning ceremony starting",
+	logger.Info(TurtlePrefix+" Single-stage planning starting",
 		"TaskID", req.TaskID, "Project", req.Project)
 
 	if req.Tier == "" {
-		req.Tier = "balanced" // use balanced tier for planning — quality matters
+		req.Tier = "balanced"
 	}
-
-	slowThreshold := defaultSlowStepThreshold
 
 	var stepMetrics []StepMetric
-	recordStep := func(name string, stepStart time.Time, status string) {
-		dur := workflow.Now(ctx).Sub(stepStart)
-		slow := dur >= slowThreshold
-		stepMetrics = append(stepMetrics, StepMetric{
-			Name:      name,
-			DurationS: dur.Seconds(),
-			Status:    status,
-			Slow:      slow,
-		})
-		if slow {
-			logger.Warn(TurtlePrefix+" SLOW STEP",
-				"Step", name, "DurationS", dur.Seconds(), "Status", status)
-		} else {
-			logger.Info(TurtlePrefix+" Step complete",
-				"Step", name, "DurationS", dur.Seconds(), "Status", status)
-		}
-	}
-
-	var totalTokens TokenUsage
 	var a *Activities
 
 	// Activity option presets
@@ -151,150 +126,33 @@ func AutonomousPlanningCeremonyWorkflow(ctx workflow.Context, req TurtlePlanning
 		}).Get(ctx, nil)
 	}
 	notify("turtle_start", map[string]string{
-		"task": req.TaskID,
+		"task":        req.TaskID,
 		"description": truncate(req.Description, 200),
 	})
 
-	// Per-agent Matrix send helper — posts as the agent's dedicated bot persona.
-	sendAs := func(agent, message string) {
-		sendCtx := workflow.WithActivityOptions(ctx, notifyOpts)
-		_ = workflow.ExecuteActivity(sendCtx, a.TurtleSendAsActivity, TurtleSendAsRequest{
-			Agent:   agent,
-			Room:    req.MatrixRoom,
-			Message: message,
-		}).Get(ctx, nil)
-	}
+	// ===== SINGLE-STAGE PLAN =====
+	planStart := workflow.Now(ctx)
+	logger.Info(TurtlePrefix+" Planning task", "TaskID", req.TaskID)
 
-	// ===== PHASE 1: EXPLORE =====
-	exploreStart := workflow.Now(ctx)
-	logger.Info(TurtlePrefix+" Phase 1: EXPLORE — 3 agents analyzing independently", "TaskID", req.TaskID)
-
-	exploreCtx := workflow.WithActivityOptions(ctx, longAO)
-	var proposals []TurtleProposal
-	if err := workflow.ExecuteActivity(exploreCtx, a.TurtleExploreActivity, req).Get(ctx, &proposals); err != nil {
-		recordStep("explore", exploreStart, "failed")
-		notify("turtle_failed", map[string]string{"phase": "explore", "error": err.Error()})
-		return &TurtlePlanningResult{Status: "failed", TaskID: req.TaskID, StepMetrics: stepMetrics}, nil
-	}
-	recordStep("explore", exploreStart, "ok")
-
-	logger.Info(TurtlePrefix+" Exploration complete", "Proposals", len(proposals))
-
-	// Post each proposal as its agent's bot persona
-	for _, p := range proposals {
-		if p.Confidence == 0 && len(p.Morsels) == 0 {
-			continue // skip stub proposals from failed agents
-		}
-		msg := fmt.Sprintf("**Proposal for `%s`**\n\n%s\n\nScope: %s | Confidence: %d%%\nMorsels: %s",
-			req.TaskID, truncate(p.Approach, 500), p.Scope, p.Confidence,
-			truncate(fmt.Sprintf("%v", p.Morsels), 300))
-		sendAs(p.Agent, msg)
-	}
-
-	// ===== PHASE 2: DELIBERATE (up to 5 rounds) =====
-	const maxRounds = 2
-	const convergenceThreshold = 80
-
-	var allCritiques []TurtleCritique
-	currentProposals := proposals
-
-	for round := 1; round <= maxRounds; round++ {
-		deliberateStart := workflow.Now(ctx)
-		logger.Info(TurtlePrefix+" Phase 2: DELIBERATE", "Round", round, "MaxRounds", maxRounds)
-
-		deliberateCtx := workflow.WithActivityOptions(ctx, longAO)
-		var critiques []TurtleCritique
-		if err := workflow.ExecuteActivity(deliberateCtx, a.TurtleDeliberateActivity, req, currentProposals, allCritiques, round).Get(ctx, &critiques); err != nil {
-			logger.Warn(TurtlePrefix+" Deliberation round failed (non-fatal)", "Round", round, "error", err)
-			recordStep(fmt.Sprintf("deliberate_r%d", round), deliberateStart, "failed")
-			break
-		}
-		allCritiques = append(allCritiques, critiques...)
-		recordStep(fmt.Sprintf("deliberate_r%d", round), deliberateStart, "ok")
-
-		// Post each critique as its agent's bot persona
-		for _, c := range critiques {
-			msg := fmt.Sprintf("**Round %d review**\n\n%s\n\nAgreed: %s\nDisagreed: %s",
-				c.Round, truncate(c.Synthesis, 400),
-				truncate(c.Agreements, 200), truncate(c.Disagreements, 200))
-			sendAs(c.Agent, msg)
-		}
-
-		// Check convergence — if all agents are mostly aligned, exit early
-		converging := true
-		for _, c := range critiques {
-			if c.Disagreements != "" && len(c.Disagreements) > 20 {
-				converging = false
-				break
-			}
-		}
-		if converging {
-			logger.Info(TurtlePrefix+" Convergence detected, exiting deliberation early", "Round", round)
-			break
-		}
-
-		logger.Info(TurtlePrefix+" Round complete, continuing deliberation",
-			"Round", round, "Critiques", len(critiques))
-	}
-
-	// ===== PHASE 3: CONVERGE =====
-	convergeStart := workflow.Now(ctx)
-	logger.Info(TurtlePrefix+" Phase 3: CONVERGE — synthesizing consensus")
-
-	convergeCtx := workflow.WithActivityOptions(ctx, longAO)
+	planCtx := workflow.WithActivityOptions(ctx, longAO)
 	var consensus TurtleConsensus
-	if err := workflow.ExecuteActivity(convergeCtx, a.TurtleConvergeActivity, req, proposals, allCritiques).Get(ctx, &consensus); err != nil {
-		recordStep("converge", convergeStart, "failed")
-		notify("turtle_failed", map[string]string{"phase": "converge", "error": err.Error()})
+	if err := workflow.ExecuteActivity(planCtx, a.TurtlePlanActivity, req).Get(ctx, &consensus); err != nil {
+		dur := workflow.Now(ctx).Sub(planStart)
+		stepMetrics = append(stepMetrics, StepMetric{Name: "plan", DurationS: dur.Seconds(), Status: "failed"})
+		notify("turtle_failed", map[string]string{"phase": "plan", "error": err.Error()})
 		return &TurtlePlanningResult{Status: "failed", TaskID: req.TaskID, StepMetrics: stepMetrics}, nil
 	}
-	recordStep("converge", convergeStart, "ok")
+	dur := workflow.Now(ctx).Sub(planStart)
+	stepMetrics = append(stepMetrics, StepMetric{Name: "plan", DurationS: dur.Seconds(), Status: "ok"})
 
-	logger.Info(TurtlePrefix+" Consensus result",
-		"Score", consensus.ConfidenceScore, "Items", len(consensus.Items), "Disagreements", len(consensus.Disagreements))
-
-	// If consensus is low, wait for human tiebreak via signal.
-	// This catches both genuine disagreements AND degraded paths (e.g. 0%
-	// confidence from failed agents producing stub proposals).
-	if consensus.ConfidenceScore < convergenceThreshold {
-		logger.Info(TurtlePrefix+" Low consensus — requesting human tiebreak",
-			"Score", consensus.ConfidenceScore)
-
-		notify("turtle_disagreement", map[string]string{
-			"task":          req.TaskID,
-			"score":         fmt.Sprintf("%d", consensus.ConfidenceScore),
-			"disagreements": truncate(fmt.Sprintf("%v", consensus.Disagreements), 300),
-		})
-
-		// Wait for human signal (up to 30 minutes, then proceed with majority)
-		tiebreakChan := workflow.GetSignalChannel(ctx, "turtle-tiebreak")
-		var humanDecision string
-
-		timer := workflow.NewTimer(ctx, 30*time.Minute)
-		sel := workflow.NewSelector(ctx)
-
-		sel.AddReceive(tiebreakChan, func(c workflow.ReceiveChannel, more bool) {
-			c.Receive(ctx, &humanDecision)
-			logger.Info(TurtlePrefix+" Human tiebreak received", "Decision", humanDecision)
-		})
-
-		sel.AddFuture(timer, func(f workflow.Future) {
-			humanDecision = "proceed-majority"
-			logger.Warn(TurtlePrefix + " Tiebreak timed out (30m) — proceeding with majority")
-		})
-
-		sel.Select(ctx)
-	}
+	logger.Info(TurtlePrefix+" Plan produced",
+		"Score", consensus.ConfidenceScore, "Items", len(consensus.Items))
 
 	// ===== DONE — Turtle has defined the plan. Callers feed it to a crab. =====
-	// The old phases 4 (DECOMPOSE) and 5 (EMIT) have been removed.
-	// Turtles define. Crabs slice. Clean separation of concerns.
-
 	duration := workflow.Now(ctx).Sub(startTime)
-	rounds := len(allCritiques) / max(len(PlanningAgents), 1)
-	logger.Info(TurtlePrefix+" Ceremony complete — consensus ready for crab decomposition",
+	logger.Info(TurtlePrefix+" Planning complete — ready for crab decomposition",
 		"TaskID", req.TaskID, "Items", len(consensus.Items),
-		"Duration", duration.String(), "Consensus", consensus.ConfidenceScore, "Rounds", rounds)
+		"Duration", duration.String(), "Confidence", consensus.ConfidenceScore)
 
 	notify("turtle_done", map[string]string{
 		"task":     req.TaskID,
@@ -312,28 +170,27 @@ func AutonomousPlanningCeremonyWorkflow(ctx workflow.Context, req TurtlePlanning
 	).Get(ctx, nil)
 
 	recordOrganismLog(ctx, "turtle", req.TaskID, req.Project, "completed",
-		fmt.Sprintf("%d items, confidence %d%%, %d rounds", len(consensus.Items), consensus.ConfidenceScore, rounds),
-		startTime, rounds, "")
+		fmt.Sprintf("%d items, confidence %d%%, 1 stage", len(consensus.Items), consensus.ConfidenceScore),
+		startTime, 1, "")
 
 	return &TurtlePlanningResult{
 		Status:          "completed",
 		TaskID:          req.TaskID,
 		Consensus:       &consensus,
-		Rounds:          rounds,
+		Rounds:          1,
 		ConfidenceScore: consensus.ConfidenceScore,
 		StepMetrics:     stepMetrics,
-		TotalTokens:     totalTokens,
 	}, nil
 }
 
-// TurtleToCrabWorkflow chains turtle planning → crab decomposition.
-// Turtles define (explore, deliberate, converge). Crabs slice (decompose, emit).
-// This is the pipeline for complex tasks: the dispatcher fires this as one
-// child workflow, and the turtle→crab handoff happens internally.
+// TurtleToCrabWorkflow chains turtle planning → human gate → crab decomposition.
+// Turtles define (single-stage plan). Crabs slice (decompose, emit).
+// The human gate between turtle and crab allows plan review before work is broken
+// into morsels. A 10-minute timeout auto-approves to prevent indefinite blocking.
 func TurtleToCrabWorkflow(ctx workflow.Context, req TurtlePlanningRequest) (*TurtlePlanningResult, error) {
 	startTime := workflow.Now(ctx)
 	logger := workflow.GetLogger(ctx)
-	logger.Info(TurtlePrefix+" Turtle→Crab pipeline starting", "TaskID", req.TaskID)
+	logger.Info(TurtlePrefix+" Turtle→Gate→Crab pipeline starting", "TaskID", req.TaskID)
 
 	// Phase 1: Turtle plans
 	turtleOpts := workflow.ChildWorkflowOptions{
@@ -347,12 +204,66 @@ func TurtleToCrabWorkflow(ctx workflow.Context, req TurtlePlanningRequest) (*Tur
 	}
 
 	if result.Status != "completed" || result.Consensus == nil || result.Consensus.MergedPlan == "" {
-		logger.Warn(TurtlePrefix+" Turtle produced no consensus, skipping crab",
+		logger.Warn(TurtlePrefix+" Turtle produced no plan, skipping crab",
 			"Status", result.Status)
 		return &result, nil
 	}
 
-	// Phase 2: Crab slices
+	// Phase 2: Human gate — review the plan before crab slices it
+	logger.Info(TurtlePrefix+" Plan gate — waiting for approval (10m timeout)",
+		"TaskID", req.TaskID, "Items", len(result.Consensus.Items),
+		"Score", result.Consensus.ConfidenceScore)
+
+	// Notify for visibility (post plan summary to Matrix)
+	var a *Activities
+	notifyOpts := workflow.ActivityOptions{
+		StartToCloseTimeout: 10 * time.Second,
+		RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 1},
+	}
+	nCtx := workflow.WithActivityOptions(ctx, notifyOpts)
+	_ = workflow.ExecuteActivity(nCtx, a.NotifyActivity, NotifyRequest{
+		Event:  "turtle_plan_gate",
+		TaskID: req.TaskID,
+		Extra: map[string]string{
+			"items":    fmt.Sprintf("%d", len(result.Consensus.Items)),
+			"score":    fmt.Sprintf("%d", result.Consensus.ConfidenceScore),
+			"plan":     truncate(result.Consensus.MergedPlan, 500),
+		},
+	}).Get(ctx, nil)
+
+	// Wait for signal or auto-approve after 10 minutes
+	reviewChan := workflow.GetSignalChannel(ctx, "turtle-plan-review")
+	decision := "APPROVED" // default
+
+	timerCtx, cancelTimer := workflow.WithCancel(ctx)
+	timer := workflow.NewTimer(timerCtx, 10*time.Minute)
+
+	sel := workflow.NewSelector(ctx)
+	sel.AddReceive(reviewChan, func(ch workflow.ReceiveChannel, _ bool) {
+		ch.Receive(ctx, &decision)
+		cancelTimer()
+		logger.Info(TurtlePrefix+" Plan review received", "Decision", decision)
+	})
+	sel.AddFuture(timer, func(f workflow.Future) {
+		decision = "APPROVED"
+		logger.Info(TurtlePrefix + " Plan gate timed out (10m) — auto-approving")
+	})
+	sel.Select(ctx)
+
+	if decision != "APPROVED" {
+		logger.Info(TurtlePrefix+" Plan REJECTED — aborting crab pipeline", "Decision", decision)
+		result.Status = "rejected"
+
+		recordOrganismLog(ctx, "turtle_crab", req.TaskID, req.Project, "rejected",
+			fmt.Sprintf("plan rejected at gate: %s", decision),
+			startTime, 2, "")
+
+		return &result, nil
+	}
+
+	logger.Info(TurtlePrefix + " Plan APPROVED — handing to crab for decomposition")
+
+	// Phase 3: Crab slices
 	crabReq := CrabDecompositionRequest{
 		PlanID:       req.TaskID,
 		Project:      req.Project,
@@ -373,12 +284,12 @@ func TurtleToCrabWorkflow(ctx workflow.Context, req TurtlePlanningRequest) (*Tur
 	}
 
 	result.MorselsEmitted = crabResult.MorselsEmitted
-	logger.Info(TurtlePrefix+" Turtle→Crab pipeline complete",
+	logger.Info(TurtlePrefix+" Turtle→Gate→Crab pipeline complete",
 		"TaskID", req.TaskID, "Morsels", len(result.MorselsEmitted))
 
 	recordOrganismLog(ctx, "turtle_crab", req.TaskID, req.Project, "completed",
-		fmt.Sprintf("turtle→crab pipeline: %d morsels emitted", len(result.MorselsEmitted)),
-		startTime, 2, "")
+		fmt.Sprintf("turtle→gate→crab pipeline: %d morsels emitted", len(result.MorselsEmitted)),
+		startTime, 3, "")
 
 	return &result, nil
 }

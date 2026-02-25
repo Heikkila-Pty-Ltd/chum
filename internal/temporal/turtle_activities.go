@@ -9,8 +9,82 @@ import (
 	"go.temporal.io/sdk/activity"
 )
 
+// TurtlePlanActivity runs a single LLM call to produce a high-level plan.
+// This is the simplified replacement for the 3-phase ceremony (Explore→Deliberate→Converge).
+// One agent analyzes the task and produces a TurtleConsensus directly.
+func (a *Activities) TurtlePlanActivity(ctx context.Context, req TurtlePlanningRequest) (*TurtleConsensus, error) {
+	logger := activity.GetLogger(ctx)
+	logger.Info(TurtlePrefix+" Single-stage planning", "TaskID", req.TaskID, "Project", req.Project)
+
+	prompt := fmt.Sprintf(`You are a senior engineering planner. Analyze this task and produce a structured plan.
+
+TASK: %s
+
+PROJECT: %s
+
+DESCRIPTION:
+%s
+
+Analyze the task thoroughly. Consider:
+- What files/functions need to change?
+- What are the risks and dependencies?
+- What's the simplest path to a working solution?
+- How should the work be broken into bite-sized deliverables (15-30 min each)?
+
+Produce a JSON object with:
+{
+  "merged_plan": "Your implementation plan in 3-5 paragraphs. Be specific about files, patterns, and approach.",
+  "confidence_score": 85,
+  "items": [
+    {
+      "title": "Deliverable title",
+      "description": "What needs to be built — specific enough for an AI agent to execute",
+      "confidence": 90,
+      "effort": "small|medium|large"
+    }
+  ],
+  "disagreements": []
+}
+
+IMPORTANT: Output ONLY the JSON object, no markdown fences.
+The confidence_score is 0-100 representing how confident you are in this plan.
+Each item should be a self-contained unit of work.`, req.TaskID, req.Project, req.Description)
+
+	agent := ResolveTierAgent(a.Tiers, req.Tier)
+	if agent == "" {
+		agent = ResolveTierAgent(a.Tiers, "balanced")
+	}
+	cliResult, err := a.runAgent(ctx, agent, prompt, req.WorkDir)
+	if err != nil {
+		return nil, fmt.Errorf("planning failed: %w", err)
+	}
+
+	var consensus TurtleConsensus
+	if err := robustParseJSON(cliResult.Output, &consensus); err != nil {
+		logger.Warn(TurtlePrefix+" Plan JSON parse failed, returning raw plan",
+			"error", err, "OutputLen", len(cliResult.Output))
+		// Fallback: wrap the raw output as a single-item plan
+		consensus = TurtleConsensus{
+			MergedPlan:      cliResult.Output,
+			ConfidenceScore: 50,
+			Items: []ConsensusItem{{
+				Title:       req.TaskID,
+				Description: "(auto-generated from unparseable LLM output)",
+				Confidence:  50,
+				Effort:      "medium",
+			}},
+		}
+	}
+
+	logger.Info(TurtlePrefix+" Plan produced",
+		"Score", consensus.ConfidenceScore, "Items", len(consensus.Items))
+
+	return &consensus, nil
+}
+
 // TurtleExploreActivity runs all 3 planning agents in parallel to independently
 // analyze the task. Each agent produces an approach, scope, risks, and morsel breakdown.
+// DEPRECATED: Replaced by TurtlePlanActivity for single-stage planning.
 func (a *Activities) TurtleExploreActivity(ctx context.Context, req TurtlePlanningRequest) ([]TurtleProposal, error) {
 	logger := activity.GetLogger(ctx)
 	logger.Info(TurtlePrefix+" Exploring task", "TaskID", req.TaskID, "Agents", len(PlanningAgents))

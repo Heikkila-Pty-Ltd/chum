@@ -234,6 +234,46 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 		}).Get(ctx, nil)
 	}
 
+	// ===== GRAPH-BRAIN TRACE — record execution graph for pattern crystallization =====
+	traceSessionID := req.TraceSessionID
+	if traceSessionID == "" {
+		traceSessionID = workflow.GetInfo(ctx).WorkflowExecution.ID
+	}
+	traceOpts := workflow.ActivityOptions{
+		StartToCloseTimeout: 5 * time.Second,
+		RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 1},
+	}
+	var lastTraceEventID string
+	// recordTrace is a fire-and-forget helper — trace errors never block the pipeline.
+	recordTrace := func(phase, eventType string, reward float64, isTerminal bool, metadata string) {
+		tCtx := workflow.WithActivityOptions(ctx, traceOpts)
+		var eventID string
+		if traceErr := workflow.ExecuteActivity(tCtx, a.RecordGraphTraceEventActivity, GraphTraceRequest{
+			ParentEventID: lastTraceEventID,
+			SessionID:     traceSessionID,
+			EventType:     eventType,
+			Phase:         phase,
+			ModelName:     req.Model,
+			Reward:        reward,
+			IsTerminal:    isTerminal,
+			Metadata:      metadata,
+		}).Get(ctx, &eventID); traceErr != nil {
+			logger.Warn(SharkPrefix+" graph trace failed (non-fatal)", "phase", phase, "error", traceErr)
+		}
+		if eventID != "" {
+			lastTraceEventID = eventID
+		}
+	}
+	backpropTrace := func(reward float64) {
+		tCtx := workflow.WithActivityOptions(ctx, traceOpts)
+		if traceErr := workflow.ExecuteActivity(tCtx, a.BackpropagateRewardActivity, BackpropagateRewardRequest{
+			SessionID: traceSessionID,
+			Reward:    reward,
+		}).Get(ctx, nil); traceErr != nil {
+			logger.Warn(SharkPrefix+" graph trace backprop failed (non-fatal)", "error", traceErr)
+		}
+	}
+
 	// ===== BUG PRIMING — inject population-level bug data =====
 	// Classify species early for priming (will be re-classified with plan data later).
 	earlySpecies := classifySpecies(req.TaskID, req.Prompt, nil)
@@ -290,6 +330,10 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 		"Files", len(plan.FilesToModify),
 	)
 	notify("plan", map[string]string{"title": plan.Summary, "agent": req.Agent})
+	recordTrace("plan", "phase_boundary", 0.1, false, traceMetadataJSON(
+		"agent", req.Agent, "summary", truncate(plan.Summary, 200),
+		"tokens_in", plan.TokenUsage.InputTokens, "tokens_out", plan.TokenUsage.OutputTokens,
+	))
 	updateSearchAttributes(chumWorkflowStatusGate)
 
 	// ===== PHASE 2: HUMAN GATE =====
@@ -392,6 +436,10 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 				ActivityName: "execute", Agent: execResult.Agent, Tokens: execResult.Tokens,
 			})
 			recordStep(fmt.Sprintf("execute[%d]", attempt+1), execStart, "ok")
+			recordTrace("execute", "phase_boundary", 0.3, false, traceMetadataJSON(
+				"agent", execResult.Agent, "exit_code", execResult.ExitCode,
+				"tokens_in", execResult.Tokens.InputTokens, "tokens_out", execResult.Tokens.OutputTokens,
+			))
 
 			awaitResumeGate()
 
@@ -454,10 +502,17 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 				if !review.Approved {
 					recordStep(fmt.Sprintf("review[%d]", attempt+1), reviewStart, "failed")
 					allFailures = append(allFailures, fmt.Sprintf("Attempt %d: review not approved: %s", attempt+1, strings.Join(review.Issues, "; ")))
+					recordTrace("review", "phase_boundary", -0.1, false, traceMetadataJSON(
+						"reviewer", review.ReviewerAgent, "approved", false,
+						"issues", strings.Join(review.Issues, "; "),
+					))
 				} else {
 					logger.Info(SharkPrefix+" Code review approved", "Reviewer", review.ReviewerAgent)
 					notify("review_approved", map[string]string{"reviewer": review.ReviewerAgent})
 					recordStep(fmt.Sprintf("review[%d]", attempt+1), reviewStart, "ok")
+					recordTrace("review", "phase_boundary", 0.5, false, traceMetadataJSON(
+						"reviewer", review.ReviewerAgent, "approved", true,
+					))
 				}
 			}
 
@@ -495,6 +550,9 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 				continue
 			} else {
 				recordStep(fmt.Sprintf("ubs[%d]", attempt+1), ubsStart, "ok")
+				recordTrace("ubs", "phase_boundary", 0.6, false, traceMetadataJSON(
+					"critical", ubsResult.Critical, "total_findings", ubsResult.TotalFindings,
+				))
 			}
 
 			awaitResumeGate()
@@ -514,6 +572,15 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 
 			if dodResult.Passed {
 				recordStep(fmt.Sprintf("dod[%d]", attempt+1), dodStart, "ok")
+				recordTrace("dod", "phase_boundary", 0.9, false, traceMetadataJSON(
+					"passed", true, "checks", len(dodResult.Checks),
+				))
+				// Terminal success — record and backpropagate
+				recordTrace("complete", "phase_boundary", 1.0, true, traceMetadataJSON(
+					"cost_usd", totalTokens.CostUSD,
+					"tokens_in", totalTokens.InputTokens, "tokens_out", totalTokens.OutputTokens,
+				))
+				backpropTrace(1.0)
 
 				duration := workflow.Now(ctx).Sub(startTime)
 				notify("dod_pass", map[string]string{"duration": fmtDuration(duration), "cost": fmtCost(totalTokens.CostUSD)})
@@ -616,6 +683,9 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 
 			// DoD failed — classify before feeding back to agent
 			recordStep(fmt.Sprintf("dod[%d]", attempt+1), dodStart, "failed")
+			recordTrace("dod", "phase_boundary", -0.2, false, traceMetadataJSON(
+				"passed", false, "failures", truncate(strings.Join(dodResult.Failures, "; "), 500),
+			))
 			failureMsg := strings.Join(dodResult.Failures, "; ")
 
 			// JUDGEMENT LAYER: infrastructure failures are NOT the shark's fault.
@@ -763,6 +833,12 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 	// ===== ESCALATE — all tiers exhausted =====
 	awaitResumeGate()
 	updateSearchAttributes(chumWorkflowStatusEscalated)
+
+	// Terminal failure — record and backpropagate
+	recordTrace("escalate", "phase_boundary", -0.5, true, traceMetadataJSON(
+		"attempts", escalationAttempt, "failures", len(allFailures),
+	))
+	backpropTrace(-0.5)
 
 	escalateStart := workflow.Now(ctx)
 	notify("escalate", map[string]string{"attempts": fmt.Sprintf("%d", escalationAttempt)})

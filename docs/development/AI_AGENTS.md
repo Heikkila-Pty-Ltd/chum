@@ -10,6 +10,7 @@ Before coding in CHUM, enforce the branch workflow:
 2. Start from clean `master`, then create one of: `feature/*`, `chore/*`, `fix/*`, `refactor/*`
 3. Optionally create a worktree: `git worktree add -b feature/your-feature ../chum-feature`
 4. Run the worktree training checkpoint in `docs/development/GIT_WORKTREE_WORKFLOW.md`
+5. Wire `./scripts/hooks/stop-checks.sh` into your agent Stop hook to enforce fresh compile/lint/test runs on dirty trees.
 
 For all code changes, keep PRs on branches only (never direct `master` commits).
 
@@ -33,6 +34,7 @@ curl -s -X POST http://localhost:8900/tasks \
 
 # Quality gates
 scripts/test-safe.sh ./internal/temporal/...  # Locked + timeout + JSON go test
+./scripts/hooks/stop-checks.sh                # Dirty-tree gate with 60s freshness cache
 ```
 
 ## Task Lifecycle

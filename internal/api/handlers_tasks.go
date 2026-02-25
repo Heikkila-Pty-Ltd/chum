@@ -111,17 +111,31 @@ func (s *Server) handleTaskCreate(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	var mirroredIssueID string
+	if s.taskMirror != nil {
+		mirrorID, mirrorErr := s.taskMirror.MirrorTaskCreate(ctx, id, req)
+		if mirrorErr != nil {
+			s.logger.Warn("task mirror failed", "task_id", id, "project", req.Project, "error", mirrorErr)
+		} else {
+			mirroredIssueID = mirrorID
+		}
+	}
+
 	s.logger.Info("task created via API", "id", id, "project", req.Project, "priority", req.Priority)
 
 	// Fire async crab review to validate sizing and dependencies
 	s.triggerCrabReview(req.Project, id, req.Title, req.Description)
 
 	w.WriteHeader(http.StatusCreated)
-	writeJSON(w, map[string]any{
+	resp := map[string]any{
 		"id":      id,
 		"status":  req.Status,
 		"project": req.Project,
-	})
+	}
+	if mirroredIssueID != "" {
+		resp["beads_mirror_id"] = mirroredIssueID
+	}
+	writeJSON(w, resp)
 }
 
 // GET /tasks?project=<name>&status=<status> — list tasks

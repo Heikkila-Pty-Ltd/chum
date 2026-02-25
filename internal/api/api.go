@@ -26,10 +26,21 @@ type Server struct {
 	startTime      time.Time
 	httpServer     *http.Server
 	authMiddleware *AuthMiddleware
+	taskMirror     TaskMirror
+}
+
+// ServerOptions configures optional API integrations.
+type ServerOptions struct {
+	TaskMirror TaskMirror
 }
 
 // NewServer creates a new API server.
 func NewServer(cfg *config.Config, s *store.Store, dag *graph.DAG, logger *slog.Logger) (*Server, error) {
+	return NewServerWithOptions(cfg, s, dag, logger, ServerOptions{})
+}
+
+// NewServerWithOptions creates a new API server with optional integrations.
+func NewServerWithOptions(cfg *config.Config, s *store.Store, dag *graph.DAG, logger *slog.Logger, opts ServerOptions) (*Server, error) {
 	authMiddleware, err := NewAuthMiddleware(&cfg.API.Security, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize auth middleware: %w", err)
@@ -42,6 +53,7 @@ func NewServer(cfg *config.Config, s *store.Store, dag *graph.DAG, logger *slog.
 		logger:         logger,
 		startTime:      time.Now(),
 		authMiddleware: authMiddleware,
+		taskMirror:     opts.TaskMirror,
 	}, nil
 }
 

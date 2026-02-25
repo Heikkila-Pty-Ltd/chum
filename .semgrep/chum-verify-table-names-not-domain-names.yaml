@@ -1,0 +1,22 @@
+rules:
+  - id: chum-verify-table-names-not-domain-names
+    paths:
+      include:
+        - internal/store/*.go
+    patterns:
+      - pattern-either:
+        - pattern: |
+            "morsels"
+        - pattern: |
+            "morsel"
+    message: |
+      Schema verification must use actual SQL table names, not domain model names.
+      The domain calls them "morsels" but the SQL table is "tasks" (legacy naming).
+
+      Using domain names in schema checks causes startup crashes:
+        'critical table "morsels" is missing'
+
+      Always verify names against actual CREATE TABLE DDL or run:
+        sqlite3 <db> .tables
+    languages: [go]
+    severity: WARNING

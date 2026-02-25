@@ -1,0 +1,16 @@
+rules:
+  - id: chum-schema-ddl-requires-migration
+    paths:
+      include:
+        - internal/store/*.go
+    pattern-regex: "CREATE TABLE IF NOT EXISTS"
+    message: |
+      Schema DDL change detected. CRITICAL: Every column in CREATE TABLE DDL
+      MUST have a matching addColumnIfNotExists() call in migrate().
+
+      Without this, new DBs get the column but existing DBs don't. The binary
+      works in CI (fresh DB) but crashes in production (existing DB).
+
+      The DDL and migrate() are a coupled pair. Change one, change both.
+    languages: [go]
+    severity: WARNING

@@ -1,0 +1,18 @@
+rules:
+  - id: chum-sqlite-json-insert-append
+    paths:
+      include:
+        - internal/store/*.go
+    patterns:
+      - pattern: |
+          json_insert($COL, "$[#]", $VAL)
+    message: |
+      SQLite json_insert with $[#] append syntax is NOT SUPPORTED on this server.
+      This syntax requires SQLite 3.45+.
+
+      Instead, use a direct UPDATE with the full replacement JSON string,
+      or use json_array() to construct the value.
+
+      This applies to any genome or lesson manipulation done via raw SQL.
+    languages: [go]
+    severity: ERROR

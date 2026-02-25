@@ -1,0 +1,46 @@
+rules:
+  - id: chum-context-cancel-must-defer
+    paths:
+      include:
+        - "**/*.go"
+    patterns:
+      - pattern: |
+          $CTX, $CANCEL := context.WithCancel(...)
+          ...
+      - pattern-not: |
+          $CTX, $CANCEL := context.WithCancel(...)
+          defer $CANCEL()
+          ...
+    message: |
+      context.WithCancel without matching defer cancel().
+
+      Every context.WithCancel/context.WithTimeout MUST have a matching
+      defer cancel() in the same scope. Leaked context cancellation paths
+      cause goroutine leaks and resource exhaustion.
+
+      Fix: Add 'defer cancel()' immediately after the context creation.
+    languages: [go]
+    severity: ERROR
+
+  - id: chum-context-timeout-must-defer
+    paths:
+      include:
+        - "**/*.go"
+    patterns:
+      - pattern: |
+          $CTX, $CANCEL := context.WithTimeout(...)
+          ...
+      - pattern-not: |
+          $CTX, $CANCEL := context.WithTimeout(...)
+          defer $CANCEL()
+          ...
+    message: |
+      context.WithTimeout without matching defer cancel().
+
+      Every context.WithCancel/context.WithTimeout MUST have a matching
+      defer cancel() in the same scope. Leaked context cancellation paths
+      cause goroutine leaks and resource exhaustion.
+
+      Fix: Add 'defer cancel()' immediately after the context creation.
+    languages: [go]
+    severity: ERROR

@@ -12,13 +12,13 @@ import (
 // cliCommand — builds exec.Cmd for coding mode (prompt piped via stdin)
 // ---------------------------------------------------------------------------
 
-func TestCliCommand_Claude_FallsToCodex(t *testing.T) {
-	// claude is not a recognized CLI prefix — falls to codex default
+func TestCliCommand_Claude(t *testing.T) {
+	// claude is a recognized CLI prefix with --dangerously-skip-permissions
 	cmd := cliCommand("claude", "/tmp/work")
 
-	require.Contains(t, cmd.Path, "codex")
+	require.Contains(t, cmd.Path, "claude")
 	require.Equal(t, []string{
-		"codex", "exec", "--full-auto", "--json",
+		"claude", "--dangerously-skip-permissions",
 	}, cmd.Args)
 	require.Equal(t, "/tmp/work", cmd.Dir)
 }
@@ -131,12 +131,12 @@ func TestCliCommand_PromptNotInArgs(t *testing.T) {
 // cliReviewCommand — builds exec.Cmd for review mode (prompt piped via stdin)
 // ---------------------------------------------------------------------------
 
-func TestCliReviewCommand_Claude_FallsToCodex(t *testing.T) {
-	// claude is not a recognized CLI prefix — falls to codex default
+func TestCliReviewCommand_Claude(t *testing.T) {
+	// claude is a recognized CLI prefix with --dangerously-skip-permissions
 	cmd := cliReviewCommand("claude", "/tmp/work")
 
 	require.Equal(t, []string{
-		"codex", "exec", "--full-auto",
+		"claude", "--dangerously-skip-permissions",
 	}, cmd.Args)
 	require.Equal(t, "/tmp/work", cmd.Dir)
 }
@@ -205,31 +205,18 @@ func TestCodingVsReviewMode_CodexArgDifferences(t *testing.T) {
 	require.False(t, reviewHasJSON, "codex review mode should not include --json")
 }
 
-func TestCodingVsReviewMode_ClaudeFallsToCodexArgDifferences(t *testing.T) {
-	// claude falls to codex in both modes; coding has --json, review doesn't
+func TestCodingVsReviewMode_Claude(t *testing.T) {
+	// claude uses --dangerously-skip-permissions in both modes
 	codingCmd := cliCommand("claude", "/tmp")
 	reviewCmd := cliReviewCommand("claude", "/tmp")
 
-	// Both use codex binary
-	require.Contains(t, codingCmd.Path, "codex")
-	require.Contains(t, reviewCmd.Path, "codex")
+	// Both use claude binary
+	require.Contains(t, codingCmd.Path, "claude")
+	require.Contains(t, reviewCmd.Path, "claude")
 
-	// Coding mode has --json, review mode does not
-	codingHasJSON := false
-	for _, arg := range codingCmd.Args {
-		if arg == "--json" {
-			codingHasJSON = true
-		}
-	}
-	require.True(t, codingHasJSON, "codex coding mode should include --json")
-
-	reviewHasJSON := false
-	for _, arg := range reviewCmd.Args {
-		if arg == "--json" {
-			reviewHasJSON = true
-		}
-	}
-	require.False(t, reviewHasJSON, "codex review mode should not include --json")
+	// Both use --dangerously-skip-permissions
+	require.Equal(t, []string{"claude", "--dangerously-skip-permissions"}, codingCmd.Args)
+	require.Equal(t, []string{"claude", "--dangerously-skip-permissions"}, reviewCmd.Args)
 }
 
 // ---------------------------------------------------------------------------

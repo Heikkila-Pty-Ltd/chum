@@ -434,6 +434,13 @@ func main() {
 		}
 		return
 	}
+	if len(os.Args) > 1 && os.Args[1] == "watchdog" {
+		if err := runWatchdogCommand(os.Args, logger); err != nil {
+			logger.Error("watchdog failed", "error", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	configPath := flag.String("config", "chum.toml", "path to config file")
 	dev := flag.Bool("dev", false, "use text log format (default is JSON)")
@@ -735,6 +742,7 @@ func main() {
 		} else {
 			logger.Info("janitor schedule registered", "interval", "1h")
 		}
+
 	}()
 
 	// Start API server

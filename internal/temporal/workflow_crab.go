@@ -348,7 +348,7 @@ func escalateToPlanningCeremony(ctx workflow.Context, req CrabDecompositionReque
 		SeedTaskID:        req.PlanID,
 		SeedTaskTitle:     req.PlanID,
 		SeedTaskPrompt:    req.PlanMarkdown + "\n\nCrab fallback reason: " + reason,
-		AutoMode:          false,
+		AutoMode:          true,
 		TraceSessionID:    planningWorkflowID,
 	}
 

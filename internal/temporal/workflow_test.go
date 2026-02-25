@@ -1007,7 +1007,7 @@ func TestDispatcherAppliesSlowStepThresholdFallback(t *testing.T) {
 	require.True(t, captured, "dispatcher should dispatch PlanningCeremonyWorkflow")
 	require.Equal(t, defaultSlowStepThreshold, capturedReq.SlowStepThreshold)
 	require.Equal(t, "Build dashboard", capturedReq.SeedTaskTitle)
-	require.False(t, capturedReq.AutoMode)
+	require.True(t, capturedReq.AutoMode)
 }
 
 func TestDispatcherBypassesPlanningForCrabEmittedMorsel(t *testing.T) {
@@ -1080,7 +1080,7 @@ func TestSeededPlanningRequestIncludesTimeouts(t *testing.T) {
 	)
 	require.Equal(t, 10*time.Minute, req.SignalTimeout)
 	require.Equal(t, 30*time.Minute, req.SessionTimeout)
-	require.False(t, req.AutoMode)
+	require.True(t, req.AutoMode)
 }
 
 func TestIsStalePlanningWorkflow(t *testing.T) {

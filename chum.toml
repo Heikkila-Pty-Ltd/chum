@@ -3,10 +3,10 @@
 
 [general]
 tick_interval = "1m"
-max_per_tick = 3
-max_concurrent_coders = 3
-max_concurrent_reviewers = 2
-max_concurrent_total = 2
+max_per_tick = 5
+max_concurrent_coders = 5
+max_concurrent_reviewers = 3
+max_concurrent_total = 5
 stuck_timeout = "30m"
 max_retries = 2
 log_level = "info"
@@ -43,9 +43,9 @@ require_estimate = true
 require_acceptance = true
 
 [rate_limits]
-window_5h_cap = 500000       # 500k output tokens per 5h window
-weekly_cap = 5000000          # 5M output tokens per week
-weekly_headroom_pct = 20      # 20% headroom before throttling kicks in
+window_5h_cap = 99999999      # uncapped — let it rip
+weekly_cap = 99999999          # uncapped — let it rip
+weekly_headroom_pct = 0        # no throttling headroom
 
 # --- Codex only ---
 [providers.codex]

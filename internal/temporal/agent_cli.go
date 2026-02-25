@@ -157,7 +157,7 @@ func ResolveProviderCLI(providers map[string]config.Provider, providerKey string
 // Unknown keys are returned lowercased.
 func normalizeAgent(agent string) string {
 	lower := strings.ToLower(strings.TrimSpace(agent))
-	for _, prefix := range []string{"gemini", "codex", "deepseek"} {
+	for _, prefix := range []string{"gemini", "codex", "deepseek", "claude"} {
 		if strings.HasPrefix(lower, prefix) {
 			return prefix
 		}
@@ -285,7 +285,13 @@ func (a *Activities) cliCommandWithModel(agent, workDir, model string) *exec.Cmd
 			args = append(args, "--model", model)
 		}
 		cmd = exec.Command("deepseek", args...)
-	default: // codex fallback — claude is not installed
+	case "claude":
+		args := []string{"--dangerously-skip-permissions"}
+		if model != "" {
+			args = append(args, "--model", model)
+		}
+		cmd = exec.Command("claude", args...)
+	default: // codex fallback
 		args := []string{"exec", "--full-auto", "--json"}
 		if model != "" {
 			args = append(args, "-m", model)
@@ -311,6 +317,8 @@ func (a *Activities) cliReviewCommand(agent, workDir string) *exec.Cmd {
 		cmd = exec.Command("gemini", "-p", "", "--yolo", "-o", "json")
 	case "deepseek":
 		cmd = exec.Command("deepseek", "--json")
+	case "claude":
+		cmd = exec.Command("claude", "--dangerously-skip-permissions")
 	default: // codex fallback
 		cmd = exec.Command("codex", "exec", "--full-auto")
 	}
@@ -420,6 +428,18 @@ func (a *Activities) runAgentWithFailover(ctx context.Context, tier, prompt, wor
 	var lastResult CLIResult
 
 	for i, agent := range chain {
+		// Check persisted exhaustion block (survives restarts).
+		if a.Store != nil && !globalFailureTracker.isCircuitOpen(agent) {
+			if block, blockErr := a.Store.GetBlock("agent", "exhausted:"+agent); blockErr == nil && block != nil && block.BlockedUntil.After(time.Now()) {
+				// Re-hydrate the in-memory circuit breaker from the persisted block.
+				for j := 0; j < agentCircuitBreakerThreshold; j++ {
+					globalFailureTracker.recordFailure(agent)
+				}
+				logger.Warn("💾 Restored persisted exhaustion block — skipping agent",
+					"Agent", agent, "BlockedUntil", block.BlockedUntil.Format(time.RFC3339))
+			}
+		}
+
 		// Circuit breaker: skip agents that have hit 3 consecutive failures
 		if globalFailureTracker.isCircuitOpen(agent) {
 			logger.Warn("⚡ Circuit breaker OPEN — skipping agent",
@@ -469,6 +489,18 @@ func (a *Activities) runAgentWithFailover(ctx context.Context, tier, prompt, wor
 			a.alertAgentFailure(ctx, agent, tier, "circuit_breaker_tripped",
 				fmt.Sprintf("🔴 CIRCUIT BREAKER: Agent %s has failed %d times consecutively. Machine stopped for this agent.",
 					agent, failCount))
+
+			// Persist exhaustion block so it survives restarts.
+			if errors.Is(err, ErrModelExhausted) && a.Store != nil {
+				blockDuration := 6 * time.Hour
+				//nolint:errcheck // best-effort persistence
+				a.Store.SetBlockWithMetadata("agent", "exhausted:"+agent,
+					time.Now().Add(blockDuration),
+					fmt.Sprintf("model exhausted after %d consecutive failures", failCount),
+					map[string]interface{}{"agent": agent, "failures": failCount})
+				logger.Warn("💾 Persisted exhaustion block — agent will stay blocked across restarts",
+					"Agent", agent, "BlockDuration", blockDuration)
+			}
 		}
 	}
 

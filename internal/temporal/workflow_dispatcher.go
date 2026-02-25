@@ -845,7 +845,7 @@ func seededPlanningRequestFromCandidate(
 		SeedTaskID:        c.TaskID,
 		SeedTaskTitle:     title,
 		SeedTaskPrompt:    c.Prompt,
-		AutoMode:          false,
+		AutoMode:          true,
 		TraceSessionID:    fmt.Sprintf("dispatch-planning-%s", c.TaskID),
 	}
 }

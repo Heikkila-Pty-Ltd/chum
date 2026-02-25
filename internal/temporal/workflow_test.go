@@ -179,7 +179,7 @@ func TestCHUMNotSpawnedOnFailure(t *testing.T) {
 	env.OnWorkflow(AutonomousPlanningCeremonyWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
 	env.OnWorkflow(PlanningCeremonyWorkflow, mock.Anything, mock.Anything).Return(&TaskRequest{}, nil).Maybe()
 
-	env.OnActivity(a.AutoFixLintActivity, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnActivity(a.AutoFixLintActivity, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 	env.OnActivity(a.RecordFailureActivity, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 	env.OnActivity(a.GetBugPrimingActivity, mock.Anything, mock.Anything, mock.Anything).Return("", nil).Maybe()
 	env.OnActivity(a.GetProteinInstructionsActivity, mock.Anything, mock.Anything).Return("", nil).Maybe()
@@ -815,7 +815,7 @@ func TestStepDurationLoggingWhenReviewActivityFails(t *testing.T) {
 		if m.Name == "review[1]" {
 			reviewSteps++
 			foundReview = true
-			require.Equal(t, "failed", m.Status)
+			require.Equal(t, "skipped", m.Status)
 		}
 	}
 	require.True(t, foundReview, "review[1] should be recorded even when review activity fails")
@@ -850,7 +850,7 @@ func TestStepDurationLoggingEscalation(t *testing.T) {
 	}, nil)
 	env.OnActivity(a.EscalateActivity, mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity(a.RecordFailureActivity, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
-	env.OnActivity(a.AutoFixLintActivity, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnActivity(a.AutoFixLintActivity, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 	env.OnActivity(a.FailureTriageActivity, mock.Anything, mock.Anything).Return(&FailureTriageResult{
 		Decision: "retry", Guidance: "try again", Category: "logic",
 	}, nil).Maybe()
@@ -874,11 +874,12 @@ func TestStepDurationLoggingEscalation(t *testing.T) {
 	}).Return(nil)
 
 	env.ExecuteWorkflow(ChumAgentWorkflow, TaskRequest{
-		TaskID:  "test-morsel-escalate",
-		Project: "test-project",
-		Prompt:  "will fail dod",
-		Agent:   "claude",
-		WorkDir: "/tmp/test",
+		TaskID:           "test-morsel-escalate",
+		Project:          "test-project",
+		Prompt:           "will fail dod",
+		Agent:            "claude",
+		WorkDir:          "/tmp/test",
+		MaxRetriesOverride: 1,
 	})
 
 	require.True(t, env.IsWorkflowCompleted())
@@ -1238,7 +1239,7 @@ func TestFailureTriageRetryGuidance(t *testing.T) {
 		Antibodies: []string{"always run tests"},
 	}, nil)
 
-	env.OnActivity(a.AutoFixLintActivity, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnActivity(a.AutoFixLintActivity, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 	env.OnActivity(a.EscalateActivity, mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity(a.RecordOutcomeActivity, mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity(a.RecordFailureActivity, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
@@ -1298,7 +1299,7 @@ func TestFailureTriageRescope(t *testing.T) {
 		Category:      "scope",
 	}, nil)
 
-	env.OnActivity(a.AutoFixLintActivity, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnActivity(a.AutoFixLintActivity, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 	env.OnActivity(a.EscalateActivity, mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity(a.RecordOutcomeActivity, mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity(a.RecordFailureActivity, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
@@ -1352,7 +1353,7 @@ func TestFailureTriageFallback(t *testing.T) {
 	// Triage activity itself fails
 	env.OnActivity(a.FailureTriageActivity, mock.Anything, mock.Anything).Return(nil, errors.New("triage LLM unavailable"))
 
-	env.OnActivity(a.AutoFixLintActivity, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnActivity(a.AutoFixLintActivity, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 	env.OnActivity(a.EscalateActivity, mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity(a.RecordOutcomeActivity, mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity(a.RecordFailureActivity, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()

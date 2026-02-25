@@ -319,11 +319,9 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 
 	// ===== PHASE 2: (gate removed — ready status IS the approval) =====
 
-	// ===== PHASE 3-5: EXECUTE → REVIEW → CHECK LOOP (minimal retry mode) =====
-	const maxHandoffs = 3 // review handoff budget per attempt
+	// ===== PHASE 3-5: EXECUTE → REVIEW → CHECK LOOP =====
 	handoffCount := 0
 	escalationAttempt := 0
-	currentReviewer := req.Reviewer
 	var lastFailedProvider string
 	var lastFailedTier string
 	_ = lastFailedProvider // used in escalation path
@@ -361,7 +359,7 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 		if req.Reviewer == "" {
 			req.Reviewer = DefaultReviewer(tier.CLI)
 		}
-		currentReviewer = req.Reviewer
+
 
 		logger.Info(SharkPrefix+" Tier escalation",
 			"Tier", tier.Tier, "Provider", tier.ProviderKey, "CLI", tier.CLI, "Model", tier.Model,
@@ -433,28 +431,22 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 				recordStep(fmt.Sprintf("sentinel[%d]", attempt+1), sentinelStart, status)
 			}
 
-			// --- CROSS-MODEL REVIEW LOOP ---
+			// --- REVIEW ---
 			updateSearchAttributes(chumWorkflowStatusReview)
 
 			reviewStart := workflow.Now(ctx)
-			effectiveMaxHandoffs := maxHandoffs
-			if req.MaxHandoffsOverride > 0 {
-				effectiveMaxHandoffs = req.MaxHandoffsOverride
+			reviewCtx := workflow.WithActivityOptions(ctx, reviewOpts)
+			var review ReviewResult
+
+			reviewReq := req
+			if strings.TrimSpace(reviewReq.Reviewer) == "" {
+				reviewReq.Reviewer = DefaultReviewer(currentAgent)
 			}
-			for handoff := 0; handoff < effectiveMaxHandoffs; handoff++ {
-				reviewCtx := workflow.WithActivityOptions(ctx, reviewOpts)
-				var review ReviewResult
 
-				// Override the agent for this execution so the reviewer field is correct
-				reviewReq := req
-				reviewReq.Reviewer = currentReviewer
-
-				if err := workflow.ExecuteActivity(reviewCtx, a.CodeReviewActivity, plan, execResult, reviewReq).Get(ctx, &review); err != nil {
-					logger.Warn(SharkPrefix+" Review activity failed", "error", err)
-					recordStep(fmt.Sprintf("review[%d]", attempt+1), reviewStart, "skipped")
-					break // don't block on review infrastructure failures
-				}
-
+			if err := workflow.ExecuteActivity(reviewCtx, a.CodeReviewActivity, plan, execResult, reviewReq).Get(ctx, &review); err != nil {
+				logger.Warn(SharkPrefix+" Review activity failed (non-blocking)", "error", err)
+				recordStep(fmt.Sprintf("review[%d]", attempt+1), reviewStart, "skipped")
+			} else {
 				totalTokens.Add(review.Tokens)
 				activityTokens = append(activityTokens, ActivityTokenUsage{
 					ActivityName: "review", Agent: review.ReviewerAgent, Tokens: review.Tokens,
@@ -462,11 +454,11 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 				if !review.Approved {
 					recordStep(fmt.Sprintf("review[%d]", attempt+1), reviewStart, "failed")
 					allFailures = append(allFailures, fmt.Sprintf("Attempt %d: review not approved: %s", attempt+1, strings.Join(review.Issues, "; ")))
-					continue
+				} else {
+					logger.Info(SharkPrefix+" Code review approved", "Reviewer", review.ReviewerAgent)
+					notify("review_approved", map[string]string{"reviewer": review.ReviewerAgent})
+					recordStep(fmt.Sprintf("review[%d]", attempt+1), reviewStart, "ok")
 				}
-				logger.Info(SharkPrefix+" Code review approved", "Reviewer", review.ReviewerAgent)
-				notify("review_approved", map[string]string{"reviewer": review.ReviewerAgent})
-				recordStep(fmt.Sprintf("review[%d]", attempt+1), reviewStart, "ok")
 			}
 
 			awaitResumeGate()

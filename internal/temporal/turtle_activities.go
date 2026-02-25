@@ -604,7 +604,7 @@ func (a *Activities) TurtleEmitActivity(
 		return nil, fmt.Errorf("DAG not configured — cannot emit morsels")
 	}
 
-	var emitted []string
+	emitted := make([]string, 0, len(morsels))
 	for _, m := range morsels {
 		dodJSON, _ := json.Marshal(m.DoDChecks)
 

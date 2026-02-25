@@ -1926,13 +1926,13 @@ func persistPlanningCandidateScoreAdjustment(ctx workflow.Context, req PlanningR
 	}
 }
 
-func applyPlanningScoreAdjustment(adjustments map[string]float64, candidateID string, delta float64) float64 {
+func applyPlanningScoreAdjustment(adjustments map[string]float64, candidateID string, delta float64) {
 	if adjustments == nil {
-		return 0
+		return
 	}
 	candidateID = strings.TrimSpace(candidateID)
 	if candidateID == "" {
-		return 0
+		return
 	}
 
 	current := adjustments[candidateID] + delta
@@ -1943,7 +1943,6 @@ func applyPlanningScoreAdjustment(adjustments map[string]float64, candidateID st
 		current = -50
 	}
 	adjustments[candidateID] = current
-	return current
 }
 
 type planningCandidate struct {

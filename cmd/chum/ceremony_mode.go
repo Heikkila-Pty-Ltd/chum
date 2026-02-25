@@ -43,7 +43,7 @@ type ceremonyCandidateOption struct {
 	Recommended bool
 }
 
-func runCeremonyMode(args []string, logger *slog.Logger) error {
+func runCeremonyMode(args []string, _ *slog.Logger) error {
 	fs := flag.NewFlagSet("ceremony", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 
@@ -94,7 +94,7 @@ func runCeremonyMode(args []string, logger *slog.Logger) error {
 	defer tc.Close()
 
 	sessionID := strings.TrimSpace(*sessionIDFlag)
-	project := ""
+	var project string
 
 	if sessionID == "" {
 		resolvedProject, resolvedWorkdir, err := resolveCeremonyProjectAndWorkdir(cfg, *projectFlag, *workdirFlag)
@@ -147,7 +147,7 @@ func runCeremonyMode(args []string, logger *slog.Logger) error {
 			return fmt.Errorf("start planning ceremony: %w", err)
 		}
 		sessionID = we.GetID()
-		recordCeremonyControlTrace(st, sessionID, project, "control", "control_session_started", "cli-ceremony",
+		recordCeremonyControlTrace(st, sessionID, project, "control", "control_session_started",
 			"planning session started from CLI ceremony",
 			fmt.Sprintf(
 				"project=%s work_dir=%s agent=%s tier=%s top_k=%d signal_timeout=%s session_timeout=%s",
@@ -226,12 +226,12 @@ func runCeremonyLoop(tc tclient.Client, st *store.Store, sessionID, project stri
 			return err
 		}
 		prompt, _ := inferCeremonyPrompt(st, sessionID, status)
-		recordCeremonyControlTrace(st, sessionID, project, "control_status", "control_status_requested", "cli-ceremony",
+		recordCeremonyControlTrace(st, sessionID, project, "control_status", "control_status_requested",
 			fmt.Sprintf("status requested: %s", status),
 			fmt.Sprintf("status=%s", status),
 			map[string]any{"source": "cli-ceremony", "status": status},
 		)
-		recordCeremonyControlTrace(st, sessionID, project, "control_prompt", "control_prompt_presented", "cli-ceremony",
+		recordCeremonyControlTrace(st, sessionID, project, "control_prompt", "control_prompt_presented",
 			fmt.Sprintf("prompt presented phase=%s signal=%s", prompt.Phase, prompt.ExpectedSignal),
 			fmt.Sprintf("prompt=%s", prompt.Prompt),
 			map[string]any{"source": "cli-ceremony", "phase": prompt.Phase, "expected_signal": prompt.ExpectedSignal, "cycle": prompt.Cycle},
@@ -271,7 +271,7 @@ func runCeremonyLoop(tc tclient.Client, st *store.Store, sessionID, project stri
 				fmt.Printf("stop failed: %v\n", err)
 				continue
 			}
-			recordCeremonyControlTrace(st, sessionID, project, "control", "control_session_stopped", "cli-ceremony",
+			recordCeremonyControlTrace(st, sessionID, project, "control", "control_session_stopped",
 				"planning session stopped from CLI ceremony", "reason="+reason,
 				map[string]any{"source": "cli-ceremony", "reason": reason},
 			)
@@ -292,7 +292,7 @@ func runCeremonyLoop(tc tclient.Client, st *store.Store, sessionID, project stri
 			fmt.Printf("signal failed: %v\n", err)
 			continue
 		}
-		recordCeremonyControlTrace(st, sessionID, project, ceremonyStageForSignal(signalName), "control_signal_submitted", "cli-ceremony",
+		recordCeremonyControlTrace(st, sessionID, project, ceremonyStageForSignal(signalName), "control_signal_submitted",
 			fmt.Sprintf("signal %s submitted", signalName), fmt.Sprintf("signal=%s value=%s", signalName, value),
 			map[string]any{"source": "cli-ceremony", "signal": signalName, "value": value},
 		)
@@ -804,9 +804,10 @@ func inferCeremonyProject(st *store.Store, sessionID string) string {
 
 func recordCeremonyControlTrace(
 	st *store.Store,
-	sessionID, project, stage, eventType, actor, summary, fullText string,
+	sessionID, project, stage, eventType, summary, fullText string,
 	metadata map[string]any,
 ) {
+
 	if st == nil {
 		return
 	}
@@ -826,7 +827,7 @@ func recordCeremonyControlTrace(
 		Project:      strings.TrimSpace(project),
 		Stage:        strings.TrimSpace(stage),
 		EventType:    eventType,
-		Actor:        strings.TrimSpace(actor),
+		Actor:        "cli-ceremony",
 		SummaryText:  strings.TrimSpace(summary),
 		FullText:     fullText,
 		MetadataJSON: metaJSON,

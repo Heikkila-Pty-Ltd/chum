@@ -865,7 +865,7 @@ func parseTaskErrorLog(raw string) []string {
 	raw = strings.ReplaceAll(raw, "\r\n", "\n")
 	lines := strings.Split(raw, "\n")
 
-	flush := func(current []string, out []string) ([]string, []string) {
+	flush := func(current []string, out []string) ([]string, []string) { //nolint:unparam // first return is always nil by design (resets current)
 		joined := strings.TrimSpace(strings.Join(current, "\n"))
 		if joined != "" {
 			out = append(out, joined)

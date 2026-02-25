@@ -175,7 +175,7 @@ func AutonomousPlanningCeremonyWorkflow(ctx workflow.Context, req TurtlePlanning
 	if err := workflow.ExecuteActivity(planCtx, a.TurtlePlanArtifactActivity, req).Get(ctx, &artifact); err != nil {
 		recordStep("plan_artifact", planStart, "failed")
 		notify("turtle_failed", map[string]string{"phase": "plan_artifact", "error": err.Error()})
-		return &TurtlePlanningResult{Status: "failed", TaskID: req.TaskID, StepMetrics: stepMetrics}, nil
+		return &TurtlePlanningResult{Status: "failed", TaskID: req.TaskID, StepMetrics: stepMetrics}, fmt.Errorf("plan artifact: %w", err)
 	}
 	if strings.TrimSpace(artifact.PlanMarkdown) == "" {
 		recordStep("plan_artifact", planStart, "failed")
@@ -223,7 +223,7 @@ func AutonomousPlanningCeremonyWorkflow(ctx workflow.Context, req TurtlePlanning
 			TaskID:      req.TaskID,
 			StepMetrics: stepMetrics,
 			TotalTokens: totalTokens,
-		}, nil
+		}, fmt.Errorf("crab handoff: %w", err)
 	}
 	totalTokens.Add(crabResult.TotalTokens)
 

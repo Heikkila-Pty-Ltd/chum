@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"fmt"
+	"os"
 	"strings"
 
 	_ "modernc.org/sqlite"
@@ -12,6 +13,17 @@ import (
 type Store struct {
 	db                  *sql.DB
 	dispatchPersistHook func(point string) error
+}
+
+var crystalCandidatesEnabled = parseStoreBoolEnv("CHUM_ENABLE_CRYSTAL_CANDIDATES")
+
+func parseStoreBoolEnv(key string) bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(key))) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
 }
 
 const schema = `
@@ -1263,6 +1275,10 @@ func (s *Store) GetTraceEvents(traceID int64) ([]TraceEvent, error) {
 
 // UpsertCrystalCandidate stores or updates a deterministic candidate flow.
 func (s *Store) UpsertCrystalCandidate(candidate CrystalCandidate) error {
+	if !crystalCandidatesEnabled {
+		return nil
+	}
+
 	if candidate.Status == "" {
 		candidate.Status = CrystalCandidateStatusPending
 	}
@@ -1272,7 +1288,7 @@ func (s *Store) UpsertCrystalCandidate(candidate CrystalCandidate) error {
 			species, goal_signature, status, template_json, support_count, attempt_count,
 			success_count, success_rate, preconditions, ordered_steps, verification_checks,
 			required_inputs, last_seen_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
 		ON CONFLICT(species, goal_signature, status) DO UPDATE SET
 			template_json = excluded.template_json,
 			support_count = crystal_candidates.support_count + excluded.support_count,
@@ -1311,6 +1327,10 @@ func (s *Store) UpsertCrystalCandidate(candidate CrystalCandidate) error {
 
 // GetCrystalCandidatesBySpeciesAndGoal returns candidates for a species/signature pair.
 func (s *Store) GetCrystalCandidatesBySpeciesAndGoal(species, goalSignature string) ([]CrystalCandidate, error) {
+	if !crystalCandidatesEnabled {
+		return nil, nil
+	}
+
 	rows, err := s.db.Query(`
 		SELECT id, species, goal_signature, status, template_json, support_count, attempt_count,
 		       success_count, success_rate, preconditions, ordered_steps, verification_checks,
@@ -1360,6 +1380,10 @@ func (s *Store) GetCrystalCandidatesBySpeciesAndGoal(species, goalSignature stri
 
 // GetCrystalCandidatesByStatus returns all candidates in a lifecycle state.
 func (s *Store) GetCrystalCandidatesByStatus(status CrystalCandidateStatus) ([]CrystalCandidate, error) {
+	if !crystalCandidatesEnabled {
+		return nil, nil
+	}
+
 	rows, err := s.db.Query(`
 		SELECT id, species, goal_signature, status, template_json, support_count, attempt_count,
 		       success_count, success_rate, preconditions, ordered_steps, verification_checks,

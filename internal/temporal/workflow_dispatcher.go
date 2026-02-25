@@ -390,6 +390,7 @@ func (da *DispatchActivities) ScanCandidatesActivity(ctx context.Context) (*Scan
 
 		all, listErr := da.DAG.ListTasks(ctx, name)
 		if listErr != nil {
+			logger.Warn(SharkPrefix+" Dispatcher: DAG ListTasks failed", "project", name, "error", listErr)
 			continue
 		}
 

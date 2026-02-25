@@ -106,7 +106,7 @@ func TestSanitizeFTS5Query(t *testing.T) {
 		input    string
 		expected string
 	}{
-		{"operators preserved", "scope too-large OR underestimated OR missing-deps",
+		{"uppercase operators preserved", "scope too-large OR underestimated OR missing-deps",
 			`"scope" "too-large" OR "underestimated" OR "missing-deps"`},
 		{"simple terms quoted", "error handling defer",
 			`"error" "handling" "defer"`},
@@ -116,6 +116,14 @@ func TestSanitizeFTS5Query(t *testing.T) {
 			`"hello" "world"`},
 		{"empty string", "", ""},
 		{"single term", "large", `"large"`},
+		{"lowercase not is quoted", "not found",
+			`"not" "found"`},
+		{"lowercase or is quoted", "this or that",
+			`"this" "or" "that"`},
+		{"lowercase and is quoted", "plan and execute",
+			`"plan" "and" "execute"`},
+		{"mixed case Not is quoted", "Not applicable",
+			`"Not" "applicable"`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -270,7 +270,8 @@ func scanLessons(rows *sql.Rows) ([]StoredLesson, error) {
 
 // sanitizeFTS5Query quotes each non-operator term in an FTS5 query to prevent
 // bare words from being misinterpreted as column names (e.g. "large", "phase").
-// Boolean operators OR, AND, NOT are preserved unquoted.
+// Only already-uppercase OR, AND, NOT are preserved as FTS5 boolean operators;
+// lowercase variants (e.g. "not found") are treated as search terms.
 func sanitizeFTS5Query(query string) string {
 	words := strings.Fields(query)
 	if len(words) == 0 {
@@ -278,9 +279,10 @@ func sanitizeFTS5Query(query string) string {
 	}
 	var out []string
 	for _, w := range words {
-		upper := strings.ToUpper(w)
-		if upper == "OR" || upper == "AND" || upper == "NOT" {
-			out = append(out, upper)
+		// Only treat already-uppercase tokens as operators.
+		// Lowercase "or", "not", "and" in natural language must be quoted.
+		if w == "OR" || w == "AND" || w == "NOT" {
+			out = append(out, w)
 			continue
 		}
 		// Strip existing quotes, then re-quote.

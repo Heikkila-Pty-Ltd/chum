@@ -240,7 +240,7 @@ Consider: What could go wrong? What dependencies exist? What's the simplest path
 		go func(agentName string) {
 			defer wg.Done()
 
-			cliResult, _, err := a.runAgentWithFailover(ctx, "balanced", prompt, req.WorkDir)
+			cliResult, err := a.runAgent(ctx, agentName, prompt, req.WorkDir)
 			if err != nil {
 				results <- agentResult{agent: agentName, err: err}
 				return
@@ -359,7 +359,7 @@ Be constructive. Look for the BEST ideas across all proposals. Converge toward t
 		go func(agentName string) {
 			defer wg.Done()
 
-			cliResult, _, err := a.runAgentWithFailover(ctx, "balanced", prompt, req.WorkDir)
+			cliResult, err := a.runAgent(ctx, agentName, prompt, req.WorkDir)
 			if err != nil {
 				results <- critiqueResult{agent: agentName, err: err}
 				return

@@ -1,0 +1,40 @@
+[
+  {
+    "title": "Phase A: Define and validate execution option schema",
+    "priority": 2,
+    "type": "task",
+    "estimate_minutes": 120,
+    "depends_on": []
+  },
+  {
+    "title": "Phase A: Seed canonical YAML option catalog",
+    "priority": 2,
+    "type": "task",
+    "estimate_minutes": 120,
+    "depends_on": ["Phase A: Define and validate execution option schema"]
+  },
+  {
+    "title": "Phase A: Implement deterministic resolver contract",
+    "priority": 2,
+    "type": "feature",
+    "estimate_minutes": 180,
+    "depends_on": [
+      "Phase A: Define and validate execution option schema",
+      "Phase A: Seed canonical YAML option catalog"
+    ]
+  },
+  {
+    "title": "Phase B: Build DB mirror from canonical YAML",
+    "priority": 2,
+    "type": "feature",
+    "estimate_minutes": 180,
+    "depends_on": ["Phase A: Implement deterministic resolver contract"]
+  },
+  {
+    "title": "Phase B: Add parity checks and trace-driven scoring integration",
+    "priority": 2,
+    "type": "task",
+    "estimate_minutes": 180,
+    "depends_on": ["Phase B: Build DB mirror from canonical YAML"]
+  }
+]

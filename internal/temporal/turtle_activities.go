@@ -2,89 +2,203 @@ package temporal
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
 
+	"github.com/antigravity-dev/chum/internal/graph"
 	"go.temporal.io/sdk/activity"
 )
 
-// TurtlePlanActivity runs a single LLM call to produce a high-level plan.
-// This is the simplified replacement for the 3-phase ceremony (Explore→Deliberate→Converge).
-// One agent analyzes the task and produces a TurtleConsensus directly.
-func (a *Activities) TurtlePlanActivity(ctx context.Context, req TurtlePlanningRequest) (*TurtleConsensus, error) {
+// TurtlePlanArtifactActivity generates a crab-parseable markdown plan artifact
+// using a single premium-tier planner. If the model output is malformed, this
+// activity falls back to a deterministic scaffold so crabs can still proceed.
+func (a *Activities) TurtlePlanArtifactActivity(ctx context.Context, req TurtlePlanningRequest) (*TurtlePlanArtifact, error) {
 	logger := activity.GetLogger(ctx)
-	logger.Info(TurtlePrefix+" Single-stage planning", "TaskID", req.TaskID, "Project", req.Project)
+	logger.Info(TurtlePrefix+" Generating turtle plan artifact", "TaskID", req.TaskID, "Project", req.Project)
 
-	prompt := fmt.Sprintf(`You are a senior engineering planner. Analyze this task and produce a structured plan.
+	agent := ResolveTierAgent(a.Tiers, "premium")
+	prompt := fmt.Sprintf(`You are a principal engineer creating a decomposition artifact for crab workflow ingestion.
 
-TASK: %s
-
+TASK ID: %s
 PROJECT: %s
 
-DESCRIPTION:
+TASK DESCRIPTION:
 %s
 
-Analyze the task thoroughly. Consider:
-- What files/functions need to change?
-- What are the risks and dependencies?
-- What's the simplest path to a working solution?
-- How should the work be broken into bite-sized deliverables (15-30 min each)?
+CONTEXT FILES:
+%s
 
-Produce a JSON object with:
-{
-  "merged_plan": "Your implementation plan in 3-5 paragraphs. Be specific about files, patterns, and approach.",
-  "confidence_score": 85,
-  "items": [
-    {
-      "title": "Deliverable title",
-      "description": "What needs to be built — specific enough for an AI agent to execute",
-      "confidence": 90,
-      "effort": "small|medium|large"
-    }
-  ],
-  "disagreements": []
-}
+Output ONLY markdown in this exact schema (no JSON, no prose before/after):
 
-IMPORTANT: Output ONLY the JSON object, no markdown fences.
-The confidence_score is 0-100 representing how confident you are in this plan.
-Each item should be a self-contained unit of work.`, req.TaskID, req.Project, req.Description)
+# Plan: <short title>
+## Context
+<1-3 short paragraphs with concrete implementation context and constraints>
 
-	agent := ResolveTierAgent(a.Tiers, req.Tier)
-	if agent == "" {
-		agent = ResolveTierAgent(a.Tiers, "balanced")
-	}
+## Scope
+- [ ] <deliverable 1>
+- [ ] <deliverable 2>
+- [ ] <deliverable 3>
+
+## Acceptance Criteria
+- <criterion 1>
+- <criterion 2>
+
+## Out of Scope
+- <item 1>
+- <item 2>
+
+Rules:
+- This is a planning artifact for crabs to slice into whales/morsels.
+- Do NOT emit final morsels.
+- Do NOT mention consensus, rounds, or multi-agent deliberation.
+- Scope items must be concrete and implementation-oriented.`,
+		req.TaskID, req.Project, req.Description, strings.Join(req.Context, "\n"))
+
 	cliResult, err := a.runAgent(ctx, agent, prompt, req.WorkDir)
 	if err != nil {
-		return nil, fmt.Errorf("planning failed: %w", err)
+		logger.Warn(TurtlePrefix+" Planner invocation failed, using deterministic fallback", "error", err)
+		fallback := buildFallbackTurtlePlan(req)
+		parsed, parseErr := ParseMarkdownPlan(fallback)
+		if parseErr != nil {
+			return nil, fmt.Errorf("planner failed and fallback artifact invalid: %w", parseErr)
+		}
+		return &TurtlePlanArtifact{
+			Title:        parsed.Title,
+			PlanMarkdown: fallback,
+			ScopeItems:   len(parsed.ScopeItems),
+		}, nil
 	}
 
-	var consensus TurtleConsensus
-	if err := robustParseJSON(cliResult.Output, &consensus); err != nil {
-		logger.Warn(TurtlePrefix+" Plan JSON parse failed, returning raw plan",
-			"error", err, "OutputLen", len(cliResult.Output))
-		// Fallback: wrap the raw output as a single-item plan
-		consensus = TurtleConsensus{
-			MergedPlan:      cliResult.Output,
-			ConfidenceScore: 50,
-			Items: []ConsensusItem{{
-				Title:       req.TaskID,
-				Description: "(auto-generated from unparseable LLM output)",
-				Confidence:  50,
-				Effort:      "medium",
-			}},
+	candidates := turtlePlanCandidates(cliResult.Output)
+	for _, candidate := range candidates {
+		parsed, parseErr := ParseMarkdownPlan(candidate)
+		if parseErr == nil {
+			return &TurtlePlanArtifact{
+				Title:        parsed.Title,
+				PlanMarkdown: candidate,
+				ScopeItems:   len(parsed.ScopeItems),
+				Tokens:       cliResult.Tokens,
+			}, nil
 		}
 	}
 
-	logger.Info(TurtlePrefix+" Plan produced",
-		"Score", consensus.ConfidenceScore, "Items", len(consensus.Items))
+	logger.Warn(TurtlePrefix+" Planner output was not crab-parseable, using deterministic fallback",
+		"OutputLen", len(cliResult.Output))
+	fallback := buildFallbackTurtlePlan(req)
+	parsed, parseErr := ParseMarkdownPlan(fallback)
+	if parseErr != nil {
+		return nil, fmt.Errorf("fallback artifact invalid: %w", parseErr)
+	}
 
-	return &consensus, nil
+	return &TurtlePlanArtifact{
+		Title:        parsed.Title,
+		PlanMarkdown: fallback,
+		ScopeItems:   len(parsed.ScopeItems),
+		Tokens:       cliResult.Tokens,
+	}, nil
+}
+
+func turtlePlanCandidates(raw string) []string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return nil
+	}
+
+	var candidates []string
+	seen := make(map[string]struct{})
+	add := func(s string) {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			return
+		}
+		if _, ok := seen[s]; ok {
+			return
+		}
+		seen[s] = struct{}{}
+		candidates = append(candidates, s)
+	}
+
+	add(trimmed)
+	add(extractFirstFencedBlock(trimmed))
+
+	if idx := strings.Index(trimmed, "# Plan:"); idx >= 0 {
+		add(trimmed[idx:])
+	}
+	if idx := strings.Index(trimmed, "# "); idx >= 0 {
+		add(trimmed[idx:])
+	}
+
+	return candidates
+}
+
+func extractFirstFencedBlock(raw string) string {
+	start := strings.Index(raw, "```")
+	if start < 0 {
+		return ""
+	}
+	rest := raw[start+3:]
+	if nl := strings.Index(rest, "\n"); nl >= 0 {
+		rest = rest[nl+1:]
+	}
+	end := strings.Index(rest, "```")
+	if end < 0 {
+		return ""
+	}
+	return strings.TrimSpace(rest[:end])
+}
+
+func buildFallbackTurtlePlan(req TurtlePlanningRequest) string {
+	title := strings.TrimSpace(req.TaskID)
+	if title == "" {
+		title = "turtle-artifact"
+	}
+	title = strings.ReplaceAll(title, "\n", " ")
+
+	var context strings.Builder
+	context.WriteString(fmt.Sprintf("Task `%s` in project `%s` needs a decomposition-ready planning artifact for crab workflow.\n",
+		title, strings.TrimSpace(req.Project)))
+	if len(req.Context) > 0 {
+		context.WriteString("\nRelevant files:\n")
+		for i, f := range req.Context {
+			if i >= 5 {
+				break
+			}
+			context.WriteString("- ")
+			context.WriteString(strings.TrimSpace(f))
+			context.WriteString("\n")
+		}
+	}
+	desc := strings.TrimSpace(req.Description)
+	if desc == "" {
+		desc = "No task description provided."
+	}
+	context.WriteString("\nTask details:\n")
+	context.WriteString(truncate(desc, 1400))
+
+	return fmt.Sprintf(`# Plan: %s
+## Context
+%s
+
+## Scope
+- [ ] Convert the task intent into implementation deliverables with explicit boundaries.
+- [ ] Define dependency order and sequencing so crab decomposition can slice safely.
+- [ ] Capture verification expectations and constraints needed before execution.
+
+## Acceptance Criteria
+- Plan uses crab-parseable markdown structure with concrete unchecked scope items.
+- Scope items are implementation-oriented and decomposable into whales/morsels.
+- Context captures constraints and intended artifact outcomes clearly.
+
+## Out of Scope
+- Direct code implementation by turtle.
+- Consensus rounds or multi-agent planning ceremony behavior.
+`, title, context.String())
 }
 
 // TurtleExploreActivity runs all 3 planning agents in parallel to independently
 // analyze the task. Each agent produces an approach, scope, risks, and morsel breakdown.
-// DEPRECATED: Replaced by TurtlePlanActivity for single-stage planning.
 func (a *Activities) TurtleExploreActivity(ctx context.Context, req TurtlePlanningRequest) ([]TurtleProposal, error) {
 	logger := activity.GetLogger(ctx)
 	logger.Info(TurtlePrefix+" Exploring task", "TaskID", req.TaskID, "Agents", len(PlanningAgents))
@@ -399,4 +513,128 @@ Per-item confidence shows how aligned the team is on each specific deliverable.`
 		"Disagreements", len(consensus.Disagreements))
 
 	return &consensus, nil
+}
+
+// TurtleDecomposeActivity breaks the consensus plan into concrete, shark-sized morsels.
+func (a *Activities) TurtleDecomposeActivity(
+	ctx context.Context,
+	req TurtlePlanningRequest,
+	consensus TurtleConsensus,
+) ([]TurtleMorsel, error) {
+	logger := activity.GetLogger(ctx)
+	logger.Info(TurtlePrefix+" Decomposing consensus into morsels", "Items", len(consensus.Items))
+
+	// Build items context
+	var itemsSummary strings.Builder
+	for i, item := range consensus.Items {
+		itemsSummary.WriteString(fmt.Sprintf("\n%d. **%s** (%s effort, %d%% confidence)\n   %s\n",
+			i+1, item.Title, item.Effort, item.Confidence, item.Description))
+	}
+
+	prompt := fmt.Sprintf(`You are decomposing a planned project into bite-sized morsels for autonomous AI execution.
+
+TASK: %s
+PROJECT: %s
+
+MERGED PLAN:
+%s
+
+DELIVERABLES:
+%s
+
+Break this into concrete morsels. Each morsel should be:
+- Completable by a single AI agent in 15-30 minutes
+- Have clear acceptance criteria
+- Have testable DoD (Definition of Done) checks
+- Be independent or have explicit dependencies
+
+Respond with ONLY a JSON array:
+[
+  {
+    "title": "Short morsel title",
+    "description": "What exactly to implement — be specific about files, functions, patterns",
+    "acceptance_criteria": "How to know it's done",
+    "dod_checks": ["go build ./...", "go test ./..."],
+    "priority": 1,
+    "estimate_minutes": 20,
+    "labels": ["feature", "dispatcher"],
+    "depends_on": []
+  }
+]
+
+Order by dependency: independent morsels first, then dependent ones.
+IMPORTANT: Each morsel must be small enough for a shark. If something is too big, split it further.`,
+		req.TaskID, req.Project, consensus.MergedPlan, itemsSummary.String())
+
+	agent := ResolveTierAgent(a.Tiers, "balanced")
+	cliResult, err := a.runAgent(ctx, agent, prompt, req.WorkDir)
+	if err != nil {
+		return nil, fmt.Errorf("decomposition failed: %w", err)
+	}
+
+	var morsels []TurtleMorsel
+	if err := robustParseJSONArray(cliResult.Output, &morsels); err != nil {
+		return nil, fmt.Errorf("parse morsels JSON: %w", err)
+	}
+
+	if len(morsels) == 0 {
+		return nil, fmt.Errorf("decomposition produced no morsels")
+	}
+
+	// Cap at 10 morsels — if more, the task is probably still too big
+	if len(morsels) > 10 {
+		logger.Warn(TurtlePrefix+" Too many morsels, capping at 10", "Original", len(morsels))
+		morsels = morsels[:10]
+	}
+
+	logger.Info(TurtlePrefix+" Morsels decomposed", "Count", len(morsels))
+	return morsels, nil
+}
+
+// TurtleEmitActivity writes the decomposed morsels to the DAG as ready tasks.
+func (a *Activities) TurtleEmitActivity(
+	ctx context.Context,
+	req TurtlePlanningRequest,
+	morsels []TurtleMorsel,
+) ([]string, error) {
+	logger := activity.GetLogger(ctx)
+	logger.Info(TurtlePrefix+" Emitting morsels to DAG", "Count", len(morsels))
+
+	if a.DAG == nil {
+		return nil, fmt.Errorf("DAG not configured — cannot emit morsels")
+	}
+
+	var emitted []string
+	for _, m := range morsels {
+		dodJSON, _ := json.Marshal(m.DoDChecks)
+
+		task := graph.Task{
+			Title:           m.Title,
+			Description:     m.Description + "\n\nAcceptance Criteria: " + m.AcceptanceCriteria + "\n\nDoD Checks: " + string(dodJSON),
+			Status:          "ready",
+			Priority:        m.Priority,
+			Type:            "morsel",
+			Labels:          m.Labels,
+			EstimateMinutes: m.EstimateMinutes,
+			Acceptance:      m.AcceptanceCriteria,
+			DependsOn:       m.DependsOn,
+			Project:         req.Project,
+			ParentID:        req.TaskID,
+		}
+
+		id, err := a.DAG.CreateTask(ctx, task)
+		if err != nil {
+			logger.Error(TurtlePrefix+" Failed to emit morsel", "Title", m.Title, "error", err)
+			continue
+		}
+		emitted = append(emitted, id)
+		logger.Info(TurtlePrefix+" Morsel emitted", "ID", id, "Title", m.Title)
+	}
+
+	if len(emitted) == 0 {
+		return nil, fmt.Errorf("failed to emit any morsels")
+	}
+
+	logger.Info(TurtlePrefix+" Emission complete", "Emitted", len(emitted), "Total", len(morsels))
+	return emitted, nil
 }

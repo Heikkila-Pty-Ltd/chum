@@ -310,6 +310,69 @@ func TestUpdateTask_PartialFields(t *testing.T) {
 	}
 }
 
+func TestUpdateTask_StatusReadyRejectedWhenDependencyUnresolved(t *testing.T) {
+	dag := newTestDAG(t)
+	ctx := t.Context()
+
+	depID, _ := dag.CreateTask(ctx, Task{
+		Title:   "dependency",
+		Project: "p",
+		Status:  "open",
+	})
+	taskID, _ := dag.CreateTask(ctx, Task{
+		Title:   "candidate",
+		Project: "p",
+		Status:  "open",
+	})
+	if err := dag.AddEdge(ctx, taskID, depID); err != nil {
+		t.Fatalf("AddEdge: %v", err)
+	}
+
+	err := dag.UpdateTask(ctx, taskID, map[string]any{"status": "ready"})
+	if err == nil {
+		t.Fatal("expected error when setting ready with unresolved dependency")
+	}
+	if !strings.Contains(err.Error(), "cannot set task") {
+		t.Fatalf("expected ready-transition rejection, got: %v", err)
+	}
+
+	task, _ := dag.GetTask(ctx, taskID)
+	if task.Status != "open" {
+		t.Fatalf("expected task status to remain open, got %q", task.Status)
+	}
+}
+
+func TestUpdateTask_StatusReadyAllowedWhenDependenciesClosed(t *testing.T) {
+	dag := newTestDAG(t)
+	ctx := t.Context()
+
+	depID, _ := dag.CreateTask(ctx, Task{
+		Title:   "dependency",
+		Project: "p",
+		Status:  "open",
+	})
+	taskID, _ := dag.CreateTask(ctx, Task{
+		Title:   "candidate",
+		Project: "p",
+		Status:  "open",
+	})
+	if err := dag.AddEdge(ctx, taskID, depID); err != nil {
+		t.Fatalf("AddEdge: %v", err)
+	}
+	if err := dag.CloseTask(ctx, depID); err != nil {
+		t.Fatalf("CloseTask dependency: %v", err)
+	}
+
+	if err := dag.UpdateTask(ctx, taskID, map[string]any{"status": "ready"}); err != nil {
+		t.Fatalf("UpdateTask to ready: %v", err)
+	}
+
+	task, _ := dag.GetTask(ctx, taskID)
+	if task.Status != "ready" {
+		t.Fatalf("expected task status ready, got %q", task.Status)
+	}
+}
+
 func TestUpdateTask_Labels(t *testing.T) {
 	dag := newTestDAG(t)
 	ctx := t.Context()

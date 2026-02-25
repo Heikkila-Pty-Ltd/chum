@@ -90,7 +90,7 @@ func CrabDecompositionWorkflow(ctx workflow.Context, req CrabDecompositionReques
 	var plan ParsedPlan
 	if err := workflow.ExecuteActivity(parseCtx, a.ParsePlanActivity, req).Get(ctx, &plan); err != nil {
 		recordStep("parse", parseStart, "failed")
-		return escalateToTurtle(ctx, req, "parse plan failed: "+err.Error())
+		return failOrEscalateToPlanning(ctx, req, "parse plan failed: "+err.Error(), stepMetrics, totalTokens)
 	}
 	recordStep("parse", parseStart, "ok")
 
@@ -120,17 +120,17 @@ func CrabDecompositionWorkflow(ctx workflow.Context, req CrabDecompositionReques
 
 		timer := workflow.NewTimer(ctx, 10*time.Minute)
 		sel := workflow.NewSelector(ctx)
-		
+
 		sel.AddReceive(clarificationChan, func(c workflow.ReceiveChannel, more bool) {
 			c.Receive(ctx, &humanAnswers)
 			logger.Info(CrabPrefix + " Human clarification received")
 		})
-		
+
 		sel.AddFuture(timer, func(f workflow.Future) {
 			humanAnswers = "Human ignored clarification request. Proceeding with best judgement."
 			logger.Warn(CrabPrefix + " Clarification timed out (10m) — proceeding blindly")
 		})
-		
+
 		sel.Select(ctx)
 
 		clarifications.HumanAnswers = humanAnswers
@@ -145,7 +145,7 @@ func CrabDecompositionWorkflow(ctx workflow.Context, req CrabDecompositionReques
 	var whales []CandidateWhale
 	if err := workflow.ExecuteActivity(decomposeCtx, a.DecomposeActivity, req, plan, clarifications).Get(ctx, &whales); err != nil {
 		recordStep("decompose", decomposeStart, "failed")
-		return escalateToTurtle(ctx, req, "decomposition failed: "+err.Error())
+		return failOrEscalateToPlanning(ctx, req, "decomposition failed: "+err.Error(), stepMetrics, totalTokens)
 	}
 	recordStep("decompose", decomposeStart, "ok")
 
@@ -173,7 +173,7 @@ func CrabDecompositionWorkflow(ctx workflow.Context, req CrabDecompositionReques
 	var sizedMorsels []SizedMorsel
 	if err := workflow.ExecuteActivity(sizeCtx, a.SizeMorselsActivity, req, scopedWhales).Get(ctx, &sizedMorsels); err != nil {
 		recordStep("size", sizeStart, "failed")
-		return escalateToTurtle(ctx, req, "sizing failed: "+err.Error())
+		return failOrEscalateToPlanning(ctx, req, "sizing failed: "+err.Error(), stepMetrics, totalTokens)
 	}
 	recordStep("size", sizeStart, "ok")
 
@@ -246,7 +246,7 @@ func CrabDecompositionWorkflow(ctx workflow.Context, req CrabDecompositionReques
 		recordCrabHealth(ctx, shortAO, a, req.PlanID, req.Project, "emit_failed",
 			fmt.Sprintf("Emit failed: %v. Whales: %d, Morsels: %d", err, len(scopedWhales), len(sizedMorsels)))
 
-		return escalateToTurtle(ctx, req, "emit failed: "+err.Error())
+		return failOrEscalateToPlanning(ctx, req, "emit failed: "+err.Error(), stepMetrics, totalTokens)
 	}
 	recordStep("emit", emitStart, "ok")
 
@@ -281,6 +281,27 @@ func CrabDecompositionWorkflow(ctx workflow.Context, req CrabDecompositionReques
 	}, nil
 }
 
+func failOrEscalateToPlanning(
+	ctx workflow.Context,
+	req CrabDecompositionRequest,
+	reason string,
+	stepMetrics []StepMetric,
+	totalTokens TokenUsage,
+) (*CrabDecompositionResult, error) {
+	logger := workflow.GetLogger(ctx)
+	if req.DisableTurtleEscalation {
+		logger.Warn(CrabPrefix+" Planning escalation disabled for this crab request; returning failure",
+			"PlanID", req.PlanID, "Reason", reason)
+		return &CrabDecompositionResult{
+			Status:      "failed",
+			PlanID:      req.PlanID,
+			StepMetrics: stepMetrics,
+			TotalTokens: totalTokens,
+		}, nil
+	}
+	return escalateToPlanningCeremony(ctx, req, reason)
+}
+
 // recordCrabHealth records a crab pipeline event to the health_events store
 // so the octopus and stingray can observe crab outcomes (previously invisible).
 func recordCrabHealth(ctx workflow.Context, opts workflow.ActivityOptions, a *Activities,
@@ -297,12 +318,14 @@ func recordCrabHealth(ctx workflow.Context, opts workflow.ActivityOptions, a *Ac
 	logger.Info(CrabPrefix+" Health event recorded", "EventType", eventType, "PlanID", planID)
 }
 
-// escalateToTurtle triggers an autonomous planning ceremony (Turtle) when crab
+// escalateToPlanningCeremony triggers a planning ceremony when crab
 // decomposition fails. This ensures complex plans that the crab can't slice
-// get a higher-level multi-agent deliberation instead of dying silently.
-func escalateToTurtle(ctx workflow.Context, req CrabDecompositionRequest, reason string) (*CrabDecompositionResult, error) {
+// get a higher-level artifact rewrite instead of dying silently.
+func escalateToPlanningCeremony(ctx workflow.Context, req CrabDecompositionRequest, reason string) (*CrabDecompositionResult, error) {
 	logger := workflow.GetLogger(ctx)
-	logger.Warn(CrabPrefix+" Escalating to Turtle ceremony", "PlanID", req.PlanID, "Reason", reason)
+	logger.Warn(CrabPrefix+" Escalating to planning ceremony", "PlanID", req.PlanID, "Reason", reason)
+
+	planningWorkflowID := fmt.Sprintf("%s-planning-%d", req.PlanID, workflow.Now(ctx).Unix())
 
 	var a *Activities
 	notifyOpts := workflow.ActivityOptions{
@@ -311,28 +334,35 @@ func escalateToTurtle(ctx workflow.Context, req CrabDecompositionRequest, reason
 	}
 	nCtx := workflow.WithActivityOptions(ctx, notifyOpts)
 	_ = workflow.ExecuteActivity(nCtx, a.NotifyActivity, NotifyRequest{
-		Event: "crab_escalate", TaskID: req.PlanID, Extra: map[string]string{"reason": reason},
+		Event: "crab_escalate", TaskID: req.PlanID, Extra: map[string]string{"reason": reason, "planning_session_id": planningWorkflowID},
 	}).Get(ctx, nil)
 
-	turtleReq := TurtlePlanningRequest{
-		TaskID:      req.PlanID,
-		Project:     req.Project,
-		WorkDir:     req.WorkDir,
-		Description: req.PlanMarkdown,
-		Tier:        "premium", // turtles use top-tier models for deliberation
+	planningReq := PlanningRequest{
+		Project:           req.Project,
+		Agent:             "claude",
+		Tier:              "premium",
+		WorkDir:           req.WorkDir,
+		SignalTimeout:     defaultPlanningSignalTimeout,
+		SessionTimeout:    defaultPlanningSessionTimeout,
+		SlowStepThreshold: defaultSlowStepThreshold,
+		SeedTaskID:        req.PlanID,
+		SeedTaskTitle:     req.PlanID,
+		SeedTaskPrompt:    req.PlanMarkdown + "\n\nCrab fallback reason: " + reason,
+		AutoMode:          false,
+		TraceSessionID:    planningWorkflowID,
 	}
 
 	childOpts := workflow.ChildWorkflowOptions{
-		WorkflowID:            "turtle-" + req.PlanID,
+		WorkflowID:            planningWorkflowID,
 		WorkflowIDReusePolicy: enumspb.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE,
 		ParentClosePolicy:     enumspb.PARENT_CLOSE_POLICY_ABANDON,
 	}
 	childCtx := workflow.WithChildOptions(ctx, childOpts)
 
-	var result TurtlePlanningResult
-	err := workflow.ExecuteChildWorkflow(childCtx, AutonomousPlanningCeremonyWorkflow, turtleReq).Get(ctx, &result)
+	var result *TaskRequest
+	err := workflow.ExecuteChildWorkflow(childCtx, PlanningCeremonyWorkflow, planningReq).Get(ctx, &result)
 	if err != nil {
-		return nil, fmt.Errorf("turtle escalation failed: %w", err)
+		return nil, fmt.Errorf("planning escalation failed: %w", err)
 	}
 
 	return &CrabDecompositionResult{

@@ -1,0 +1,61 @@
+[
+  {
+    "logical_id": "task-option-schema-validator",
+    "title": "Define execution option graph schema and validator",
+    "project": "chum",
+    "priority": 2,
+    "type": "task",
+    "estimate_minutes": 120,
+    "description": "Define versioned schema for atomic/composite options and typed edges. Add validation for unknown nodes, invalid edge types, and cycle detection.",
+    "acceptance_criteria": "Schema exists and is documented; invalid option graphs fail validation with actionable errors; tests cover cycle and missing-node cases. DoD: include commands and evidence in closure notes.",
+    "labels": ["planning", "architecture", "catalog"]
+  },
+  {
+    "logical_id": "task-seed-catalog",
+    "depends_on_logical": ["task-option-schema-validator"],
+    "title": "Seed execution option catalog from proteins and scripts",
+    "project": "chum",
+    "priority": 2,
+    "type": "task",
+    "estimate_minutes": 120,
+    "description": "Create initial option entries for existing protein molecules and core script atoms. Include at least react preflight and design review composites.",
+    "acceptance_criteria": "Seed catalog compiles under schema validator; react preflight and design review composites resolve to ordered steps; no dangling references. DoD included.",
+    "labels": ["planning", "catalog", "seed"]
+  },
+  {
+    "logical_id": "task-resolver-contract",
+    "depends_on_logical": ["task-option-schema-validator", "task-seed-catalog"],
+    "title": "Implement execution option resolver and pre-context contract",
+    "project": "chum",
+    "priority": 2,
+    "type": "feature",
+    "estimate_minutes": 180,
+    "description": "Implement resolver that selects option pathway by task class and constraints, then emits deterministic execution bundle with ordered steps and gates.",
+    "acceptance_criteria": "Resolver API returns deterministic bundle for identical inputs; alternatives include rationale; contract shape documented and tested. DoD included.",
+    "labels": ["planning", "resolver", "dispatch"]
+  },
+  {
+    "logical_id": "task-planner-dispatch-integration",
+    "depends_on_logical": ["task-resolver-contract"],
+    "title": "Integrate resolver into planning and dispatcher flow",
+    "project": "chum",
+    "priority": 2,
+    "type": "feature",
+    "estimate_minutes": 180,
+    "description": "Invoke resolver before execution handoff and attach bundle to execution request metadata. Enforce gate that execution only starts with valid resolved bundle.",
+    "acceptance_criteria": "Planner and dispatcher enforce resolver bundle presence; execution metadata includes selected option and steps; integration tests pass. DoD included.",
+    "labels": ["planning", "dispatcher", "integration"]
+  },
+  {
+    "logical_id": "task-option-score-feedback",
+    "depends_on_logical": ["task-planner-dispatch-integration"],
+    "title": "Add planning trace driven option scoring loop",
+    "project": "chum",
+    "priority": 2,
+    "type": "task",
+    "estimate_minutes": 120,
+    "description": "Use planning trace outcomes to update option score adjustments and influence future candidate ranking.",
+    "acceptance_criteria": "Score adjustments persist and are loaded during candidate ranking; plan_agreed and failure events affect scores predictably; tests verify ranking impact. DoD included.",
+    "labels": ["planning", "learning", "scoring"]
+  }
+]

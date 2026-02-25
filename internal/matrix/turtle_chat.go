@@ -10,6 +10,7 @@ import (
 	neturl "net/url"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -38,6 +39,12 @@ type TurtleChatHandler struct {
 	Room    string // turtle room ID
 	WorkDir string // project work directory
 	Logger  *slog.Logger
+
+	Planning     PlanningController // optional planning control bridge
+	BridgeRoom   string             // optional throughput/log room
+	ControlBot   string             // bot account used for control responses (default spritzbot)
+	activeByRoom map[string]string
+	activeMu     sync.Mutex
 }
 
 // IsTurtleRoom checks if a room is the dedicated turtle deliberation room.
@@ -58,6 +65,9 @@ func (h *TurtleChatHandler) IsTurtleBot(sender string) bool {
 func (h *TurtleChatHandler) Handle(ctx context.Context, msg InboundMessage) error {
 	if h == nil || h.Logger == nil {
 		return nil
+	}
+	if handled, err := h.handlePlanningCommand(ctx, msg); handled {
+		return err
 	}
 
 	mentioned := h.detectMentions(msg.Body)

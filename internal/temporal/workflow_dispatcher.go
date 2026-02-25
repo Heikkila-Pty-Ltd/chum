@@ -20,8 +20,8 @@ import (
 	"github.com/antigravity-dev/chum/internal/store"
 )
 
-// DispatcherWorkflow scans for ready tasks and dispatches ChumAgentWorkflow
-// children. Designed to run on a Temporal Schedule (every tick_interval).
+// DispatcherWorkflow scans for ready tasks and dispatches child workflows.
+// Designed to run on a Temporal Schedule (every tick_interval).
 //
 // Unlike the old scheduler goroutine, this is durable — survives crashes,
 // visible in the Temporal UI, and doesn't pile up via SKIP overlap policy.
@@ -82,6 +82,7 @@ func DispatcherWorkflow(ctx workflow.Context, _ struct{}) error {
 
 	// Start child workflows for each candidate.
 	dispatched := 0
+	planningDispatchedThisTick := false
 	for i := range result.Candidates {
 		c := &result.Candidates[i]
 		timeout := workflowTimeout(c.EstimateMinutes)
@@ -126,30 +127,44 @@ func DispatcherWorkflow(ctx workflow.Context, _ struct{}) error {
 			PreviousErrors:      c.PreviousErrors,
 		}
 
-		// 3-lane dispatcher routing:
-		// 1. Familiar (Gen > 0) -> direct assign (ChumAgentWorkflow)
-		// 2. Unfamiliar (Gen 0) -> Cambrian Explosion (CambrianExplosionWorkflow)
-		// 3. Complex (Score > 70) -> turtle→crab pipeline (TurtleToCrabWorkflow)
 		var future workflow.ChildWorkflowFuture
-		if c.Complexity > 70 || !c.HasCrabSeal {
-			// Lane 3: Complex or un-decomposed → Turtle→Crab Pipeline 🐢🦀
-			// Turtle defines (multi-agent deliberation). Crab slices (decompose into morsels).
-			turtleReq := TurtlePlanningRequest{
-				TaskID:      c.TaskID,
-				Project:     c.Project,
-				WorkDir:     c.WorkDir,
-				Description: c.Prompt,
-				Tier:        "premium", // turtle ceremonies use top-tier models for planning
+		requiresPlanning := false
+		if result.EnablePlannerV2 {
+			plannerReq := PlannerV2Request{
+				Candidate:       *c,
+				Task:            req,
+				EscalationTiers: result.EscalationTiers,
+				ParentNodeKey:   plannerV2RootNodeKey,
 			}
-			future = workflow.ExecuteChildWorkflow(childCtx, TurtleToCrabWorkflow, turtleReq)
-		} else if c.Generation == 0 && len(result.EscalationTiers) > 1 {
-			// Lane 2: Unfamiliar -> Cambrian Explosion 🌋
-			// Parallel exploration of new task types to find the fittest provider.
-			future = workflow.ExecuteChildWorkflow(childCtx, CambrianExplosionWorkflow, req, result.EscalationTiers)
+			future = workflow.ExecuteChildWorkflow(childCtx, PlannerV2Workflow, plannerReq)
 		} else {
-			// Lane 1: Familiar/Simple -> Direct Assign 🦈
-			// Standard single-agent execution loop.
-			future = workflow.ExecuteChildWorkflow(childCtx, ChumAgentWorkflow, req)
+			// Planning-first routing:
+			// - New work (generation 0)
+			// - Escalated/failure-heavy work (previous errors present)
+			// - High-complexity work
+			if shouldRouteToPlanningCeremony(*c) {
+				if result.PlanningRunning > 0 || planningDispatchedThisTick {
+					logger.Info(SharkPrefix+" Dispatcher: planning ceremony already active; deferring candidate",
+						"task", c.TaskID,
+						"project", c.Project,
+						"planning_running", result.PlanningRunning,
+					)
+					continue
+				}
+				planningReq := seededPlanningRequestFromCandidate(
+					*c,
+					agent,
+					slowStep,
+					result.PlanningSignalTimeout,
+					result.PlanningSessionTimeout,
+				)
+				future = workflow.ExecuteChildWorkflow(childCtx, PlanningCeremonyWorkflow, planningReq)
+				requiresPlanning = true
+			} else {
+				// Familiar/simple work executes directly.
+				// Standard single-agent execution loop.
+				future = workflow.ExecuteChildWorkflow(childCtx, ChumAgentWorkflow, req)
+			}
 		}
 
 		// Wait for the child to actually start (avoid ABANDON killing it).
@@ -168,6 +183,9 @@ func DispatcherWorkflow(ctx workflow.Context, _ struct{}) error {
 			"timeout", timeout,
 			"workflow_id", childExec.ID,
 		)
+		if requiresPlanning {
+			planningDispatchedThisTick = true
+		}
 		dispatched++
 	}
 
@@ -185,7 +203,7 @@ func DispatcherWorkflow(ctx workflow.Context, _ struct{}) error {
 }
 
 // workflowTimeout calculates WorkflowExecutionTimeout from task estimate.
-// Buffer: estimate × 3 (covers plan + execute + review + handoffs + DoD).
+// Buffer: estimate × 3 (covers plan + execute + review + checks).
 // Minimum 30m, maximum 4h.
 func workflowTimeout(estimateMinutes int) time.Duration {
 	const (
@@ -316,16 +334,43 @@ func (da *DispatchActivities) ScanCandidatesActivity(ctx context.Context) (*Scan
 		runningSet[taskID] = struct{}{}
 	}
 
-	// Also check for running CambrianExplosionWorkflow instances.
-	// The dispatcher spawns CambrianExplosionWorkflow (not ChumAgentWorkflow directly),
-	// so we must include these to prevent re-dispatching tasks with in-flight explosions.
-	explosionWFs, err := listOpenExplosionWorkflows(ctx, da.TC)
+	planningSignalTimeout := cfg.Dispatch.CostControl.PlanningSignalTimeout.Duration
+	if planningSignalTimeout <= 0 {
+		planningSignalTimeout = 10 * time.Minute
+	}
+	planningSessionTimeout := cfg.Dispatch.CostControl.PlanningSessionTimeout.Duration
+	if planningSessionTimeout <= 0 {
+		planningSessionTimeout = 30 * time.Minute
+	}
+	planningStaleBlockThreshold := cfg.Dispatch.CostControl.PlanningStaleBlockThreshold.Duration
+	if planningStaleBlockThreshold <= 0 {
+		planningStaleBlockThreshold = 35 * time.Minute
+	}
+
+	// Include active planning workflows so seeded tasks are not re-dispatched
+	// while a ceremony is still running. Ignore stale planning sessions so one
+	// abandoned run cannot block the planning queue forever.
+	planningWFs, err := listOpenPlanningWorkflows(ctx, da.TC)
+	planningRunning := 0
 	if err != nil {
-		logger.Warn(SharkPrefix+" Dispatcher: failed to list explosion workflows", "error", err)
+		logger.Warn(SharkPrefix+" Dispatcher: failed to list planning workflows", "error", err)
 	} else {
-		for _, wf := range explosionWFs {
+		stalePlanning := 0
+		now := time.Now()
+		for _, wf := range planningWFs {
+			if isStalePlanningWorkflow(wf, now, planningStaleBlockThreshold) {
+				stalePlanning++
+				continue
+			}
+			planningRunning++
 			taskID := extractTaskIDFromWorkflowID(wf.workflowID)
 			runningSet[taskID] = struct{}{}
+		}
+		if stalePlanning > 0 {
+			logger.Warn(SharkPrefix+" Dispatcher: ignoring stale planning sessions",
+				"stale_count", stalePlanning,
+				"stale_threshold", planningStaleBlockThreshold,
+			)
 		}
 	}
 
@@ -360,6 +405,7 @@ func (da *DispatchActivities) ScanCandidatesActivity(ctx context.Context) (*Scan
 	if maxPerProject <= 0 {
 		maxPerProject = 3
 	}
+	enablePlannerV2 := cfg.Dispatch.CostControl.EnablePlannerV2
 	projectRunning := make(map[string]int)
 
 	// --- Gather ready tasks across all enabled projects ---
@@ -476,6 +522,28 @@ func (da *DispatchActivities) ScanCandidatesActivity(ctx context.Context) (*Scan
 			generation = genome.Generation
 		}
 
+		var plannerEdgeStats []PlannerEdgeStat
+		if enablePlannerV2 && da.Store != nil {
+			stats, statsErr := da.Store.ListMCTSEdgeStats(plannerV2RootNodeKey, species, 32)
+			if statsErr != nil {
+				logger.Warn(SharkPrefix+" Dispatcher: failed to load planner edge stats",
+					"task", c.task.ID,
+					"species", species,
+					"error", statsErr)
+			} else {
+				plannerEdgeStats = make([]PlannerEdgeStat, 0, len(stats))
+				for _, stat := range stats {
+					plannerEdgeStats = append(plannerEdgeStats, PlannerEdgeStat{
+						ActionKey:   stat.ActionKey,
+						Visits:      stat.Visits,
+						Wins:        stat.Wins,
+						TotalReward: stat.TotalReward,
+						UpdatedAt:   stat.UpdatedAt,
+					})
+				}
+			}
+		}
+
 		result = append(result, DispatchCandidate{
 			TaskID:            c.task.ID,
 			Title:             c.task.Title,
@@ -483,27 +551,34 @@ func (da *DispatchActivities) ScanCandidatesActivity(ctx context.Context) (*Scan
 			Project:           c.project,
 			WorkDir:           c.workDir,
 			Prompt:            prompt,
+			Species:           species,
+			Labels:            append([]string(nil), c.task.Labels...),
 			Provider:          resolveProvider(cfg),
 			DoDChecks:         dodChecks,
 			SlowStepThreshold: slowStepThreshold,
 			Priority:          clampTaskPriority(c.task.Priority),
 			EstimateMinutes:   c.task.EstimateMinutes,
-			PreviousErrors:    strings.Split(c.task.ErrorLog, "\n---\n"),
+			PreviousErrors:    parseTaskErrorLog(c.task.ErrorLog),
 			Generation:        generation,
 			Complexity:        ScoreTaskComplexity(c.task.Title, prompt, c.task.Acceptance, c.task.EstimateMinutes),
 			HasCrabSeal:       hasCrabSeal(c.task),
+			PlannerEdgeStats:  plannerEdgeStats,
 		})
 		projectRunning[c.project]++
 	}
 
 	return &ScanCandidatesResult{
-		Candidates:          result,
-		Running:             running,
-		MaxTotal:            maxTotal,
-		AvailableAgents:     enabledCLIAgents(cfg),
-		EscalationTiers:     buildEscalationTiers(cfg, da.Store, logger),
-		MaxRetriesOverride:  higherLearningMaxRetries(cfg),
-		MaxHandoffsOverride: higherLearningMaxHandoffs(cfg),
+		Candidates:             result,
+		Running:                running,
+		MaxTotal:               maxTotal,
+		PlanningRunning:        planningRunning,
+		PlanningSignalTimeout:  planningSignalTimeout,
+		PlanningSessionTimeout: planningSessionTimeout,
+		AvailableAgents:        enabledCLIAgents(cfg),
+		EscalationTiers:        buildEscalationTiers(cfg, da.Store, logger),
+		EnablePlannerV2:        enablePlannerV2,
+		MaxRetriesOverride:     higherLearningMaxRetries(cfg),
+		MaxHandoffsOverride:    higherLearningMaxHandoffs(cfg),
 	}, nil
 }
 
@@ -610,6 +685,54 @@ func listOpenExplosionWorkflows(ctx context.Context, tc workflowListClient) ([]o
 	return executions, nil
 }
 
+// listOpenPlanningWorkflows returns running planning workflows that can own a
+// seeded task and therefore should block duplicate dispatch.
+func listOpenPlanningWorkflows(ctx context.Context, tc workflowListClient) ([]openWorkflowExecution, error) {
+	query := "(WorkflowType = 'PlanningCeremonyWorkflow' OR WorkflowType = 'AutonomousPlanningCeremonyWorkflow') AND ExecutionStatus = 'Running'"
+
+	var pageToken []byte
+	executions := make([]openWorkflowExecution, 0, 50)
+	for {
+		resp, err := tc.ListWorkflow(ctx, &workflowservice.ListWorkflowExecutionsRequest{
+			Query:         query,
+			PageSize:      200,
+			NextPageToken: pageToken,
+		})
+		if err != nil {
+			return nil, err
+		}
+		if resp == nil {
+			return nil, fmt.Errorf("temporal list workflow returned nil response")
+		}
+
+		for _, exec := range resp.Executions {
+			execInfo := exec.GetExecution()
+			if execInfo == nil {
+				continue
+			}
+			wfID := execInfo.GetWorkflowId()
+			if wfID == "" {
+				continue
+			}
+			startTime := time.Time{}
+			if exec.StartTime != nil {
+				startTime = exec.StartTime.AsTime()
+			}
+			executions = append(executions, openWorkflowExecution{
+				workflowID: wfID,
+				runID:      execInfo.GetRunId(),
+				startTime:  startTime,
+			})
+		}
+
+		if len(resp.NextPageToken) == 0 {
+			break
+		}
+		pageToken = resp.NextPageToken
+	}
+	return executions, nil
+}
+
 func buildOpenAgentWorkflowQuery(project string) string {
 	return ChumAgentRunningVisibilityQueryForProject(project)
 }
@@ -659,6 +782,120 @@ func clampTaskPriority(priority int) int {
 	return normalizePriority(priority)
 }
 
+func shouldRouteToPlanningCeremony(c DispatchCandidate) bool {
+	if isCrabEmittedCandidate(c) {
+		// Crab-emitted morsels have already completed planning/decomposition and
+		// should move directly into the shark loop.
+		return false
+	}
+	if c.Generation == 0 {
+		return true
+	}
+	if len(c.PreviousErrors) > 0 {
+		return true
+	}
+	if c.Complexity > 70 {
+		return true
+	}
+	return false
+}
+
+func isCrabEmittedCandidate(c DispatchCandidate) bool {
+	return hasCandidateLabel(c.Labels, "source:crab")
+}
+
+func hasCandidateLabel(labels []string, needle string) bool {
+	needle = strings.TrimSpace(strings.ToLower(needle))
+	if needle == "" {
+		return false
+	}
+	for i := range labels {
+		if strings.TrimSpace(strings.ToLower(labels[i])) == needle {
+			return true
+		}
+	}
+	return false
+}
+
+func seededPlanningRequestFromCandidate(
+	c DispatchCandidate,
+	agent string,
+	slowStep time.Duration,
+	signalTimeout time.Duration,
+	sessionTimeout time.Duration,
+) PlanningRequest {
+	if signalTimeout <= 0 {
+		signalTimeout = defaultPlanningSignalTimeout
+	}
+	if sessionTimeout <= 0 {
+		sessionTimeout = defaultPlanningSessionTimeout
+	}
+	title := strings.TrimSpace(c.TaskTitle)
+	if title == "" {
+		title = strings.TrimSpace(c.Title)
+	}
+	return PlanningRequest{
+		Project:           c.Project,
+		Agent:             agent,
+		Tier:              planningTierForCandidate(c),
+		WorkDir:           c.WorkDir,
+		SlowStepThreshold: slowStep,
+		SignalTimeout:     signalTimeout,
+		SessionTimeout:    sessionTimeout,
+		SeedTaskID:        c.TaskID,
+		SeedTaskTitle:     title,
+		SeedTaskPrompt:    c.Prompt,
+		AutoMode:          false,
+		TraceSessionID:    fmt.Sprintf("dispatch-planning-%s", c.TaskID),
+	}
+}
+
+func planningTierForCandidate(c DispatchCandidate) string {
+	if c.Complexity > 70 || len(c.PreviousErrors) > 0 {
+		return "premium"
+	}
+	return "fast"
+}
+
+func parseTaskErrorLog(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	raw = strings.ReplaceAll(raw, "\r\n", "\n")
+	lines := strings.Split(raw, "\n")
+
+	flush := func(current []string, out []string) ([]string, []string) {
+		joined := strings.TrimSpace(strings.Join(current, "\n"))
+		if joined != "" {
+			out = append(out, joined)
+		}
+		return nil, out
+	}
+
+	current := make([]string, 0, len(lines))
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "---" {
+			current, out = flush(current, out)
+			continue
+		}
+		current = append(current, line)
+	}
+	_, out = flush(current, out)
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func isStalePlanningWorkflow(wf openWorkflowExecution, now time.Time, staleThreshold time.Duration) bool {
+	if staleThreshold <= 0 || wf.startTime.IsZero() {
+		return false
+	}
+	return now.Sub(wf.startTime) > staleThreshold
+}
+
 // openWorkflowExecution is metadata about a running workflow. Kept package-private.
 type openWorkflowExecution struct {
 	workflowID string
@@ -670,6 +907,11 @@ type openWorkflowExecution struct {
 // to recover the original task ID. E.g. "w1-1-1708654321" → "w1-1".
 // Falls back to the full workflow ID if no timestamp suffix is found.
 func extractTaskIDFromWorkflowID(wfID string) string {
+	wfID = strings.TrimSpace(wfID)
+	if wfID == "" {
+		return ""
+	}
+
 	// Find the last dash — if the part after it is all digits, strip it.
 	idx := strings.LastIndex(wfID, "-")
 	if idx <= 0 {
@@ -684,7 +926,14 @@ func extractTaskIDFromWorkflowID(wfID string) string {
 	if len(suffix) < 8 {
 		return wfID // too short to be a unix timestamp
 	}
-	return wfID[:idx]
+	taskID := wfID[:idx]
+	for _, laneSuffix := range []string{"-direct", "-cambrian", "-planning", "-turtle"} {
+		if strings.HasSuffix(taskID, laneSuffix) {
+			taskID = strings.TrimSuffix(taskID, laneSuffix)
+			break
+		}
+	}
+	return taskID
 }
 
 func buildEscalationTiers(cfg *config.Config, st *store.Store, logger interface{ Warn(string, ...any) }) []EscalationTier {

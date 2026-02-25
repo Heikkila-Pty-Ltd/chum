@@ -226,7 +226,16 @@ type PlanningRequest struct {
 	Agent             string        `json:"agent"` // chief agent for execution (defaults to claude)
 	Tier              string        `json:"tier"`  // LLM tier for planning activities: "fast" or "premium"
 	WorkDir           string        `json:"work_dir"`
-	SlowStepThreshold time.Duration `json:"slow_step_threshold"` // steps exceeding this are flagged slow
+	CandidateTopK     int           `json:"candidate_top_k,omitempty"`  // shortlist size for ranked planning options (1..20, default 5)
+	SignalTimeout     time.Duration `json:"signal_timeout,omitempty"`   // max wait per human signal in interactive mode
+	SessionTimeout    time.Duration `json:"session_timeout,omitempty"`  // max lifecycle of one planning session
+	SlowStepThreshold time.Duration `json:"slow_step_threshold"`        // steps exceeding this are flagged slow
+	TraceSessionID    string        `json:"trace_session_id,omitempty"` // persistent planning trace session id
+	TraceCycle        int           `json:"trace_cycle,omitempty"`      // 1-indexed planning cycle number
+	SeedTaskID        string        `json:"seed_task_id,omitempty"`     // optional dispatcher/escalation seed task id
+	SeedTaskTitle     string        `json:"seed_task_title,omitempty"`  // optional dispatcher/escalation seed task title
+	SeedTaskPrompt    string        `json:"seed_task_prompt,omitempty"` // optional dispatcher/escalation seed prompt/context
+	AutoMode          bool          `json:"auto_mode,omitempty"`        // auto-select/answer/greenlight without human signals
 }
 
 // BacklogItem is a single work item the chief has identified.
@@ -277,6 +286,106 @@ type PlanningState struct {
 	Answers         map[string]string    `json:"answers,omitempty"` // question# → answer
 	Summary         *PlanSummary         `json:"summary,omitempty"`
 	TaskRequest     *TaskRequest         `json:"task_request,omitempty"` // produced after greenlight
+}
+
+// PlanningTraceRecord is one persisted event in the planning trajectory graph.
+// Stores both summary and full-fidelity text for audit/replay.
+type PlanningTraceRecord struct {
+	SessionID      string  `json:"session_id"`
+	RunID          string  `json:"run_id,omitempty"`
+	Project        string  `json:"project"`
+	TaskID         string  `json:"task_id,omitempty"`
+	Cycle          int     `json:"cycle,omitempty"`
+	Stage          string  `json:"stage"`
+	NodeID         string  `json:"node_id,omitempty"`
+	ParentNodeID   string  `json:"parent_node_id,omitempty"`
+	BranchID       string  `json:"branch_id,omitempty"`
+	OptionID       string  `json:"option_id,omitempty"`
+	EventType      string  `json:"event_type"`
+	Actor          string  `json:"actor,omitempty"`
+	ToolName       string  `json:"tool_name,omitempty"`
+	ToolInput      string  `json:"tool_input,omitempty"`
+	ToolOutput     string  `json:"tool_output,omitempty"`
+	PromptText     string  `json:"prompt_text,omitempty"`
+	ResponseText   string  `json:"response_text,omitempty"`
+	SummaryText    string  `json:"summary_text,omitempty"`
+	FullText       string  `json:"full_text,omitempty"`
+	SelectedOption string  `json:"selected_option,omitempty"`
+	Reward         float64 `json:"reward,omitempty"`
+	MetadataJSON   string  `json:"metadata_json,omitempty"`
+}
+
+// PlanningSnapshotRecord persists one checkpoint for deterministic rollback.
+type PlanningSnapshotRecord struct {
+	SessionID string `json:"session_id"`
+	RunID     string `json:"run_id,omitempty"`
+	Project   string `json:"project"`
+	TaskID    string `json:"task_id,omitempty"`
+	Cycle     int    `json:"cycle,omitempty"`
+	Stage     string `json:"stage"`
+	StateHash string `json:"state_hash"`
+	StateJSON string `json:"state_json"`
+	Stable    bool   `json:"stable"`
+	Reason    string `json:"reason,omitempty"`
+}
+
+// PlanningSnapshotState is the deserialized planning state payload.
+type PlanningSnapshotState struct {
+	Cycle          int               `json:"cycle"`
+	Stage          string            `json:"stage"`
+	SelectedID     string            `json:"selected_id,omitempty"`
+	SelectedTitle  string            `json:"selected_title,omitempty"`
+	SelectedOption string            `json:"selected_option,omitempty"`
+	Answers        map[string]string `json:"answers,omitempty"`
+	SummaryWhat    string            `json:"summary_what,omitempty"`
+	SummaryWhy     string            `json:"summary_why,omitempty"`
+	SummaryEffort  string            `json:"summary_effort,omitempty"`
+}
+
+// PlanningBlacklistEntryRecord blocks a repeated failed state-action pair.
+type PlanningBlacklistEntryRecord struct {
+	SessionID  string `json:"session_id"`
+	Project    string `json:"project"`
+	TaskID     string `json:"task_id,omitempty"`
+	Cycle      int    `json:"cycle,omitempty"`
+	Stage      string `json:"stage"`
+	StateHash  string `json:"state_hash"`
+	ActionHash string `json:"action_hash"`
+	Reason     string `json:"reason,omitempty"`
+	Metadata   string `json:"metadata,omitempty"`
+}
+
+// PlanningBlacklistCheck requests blacklist status for a state-action pair.
+type PlanningBlacklistCheck struct {
+	SessionID  string `json:"session_id"`
+	StateHash  string `json:"state_hash"`
+	ActionHash string `json:"action_hash"`
+}
+
+// PlanningCandidateScoreRecord is one persisted per-project option score state.
+type PlanningCandidateScoreRecord struct {
+	Project         string    `json:"project"`
+	OptionID        string    `json:"option_id"`
+	ScoreAdjustment float64   `json:"score_adjustment"`
+	Successes       int       `json:"successes"`
+	Failures        int       `json:"failures"`
+	LastReason      string    `json:"last_reason,omitempty"`
+	UpdatedAt       time.Time `json:"updated_at"`
+}
+
+// PlanningCandidateScoreQuery loads score adjustments for a project and option set.
+type PlanningCandidateScoreQuery struct {
+	Project   string   `json:"project"`
+	OptionIDs []string `json:"option_ids"`
+}
+
+// PlanningCandidateScoreDelta applies a score delta for one project option.
+type PlanningCandidateScoreDelta struct {
+	Project  string  `json:"project"`
+	OptionID string  `json:"option_id"`
+	Delta    float64 `json:"delta"`
+	Outcome  string  `json:"outcome,omitempty"`
+	Reason   string  `json:"reason,omitempty"`
 }
 
 // --- CHUM (Continuous Hyper-Kanban Utility Module) Types ---
@@ -349,10 +458,10 @@ type TacticalGroomRequest struct {
 	TaskID       string   `json:"task_id"`
 	Project      string   `json:"project"`
 	WorkDir      string   `json:"work_dir"`
-	Tier         string   `json:"tier"`                        // "fast" for tactical
-	FilesChanged []string `json:"files_changed,omitempty"`     // files modified by the landed morsel
-	DiffSummary  string   `json:"diff_summary,omitempty"`      // git diff --stat output
-	TaskTitle    string   `json:"task_title,omitempty"`         // title of the completed morsel
+	Tier         string   `json:"tier"`                    // "fast" for tactical
+	FilesChanged []string `json:"files_changed,omitempty"` // files modified by the landed morsel
+	DiffSummary  string   `json:"diff_summary,omitempty"`  // git diff --stat output
+	TaskTitle    string   `json:"task_title,omitempty"`    // title of the completed morsel
 }
 
 // MorselMutation is a single mutation the groombot wants to apply to the backlog.
@@ -448,34 +557,72 @@ type MorningBriefing struct {
 // DispatchCandidate is a ready morsel with its project context, returned by
 // ScanCandidatesActivity and dispatched as a child workflow.
 type DispatchCandidate struct {
-	TaskID            string        `json:"task_id"`
-	Title             string        `json:"title"`
-	TaskTitle         string        `json:"task_title"` // same as title; explicit for consistency with TaskRequest
-	Project           string        `json:"project"`
-	WorkDir           string        `json:"work_dir"`
-	Prompt            string        `json:"prompt"`
-	Priority          int           `json:"priority"` // 0..4 scheduling/search metadata
-	Provider          string        `json:"provider"`
-	DoDChecks         []string      `json:"dod_checks"`
-	SlowStepThreshold time.Duration `json:"slow_step_threshold"`
-	EstimateMinutes   int           `json:"estimate_minutes"`
-	PreviousErrors    []string      `json:"previous_errors,omitempty"`
-	Generation        int           `json:"generation"`  // 0 = new species (triggers Cambrian Explosion)
-	Complexity        int           `json:"complexity"`  // 0-100 score
-	HasCrabSeal       bool          `json:"has_crab_seal"` // true if properly decomposed/sized for direct dispatch
+	TaskID            string            `json:"task_id"`
+	Title             string            `json:"title"`
+	TaskTitle         string            `json:"task_title"` // same as title; explicit for consistency with TaskRequest
+	Project           string            `json:"project"`
+	WorkDir           string            `json:"work_dir"`
+	Prompt            string            `json:"prompt"`
+	Species           string            `json:"species"`
+	Labels            []string          `json:"labels,omitempty"`
+	Priority          int               `json:"priority"` // 0..4 scheduling/search metadata
+	Provider          string            `json:"provider"`
+	DoDChecks         []string          `json:"dod_checks"`
+	SlowStepThreshold time.Duration     `json:"slow_step_threshold"`
+	EstimateMinutes   int               `json:"estimate_minutes"`
+	PreviousErrors    []string          `json:"previous_errors,omitempty"`
+	Generation        int               `json:"generation"` // 0 = new species
+	Complexity        int               `json:"complexity"` // 0-100 score
+	HasCrabSeal       bool              `json:"has_crab_seal"` // true if properly decomposed/sized for direct dispatch
+	PlannerEdgeStats  []PlannerEdgeStat `json:"planner_edge_stats,omitempty"`
 }
 
 // ScanCandidatesResult is returned by ScanCandidatesActivity.
 type ScanCandidatesResult struct {
-	Candidates          []DispatchCandidate `json:"candidates"`
-	Running             int                 `json:"running"` // currently running workflow count
-	MaxTotal            int                 `json:"max_total"`
-	Throttled           bool                `json:"throttled"`           // true if dispatch was blocked by token budget
-	ThrottleReason      string              `json:"throttle_reason"`     // human-readable reason for throttling
-	AvailableAgents     []string            `json:"available_agents"`    // enabled CLI agent names from config
-	EscalationTiers     []EscalationTier    `json:"escalation_tiers"`    // pre-computed escalation chain from config
-	MaxRetriesOverride  int                 `json:"max_retries_override,omitempty"` // higher-learning: per-tier retry cap (0 = use default)
-	MaxHandoffsOverride int                 `json:"max_handoffs_override,omitempty"` // higher-learning: handoff cap (0 = use default)
+	Candidates             []DispatchCandidate `json:"candidates"`
+	Running                int                 `json:"running"` // currently running workflow count
+	MaxTotal               int                 `json:"max_total"`
+	PlanningRunning        int                 `json:"planning_running"`         // currently running planning workflow count
+	PlanningSignalTimeout  time.Duration       `json:"planning_signal_timeout"`  // per-signal planning wait timeout
+	PlanningSessionTimeout time.Duration       `json:"planning_session_timeout"` // max planning session runtime
+	Throttled              bool                `json:"throttled"`                // true if dispatch was blocked by token budget
+	ThrottleReason         string              `json:"throttle_reason"`          // human-readable reason for throttling
+	AvailableAgents        []string            `json:"available_agents"`         // enabled CLI agent names from config
+	EscalationTiers        []EscalationTier    `json:"escalation_tiers"`         // pre-computed escalation chain from config
+	EnablePlannerV2        bool                `json:"enable_planner_v2"`
+	MaxRetriesOverride     int                 `json:"max_retries_override,omitempty"` // higher-learning: per-tier retry cap (0 = use default)
+	MaxHandoffsOverride    int                 `json:"max_handoffs_override,omitempty"` // higher-learning: handoff cap (0 = use default)
+}
+
+// PlannerEdgeStat is edge-scoped MCTS state passed from scan activity to PlannerV2.
+type PlannerEdgeStat struct {
+	ActionKey   string    `json:"action_key"`
+	Visits      int       `json:"visits"`
+	Wins        int       `json:"wins"`
+	TotalReward float64   `json:"total_reward"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+// PlannerV2Request drives lane selection and dispatch for one candidate.
+type PlannerV2Request struct {
+	Candidate       DispatchCandidate `json:"candidate"`
+	Task            TaskRequest       `json:"task"`
+	EscalationTiers []EscalationTier  `json:"escalation_tiers"`
+	ParentNodeKey   string            `json:"parent_node_key"`
+}
+
+// PlannerOutcomeRecord records planner decision telemetry for MCTS updates.
+type PlannerOutcomeRecord struct {
+	TaskID         string  `json:"task_id"`
+	Project        string  `json:"project"`
+	Species        string  `json:"species"`
+	ParentNodeKey  string  `json:"parent_node_key"`
+	SelectedAction string  `json:"selected_action"`
+	Outcome        string  `json:"outcome"`
+	Reward         float64 `json:"reward"`
+	DurationS      float64 `json:"duration_s"`
+	ChildWorkflow  string  `json:"child_workflow"`
+	MetadataJSON   string  `json:"metadata_json,omitempty"`
 }
 
 // --- Crab Decomposition Types ---
@@ -485,13 +632,14 @@ type ScanCandidatesResult struct {
 
 // CrabDecompositionRequest starts a crab decomposition workflow.
 type CrabDecompositionRequest struct {
-	PlanID             string `json:"plan_id"`
-	Project            string `json:"project"`
-	WorkDir            string `json:"work_dir"`
-	PlanMarkdown       string `json:"plan_markdown"`
-	Tier               string `json:"tier"`                      // LLM tier: "fast", "balanced", or "premium"
-	ParentWhaleID      string `json:"parent_whale_id,omitempty"` // optional parent whale to nest under
-	RequireHumanReview bool   `json:"require_human_review"`      // if true, block at Phase 6 for human signal; default: auto-approve
+	PlanID                  string `json:"plan_id"`
+	Project                 string `json:"project"`
+	WorkDir                 string `json:"work_dir"`
+	PlanMarkdown            string `json:"plan_markdown"`
+	Tier                    string `json:"tier"`                      // LLM tier: "fast", "balanced", or "premium"
+	ParentWhaleID           string `json:"parent_whale_id,omitempty"` // optional parent whale to nest under
+	RequireHumanReview      bool   `json:"require_human_review"`      // if true, block at Phase 6 for human signal; default: auto-approve
+	DisableTurtleEscalation bool   `json:"disable_turtle_escalation"` // if true, return failed instead of crab->planning escalation (prevents recursive rebound)
 }
 
 // ParsedPlan is the output of deterministic markdown parsing.

@@ -1,0 +1,136 @@
+{
+  "session": {
+    "session_id": "planning-chum-20260225-execution-option-catalog-manual",
+    "run_id": "manual-run-20260225-01",
+    "project": "chum",
+    "cycle": 1,
+    "selected_option": "catalog-runtime-resolver",
+    "outcome": "plan_agreed"
+  },
+  "research": {
+    "candidates": [
+      {
+        "id": "catalog-runtime-resolver",
+        "title": "YAML catalog + runtime resolver",
+        "rank": 1,
+        "score": 89,
+        "recommended": true,
+        "why": "Best balance of deterministic execution, reviewability, and incremental rollout"
+      },
+      {
+        "id": "catalog-docs-only",
+        "title": "Docs-only catalog",
+        "rank": 2,
+        "score": 63,
+        "recommended": false,
+        "why": "Fast to start but weak runtime enforcement"
+      },
+      {
+        "id": "catalog-db-first",
+        "title": "DB-first catalog",
+        "rank": 3,
+        "score": 54,
+        "recommended": false,
+        "why": "High early complexity; keep as later optimization"
+      },
+      {
+        "id": "catalog-protein-only",
+        "title": "Protein-only inference",
+        "rank": 4,
+        "score": 41,
+        "recommended": false,
+        "why": "Too narrow for heterogeneous skills, scripts, and checklists"
+      }
+    ]
+  },
+  "architecture_decisions": [
+    {
+      "id": "AD-1",
+      "decision": "Use unified option ontology: atomic + composite nodes with typed edges",
+      "reason": "Single query model for scripts, skills, and checklists"
+    },
+    {
+      "id": "AD-2",
+      "decision": "Keep canonical option source in versioned YAML",
+      "reason": "Git reviewability, diffability, and rollback safety"
+    },
+    {
+      "id": "AD-3",
+      "decision": "Resolver emits bounded pre-context execution bundle",
+      "reason": "Prevents ad hoc executor replanning and tool drift"
+    },
+    {
+      "id": "AD-4",
+      "decision": "Reuse planning trace taxonomy for observability and scoring",
+      "reason": "Immediate compatibility with existing CHUM trace evaluation"
+    },
+    {
+      "id": "AD-5",
+      "decision": "Executor runs only declared steps unless replanning trigger",
+      "reason": "Reduces blast radius and enforces ceremony policy"
+    }
+  ],
+  "plan": {
+    "what": "Implement execution option catalog with deterministic pre-context bundles",
+    "why": "Reduce tool-selection drift and make pathways queryable before execution",
+    "effort": "2-3 days",
+    "risks": [
+      "Schema too loose leads to inconsistent options",
+      "Resolver bypass in dispatcher path",
+      "Insufficient trace metadata for scoring"
+    ],
+    "dod_checks": [
+      "go test ./internal/temporal/... ./internal/store/... ./internal/api/...",
+      "Resolver returns deterministic bundle for identical input",
+      "Planning trace captures selected option and step-level metadata"
+    ],
+    "workstreams": [
+      {
+        "id": "ws-schema",
+        "title": "Define option schema and validator",
+        "depends_on": [],
+        "acceptance": [
+          "Schema covers atomic and composite options",
+          "CI fails on missing nodes, invalid edges, or cycles"
+        ]
+      },
+      {
+        "id": "ws-seed",
+        "title": "Seed catalog from proteins and scripts",
+        "depends_on": ["ws-schema"],
+        "acceptance": [
+          "At least one react preflight composite",
+          "At least one design review composite",
+          "Core script atoms represented"
+        ]
+      },
+      {
+        "id": "ws-resolver",
+        "title": "Implement resolver and handoff contract",
+        "depends_on": ["ws-schema", "ws-seed"],
+        "acceptance": [
+          "ResolveExecutionOption returns ordered steps and gates",
+          "Same input gives stable output"
+        ]
+      },
+      {
+        "id": "ws-integrate",
+        "title": "Integrate resolver into planning and dispatch",
+        "depends_on": ["ws-resolver"],
+        "acceptance": [
+          "Execution requires resolver bundle",
+          "Bundle is persisted into planning trace metadata"
+        ]
+      },
+      {
+        "id": "ws-score",
+        "title": "Add trace-driven option scoring",
+        "depends_on": ["ws-integrate"],
+        "acceptance": [
+          "Score adjustments derive from plan_agreed, gate_fail, and rollback signals",
+          "Planner ranking uses persisted score adjustments"
+        ]
+      }
+    ]
+  }
+}

@@ -42,13 +42,11 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 	}
 
 	w := worker.New(c, DefaultTaskQueue, worker.Options{
-		// Concurrency tuning for Cambrian Explosion (6 concurrent workflows).
-		// Default MaxConcurrentActivityExecutionSize is 1000 but the single
-		// poller can't keep up — bump pollers so activities get picked up faster.
-		MaxConcurrentActivityExecutionSize:      20,
-		MaxConcurrentWorkflowTaskExecutionSize:  10,
-		MaxConcurrentActivityTaskPollers:         4,
-		MaxConcurrentWorkflowTaskPollers:         2,
+		// Concurrency tuning for planning + execution lanes.
+		MaxConcurrentActivityExecutionSize:     20,
+		MaxConcurrentWorkflowTaskExecutionSize: 10,
+		MaxConcurrentActivityTaskPollers:       4,
+		MaxConcurrentWorkflowTaskPollers:       2,
 	})
 
 	// Wire Matrix notifications (nil sender = notifications disabled).
@@ -84,8 +82,8 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 	// --- Primary Workflows ---
 	w.RegisterWorkflow(ChumAgentWorkflow)
 	w.RegisterWorkflow(PlanningCeremonyWorkflow)
-	w.RegisterWorkflow(CambrianExplosionWorkflow)
 	w.RegisterWorkflow(DispatcherWorkflow)
+	w.RegisterWorkflow(PlannerV2Workflow)
 
 	// --- CHUM Workflows ---
 	w.RegisterWorkflow(ContinuousLearnerWorkflow)
@@ -110,6 +108,13 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 	w.RegisterActivity(acts.GroomBacklogActivity)
 	w.RegisterActivity(acts.GenerateQuestionsActivity)
 	w.RegisterActivity(acts.SummarizePlanActivity)
+	w.RegisterActivity(acts.RecordPlanningTraceActivity)
+	w.RegisterActivity(acts.RecordPlanningSnapshotActivity)
+	w.RegisterActivity(acts.GetLatestStablePlanningSnapshotActivity)
+	w.RegisterActivity(acts.AddPlanningBlacklistEntryActivity)
+	w.RegisterActivity(acts.IsPlanningActionBlacklistedActivity)
+	w.RegisterActivity(acts.LoadPlanningCandidateScoresActivity)
+	w.RegisterActivity(acts.AdjustPlanningCandidateScoreActivity)
 	w.RegisterActivity(acts.NotifyActivity)
 	w.RegisterActivity(acts.MergeToMainActivity)
 	w.RegisterActivity(acts.GetWorktreeDiffActivity)
@@ -117,6 +122,7 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 
 	// --- Dispatcher Activities ---
 	w.RegisterActivity(dispatchActs.ScanCandidatesActivity)
+	w.RegisterActivity(dispatchActs.RecordPlannerOutcomeActivity)
 
 	// --- CHUM Learner Activities ---
 	w.RegisterActivity(acts.ExtractLessonsActivity)
@@ -179,11 +185,13 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 	// --- Turtle (Planning → Gate → Crab) ---
 	// Single-stage planning replaces the old 3-agent ceremony.
 	w.RegisterWorkflow(AutonomousPlanningCeremonyWorkflow)
-	w.RegisterWorkflow(TurtleToCrabWorkflow)
-	w.RegisterActivity(acts.TurtlePlanActivity)
+	w.RegisterWorkflow(PlanningCeremonyWorkflow)
+	w.RegisterActivity(acts.TurtlePlanArtifactActivity)
 	w.RegisterActivity(acts.TurtleExploreActivity)     // deprecated but kept for running workflows
 	w.RegisterActivity(acts.TurtleDeliberateActivity)   // deprecated but kept for running workflows
 	w.RegisterActivity(acts.TurtleConvergeActivity)     // deprecated but kept for running workflows
+	w.RegisterActivity(acts.TurtleDecomposeActivity)
+	w.RegisterActivity(acts.TurtleEmitActivity)
 	w.RegisterActivity(acts.TurtleSendAsActivity)
 
 	// --- Calcifier (Stochastic→Deterministic) ---

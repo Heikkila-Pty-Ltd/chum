@@ -120,6 +120,18 @@ func applyDefaults(cfg *Config, md toml.MetaData) {
 	}
 
 	// Dispatch cost-control defaults
+	if cfg.Dispatch.CostControl.PlanningCandidateTopK == 0 {
+		cfg.Dispatch.CostControl.PlanningCandidateTopK = 5
+	}
+	if cfg.Dispatch.CostControl.PlanningSignalTimeout.Duration == 0 {
+		cfg.Dispatch.CostControl.PlanningSignalTimeout.Duration = 10 * time.Minute
+	}
+	if cfg.Dispatch.CostControl.PlanningSessionTimeout.Duration == 0 {
+		cfg.Dispatch.CostControl.PlanningSessionTimeout.Duration = 30 * time.Minute
+	}
+	if cfg.Dispatch.CostControl.PlanningStaleBlockThreshold.Duration == 0 {
+		cfg.Dispatch.CostControl.PlanningStaleBlockThreshold.Duration = 35 * time.Minute
+	}
 	if cfg.Dispatch.CostControl.RetryEscalationAttempt == 0 {
 		cfg.Dispatch.CostControl.RetryEscalationAttempt = 2
 	}

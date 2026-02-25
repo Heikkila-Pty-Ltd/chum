@@ -1,0 +1,105 @@
+{
+  "plan_id": "execution-option-catalog-iter2",
+  "recommended_path": "option-a-value-first",
+  "morsels": [
+    {
+      "id": "eoc-001",
+      "title": "Define option graph schema v1",
+      "type": "task",
+      "priority": "P1",
+      "estimate_minutes": 90,
+      "depends_on": [],
+      "value_score": 8,
+      "risk_score": 5,
+      "labels": ["catalog", "schema", "planning"]
+    },
+    {
+      "id": "eoc-002",
+      "title": "Implement schema validator and lint rules",
+      "type": "feature",
+      "priority": "P1",
+      "estimate_minutes": 120,
+      "depends_on": ["eoc-001"],
+      "value_score": 9,
+      "risk_score": 4,
+      "labels": ["validator", "ci", "catalog"]
+    },
+    {
+      "id": "eoc-003",
+      "title": "Seed canonical YAML catalog with baseline pathways",
+      "type": "task",
+      "priority": "P1",
+      "estimate_minutes": 120,
+      "depends_on": ["eoc-001", "eoc-002"],
+      "value_score": 8,
+      "risk_score": 4,
+      "labels": ["catalog", "seed", "pathways"]
+    },
+    {
+      "id": "eoc-004",
+      "title": "Build deterministic resolver contract",
+      "type": "feature",
+      "priority": "P0",
+      "estimate_minutes": 180,
+      "depends_on": ["eoc-003"],
+      "value_score": 10,
+      "risk_score": 6,
+      "labels": ["resolver", "contract", "determinism"]
+    },
+    {
+      "id": "eoc-005",
+      "title": "Enforce resolver bundle gate in dispatch preflight",
+      "type": "feature",
+      "priority": "P0",
+      "estimate_minutes": 150,
+      "depends_on": ["eoc-004"],
+      "value_score": 10,
+      "risk_score": 7,
+      "labels": ["dispatch", "gates", "execution-control"]
+    },
+    {
+      "id": "eoc-006",
+      "title": "Build YAML to DB mirror pipeline",
+      "type": "feature",
+      "priority": "P1",
+      "estimate_minutes": 180,
+      "depends_on": ["eoc-003"],
+      "value_score": 7,
+      "risk_score": 7,
+      "labels": ["mirror", "db", "catalog"]
+    },
+    {
+      "id": "eoc-007",
+      "title": "Add parity checks between YAML and DB mirror",
+      "type": "task",
+      "priority": "P1",
+      "estimate_minutes": 120,
+      "depends_on": ["eoc-006"],
+      "value_score": 8,
+      "risk_score": 8,
+      "labels": ["parity", "ci", "drift-control"]
+    },
+    {
+      "id": "eoc-008",
+      "title": "Integrate trace-driven option scoring with safeguards",
+      "type": "feature",
+      "priority": "P2",
+      "estimate_minutes": 150,
+      "depends_on": ["eoc-005", "eoc-007"],
+      "value_score": 7,
+      "risk_score": 6,
+      "labels": ["scoring", "learning", "planning-trace"]
+    },
+    {
+      "id": "eoc-009",
+      "title": "Add observability report for option quality and drift",
+      "type": "task",
+      "priority": "P2",
+      "estimate_minutes": 90,
+      "depends_on": ["eoc-008"],
+      "value_score": 6,
+      "risk_score": 3,
+      "labels": ["observability", "reporting", "quality"]
+    }
+  ]
+}

@@ -63,6 +63,11 @@ check_interval = "2m"
 [dispatch.cost_control]
 enabled = false
 spark_first = false
+enable_planner_v2 = false
+planning_candidate_top_k = 5
+planning_signal_timeout = "10m"
+planning_session_timeout = "30m"
+planning_stale_block_threshold = "35m"
 
 # --- CLI Configuration ---
 [dispatch.cli.claude]

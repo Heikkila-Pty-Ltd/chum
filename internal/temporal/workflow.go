@@ -14,8 +14,6 @@ import (
 )
 
 const (
-	maxHandoffs = 3 // maximum cross-model review handoffs
-
 	// defaultSlowStepThreshold is used when no config override is provided.
 	defaultSlowStepThreshold = 2 * time.Minute
 )
@@ -68,11 +66,10 @@ func normalizeTaskTitle(taskID, title, prompt string) string {
 //  1. PLAN        — StructuredPlanActivity generates a structured plan with acceptance criteria
 //  2. GATE        — Human approval signal (nothing enters the coding engine un-parceled)
 //  3. EXECUTE     — Primary agent implements the plan
-//  4. REVIEW      — Different agent reviews (claude↔codex cross-pollination)
-//  5. HANDOFF     — If review fails, swap agents and re-execute (up to 3 handoffs)
-//  6. DOD         — Compile/test/lint verification via git.RunPostMergeChecks
-//  7. RECORD      — Persist outcome to store (feeds learner loop)
-//  8. ESCALATE    — If DoD fails after retries, escalate to chief + human
+//  4. REVIEW      — Reviewer approves/rejects the output (no handoff swapping)
+//  5. DOD         — Compile/test/lint verification via git.RunPostMergeChecks
+//  6. RECORD      — Persist outcome to store (feeds learner loop)
+//  7. ESCALATE    — If checks fail after minimal retries, escalate to chief + human
 func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 	startTime := workflow.Now(ctx)
 	logger := workflow.GetLogger(ctx)
@@ -300,7 +297,6 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 	// "If CHUM is in the water, feed."
 
 	currentAgent := req.Agent
-	currentReviewer := req.Reviewer
 	var totalTokens TokenUsage
 	var activityTokens []ActivityTokenUsage
 
@@ -323,11 +319,17 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 
 	// ===== PHASE 2: (gate removed — ready status IS the approval) =====
 
-	// ===== PHASE 3-6: EXECUTE → REVIEW → DOD LOOP (with tier escalation) =====
+	// ===== PHASE 3-5: EXECUTE → REVIEW → CHECK LOOP (minimal retry mode) =====
+	const maxHandoffs = 3 // review handoff budget per attempt
 	handoffCount := 0
 	escalationAttempt := 0
+	currentReviewer := req.Reviewer
+	var lastFailedProvider string
+	var lastFailedTier string
+	_ = lastFailedProvider // used in escalation path
+	_ = lastFailedTier    // used in escalation path
 
-	// Build escalation chain — either from TaskRequest or fallback to single provider.
+	// Build execution chain — either from TaskRequest or fallback to single provider.
 	chain := req.EscalationChain
 	if len(chain) == 0 {
 		chain = []EscalationTier{{
@@ -338,9 +340,10 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 			Enabled:     true,
 		}}
 	}
-
-	// Track the previous failed tier for escalation learning.
-	var lastFailedProvider, lastFailedTier string
+	// Simplified routing: keep only the first tier in fast-loop mode.
+	if len(chain) > 1 {
+		chain = chain[:1]
+	}
 
 	for _, tier := range chain {
 		if !tier.Enabled {
@@ -363,12 +366,6 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 		logger.Info(SharkPrefix+" Tier escalation",
 			"Tier", tier.Tier, "Provider", tier.ProviderKey, "CLI", tier.CLI, "Model", tier.Model,
 			"MaxRetries", maxRetries)
-
-		// Record escalation from previous tier
-		if lastFailedProvider != "" {
-			recordEscalation(ctx, logger, a, req.TaskID, req.Project,
-				lastFailedProvider, lastFailedTier, tier.ProviderKey, tier.Tier)
-		}
 
 		for attempt := 0; attempt < maxRetries; attempt++ {
 			escalationAttempt++
@@ -440,8 +437,6 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 			updateSearchAttributes(chumWorkflowStatusReview)
 
 			reviewStart := workflow.Now(ctx)
-			reviewPassed := false
-			reviewStatus := "failed"
 			effectiveMaxHandoffs := maxHandoffs
 			if req.MaxHandoffsOverride > 0 {
 				effectiveMaxHandoffs = req.MaxHandoffsOverride
@@ -456,74 +451,23 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 
 				if err := workflow.ExecuteActivity(reviewCtx, a.CodeReviewActivity, plan, execResult, reviewReq).Get(ctx, &review); err != nil {
 					logger.Warn(SharkPrefix+" Review activity failed", "error", err)
-					reviewPassed = true // don't block on review infrastructure failures
-					reviewStatus = "failed"
-					break
+					recordStep(fmt.Sprintf("review[%d]", attempt+1), reviewStart, "skipped")
+					break // don't block on review infrastructure failures
 				}
 
 				totalTokens.Add(review.Tokens)
 				activityTokens = append(activityTokens, ActivityTokenUsage{
 					ActivityName: "review", Agent: review.ReviewerAgent, Tokens: review.Tokens,
 				})
-
-				if review.Approved {
-					logger.Info(SharkPrefix+" Code review approved", "Reviewer", review.ReviewerAgent, "Handoff", handoff)
-					notify("review_approved", map[string]string{"reviewer": review.ReviewerAgent})
-					reviewPassed = true
-					reviewStatus = "ok"
-					break
+				if !review.Approved {
+					recordStep(fmt.Sprintf("review[%d]", attempt+1), reviewStart, "failed")
+					allFailures = append(allFailures, fmt.Sprintf("Attempt %d: review not approved: %s", attempt+1, strings.Join(review.Issues, "; ")))
+					continue
 				}
-
-				// Review failed — swap agents and re-execute with feedback
-				handoffCount++
-				notify("handoff", map[string]string{"from": currentAgent, "to": currentReviewer, "handoff": fmt.Sprintf("%d", handoffCount)})
-				logger.Info(SharkPrefix+" Code review rejected, swapping agents",
-					"Reviewer", currentReviewer,
-					"Issues", strings.Join(review.Issues, "; "),
-					"Handoff", handoffCount,
-				)
-
-				// Feed review issues back into the plan with context
-				plan.PreviousErrors = append(plan.PreviousErrors,
-					fmt.Sprintf("The previous agent (%s) attempted to implement the plan but failed code review. Their changes were reverted to give you a clean slate. Review by %s found issues: %s", currentAgent, review.ReviewerAgent, strings.Join(review.Issues, "; ")))
-
-				// Swap: the reviewer becomes the implementer, and vice versa
-				updateSearchAttributes(chumWorkflowStatusExecute)
-				awaitResumeGate()
-
-				currentAgent, currentReviewer = currentReviewer, currentAgent
-				req.Agent = currentAgent
-
-				// Reset workspace for the new agent so they have a fresh slate
-				resetStart := workflow.Now(ctx)
-				resetCtx := workflow.WithActivityOptions(ctx, execOpts) // Use the longer execOpts timeout for git commands
-				if err := workflow.ExecuteActivity(resetCtx, a.ResetWorkspaceActivity, req.WorkDir).Get(ctx, nil); err != nil {
-					logger.Warn(SharkPrefix+" Failed to reset workspace for fresh agent", "error", err)
-				}
-				recordStep(fmt.Sprintf("handoff-reset[%d]", handoffCount), resetStart, "ok")
-
-				// Re-execute with the swapped agent
-				handoffExecStart := workflow.Now(ctx)
-				var reExecResult ExecutionResult
-				if err := workflow.ExecuteActivity(execCtx, a.ExecuteActivity, plan, req).Get(ctx, &reExecResult); err != nil {
-					recordStep(fmt.Sprintf("handoff-execute[%d]", handoffCount), handoffExecStart, "failed")
-					allFailures = append(allFailures, fmt.Sprintf("Handoff %d execute error: %s", handoffCount, err.Error()))
-					break
-				}
-				totalTokens.Add(reExecResult.Tokens)
-				activityTokens = append(activityTokens, ActivityTokenUsage{
-					ActivityName: "execute", Agent: reExecResult.Agent, Tokens: reExecResult.Tokens,
-				})
-				recordStep(fmt.Sprintf("handoff-execute[%d]", handoffCount), handoffExecStart, "ok")
-				execResult = reExecResult
+				logger.Info(SharkPrefix+" Code review approved", "Reviewer", review.ReviewerAgent)
+				notify("review_approved", map[string]string{"reviewer": review.ReviewerAgent})
+				recordStep(fmt.Sprintf("review[%d]", attempt+1), reviewStart, "ok")
 			}
-
-			if !reviewPassed {
-				recordStep(fmt.Sprintf("review[%d]", attempt+1), reviewStart, "failed")
-				allFailures = append(allFailures, fmt.Sprintf("Attempt %d: review not passed after %d handoffs", attempt+1, handoffCount))
-				continue
-			}
-			recordStep(fmt.Sprintf("review[%d]", attempt+1), reviewStart, reviewStatus)
 
 			awaitResumeGate()
 
@@ -743,7 +687,7 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 				}
 			}
 			notify("dod_fail", map[string]string{"failures": failureMsg, "attempt": fmt.Sprintf("%d", attempt+1), "detail": notifyDetail})
-			logger.Warn(SharkPrefix+" DoD failed, retrying", "Attempt", attempt+1, "Failures", failureMsg)
+			logger.Warn(SharkPrefix+" DoD failed", "Attempt", attempt+1, "Failures", failureMsg)
 
 			// --- FAILURE TRIAGE — read output, decide retry vs rescope ---
 			// Every failure is analysed. The triage reads the agent's actual
@@ -791,20 +735,22 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 			// --- AUTO-FIX: run gofmt + goimports before next retry ---
 			// Cheap and deterministic — fixes formatting issues that agents
 			// commonly introduce, saving a full retry attempt.
-			autoFixStart := workflow.Now(ctx)
-			autoFixOpts := workflow.ActivityOptions{
-				StartToCloseTimeout: 1 * time.Minute,
-				RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 1},
+			if attempt+1 < maxRetries {
+				autoFixStart := workflow.Now(ctx)
+				autoFixOpts := workflow.ActivityOptions{
+					StartToCloseTimeout: 1 * time.Minute,
+					RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 1},
+				}
+				autoFixCtx := workflow.WithActivityOptions(ctx, autoFixOpts)
+				var autoFixResult AutoFixResult
+				if err := workflow.ExecuteActivity(autoFixCtx, a.AutoFixLintActivity, req.WorkDir).Get(ctx, &autoFixResult); err != nil {
+					logger.Warn(SharkPrefix+" Auto-fix lint failed (non-fatal)", "error", err)
+				} else if autoFixResult.FilesFixed > 0 {
+					logger.Info(SharkPrefix+" Auto-fix applied",
+						"FilesFixed", autoFixResult.FilesFixed, "Tools", autoFixResult.ToolsRun)
+				}
+				recordStep(fmt.Sprintf("autofix[%d]", attempt+1), autoFixStart, "ok")
 			}
-			autoFixCtx := workflow.WithActivityOptions(ctx, autoFixOpts)
-			var autoFixResult AutoFixResult
-			if err := workflow.ExecuteActivity(autoFixCtx, a.AutoFixLintActivity, req.WorkDir).Get(ctx, &autoFixResult); err != nil {
-				logger.Warn(SharkPrefix+" Auto-fix lint failed (non-fatal)", "error", err)
-			} else if autoFixResult.FilesFixed > 0 {
-				logger.Info(SharkPrefix+" Auto-fix applied",
-					"FilesFixed", autoFixResult.FilesFixed, "Tools", autoFixResult.ToolsRun)
-			}
-			recordStep(fmt.Sprintf("autofix[%d]", attempt+1), autoFixStart, "ok")
 		}
 
 		// All retries exhausted for this tier — record failure and try next tier
@@ -915,10 +861,9 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 		}
 	}
 
-	// ===== TURTLE RESCUE — beached shark → turtle investigation =====
-	// Instead of letting the task rot, spawn a turtle ceremony to investigate
+	// ===== PLANNING RESCUE — beached shark → planning ceremony =====
+	// Instead of letting the task rot, spawn a planning ceremony to investigate
 	// WHY it failed and decompose it into better, smaller morsels.
-	// The shark dies, but the turtles carry its failure memory into new plans.
 	var failureContext strings.Builder
 	failureContext.WriteString(fmt.Sprintf("BEACHED SHARK INVESTIGATION: Task `%s` failed after %d attempts across all provider tiers.\n\n", req.TaskID, escalationAttempt))
 	failureContext.WriteString(fmt.Sprintf("ORIGINAL PLAN: %s\n\n", plan.Summary))
@@ -932,28 +877,40 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 	failureContext.WriteString("- Should the acceptance criteria be revised?\n")
 	failureContext.WriteString("- Is this task fundamentally blocked by infrastructure issues?\n")
 
-	turtleReq := TurtlePlanningRequest{
-		TaskID:      fmt.Sprintf("rescue-%s", req.TaskID),
-		Project:     req.Project,
-		WorkDir:     baseWorkDir,
-		Description: failureContext.String(),
-		Context:     plan.FilesToModify,
-		Tier:        "balanced", // quality matters for rescue planning
+	slowStep := req.SlowStepThreshold
+	if slowStep <= 0 {
+		slowStep = defaultSlowStepThreshold
 	}
-	turtleOpts := workflow.ChildWorkflowOptions{
+	planningWorkflowID := fmt.Sprintf("rescue-%s-%d", req.TaskID, workflow.Now(ctx).Unix())
+	planningReq := PlanningRequest{
+		Project:           req.Project,
+		Agent:             req.Agent,
+		Tier:              "premium",
+		WorkDir:           baseWorkDir,
+		SignalTimeout:     defaultPlanningSignalTimeout,
+		SessionTimeout:    defaultPlanningSessionTimeout,
+		SlowStepThreshold: slowStep,
+		SeedTaskID:        fmt.Sprintf("rescue-%s", req.TaskID),
+		SeedTaskTitle:     fmt.Sprintf("Rescue plan for %s", normalizeTaskTitle(req.TaskID, req.TaskTitle, req.Prompt)),
+		SeedTaskPrompt:    failureContext.String(),
+		AutoMode:          false,
+		TraceSessionID:    planningWorkflowID,
+	}
+	planningOpts := workflow.ChildWorkflowOptions{
 		ParentClosePolicy: enumspb.PARENT_CLOSE_POLICY_ABANDON,
-		WorkflowID:        fmt.Sprintf("turtle-rescue-%s-%d", req.TaskID, workflow.Now(ctx).Unix()),
+		WorkflowID:        planningWorkflowID,
 	}
-	turtleCtx := workflow.WithChildOptions(ctx, turtleOpts)
-	turtleFut := workflow.ExecuteChildWorkflow(turtleCtx, TurtleToCrabWorkflow, turtleReq)
-	if err := turtleFut.GetChildWorkflowExecution().Get(ctx, nil); err != nil {
-		logger.Warn(SharkPrefix+" Turtle rescue ceremony failed to start", "error", err)
+	planningCtx := workflow.WithChildOptions(ctx, planningOpts)
+	planningFut := workflow.ExecuteChildWorkflow(planningCtx, PlanningCeremonyWorkflow, planningReq)
+	if err := planningFut.GetChildWorkflowExecution().Get(ctx, nil); err != nil {
+		logger.Warn(SharkPrefix+" Planning rescue ceremony failed to start", "error", err)
 	} else {
-		logger.Info(SharkPrefix+" 🐢 Turtle rescue spawned — beached shark will be investigated and rescoped",
-			"TaskID", req.TaskID, "TurtleWorkflowID", fmt.Sprintf("turtle-rescue-%s", req.TaskID))
-		notify("turtle_rescue", map[string]string{
-			"task":     req.TaskID,
-			"attempts": fmt.Sprintf("%d", escalationAttempt),
+		logger.Info(SharkPrefix+" Planning rescue spawned — beached shark will be investigated and rescoped",
+			"TaskID", req.TaskID, "PlanningWorkflowID", planningWorkflowID)
+		notify("planning_rescue", map[string]string{
+			"task":                req.TaskID,
+			"attempts":            fmt.Sprintf("%d", escalationAttempt),
+			"planning_session_id": planningWorkflowID,
 		})
 	}
 

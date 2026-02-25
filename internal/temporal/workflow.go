@@ -871,6 +871,15 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 	logger.Info(SharkPrefix+" Task reset to ready — will be replanned and resliced",
 		"TaskID", req.TaskID, "Attempts", escalationAttempt)
 
+	// Record outcome even on escalation — the store needs the failure record
+	// and tokens burned, and the learner extracts antibodies from failures.
+	recordOutcome(ctx, recordOpts, a, req, "escalated", 1,
+		handoffCount, false, strings.Join(allFailures, "; "),
+		startTime, totalTokens, activityTokens, stepMetrics)
+
+	// Spawn failure learner — extract antibodies from what went wrong.
+	spawnFailureLearner(ctx, workflow.GetLogger(ctx), req, plan, baseWorkDir)
+
 	cleanupWorktree()
 	return fmt.Errorf("task escalated after %d attempts: %s", escalationAttempt, strings.Join(allFailures, "; "))
 }
@@ -988,6 +997,34 @@ func spawnCHUMWorkflows(ctx workflow.Context, logger log.Logger, req TaskRequest
 		logger.Warn(SharkPrefix+" CHUM: TacticalGroom failed to start", "error", err)
 	} else {
 		logger.Info(SharkPrefix+" CHUM: TacticalGroom started", "WorkflowID", groomExec.ID, "RunID", groomExec.RunID)
+	}
+}
+
+// spawnFailureLearner fires off the ContinuousLearner on failure paths.
+// Unlike spawnCHUMWorkflows, it does NOT spawn TacticalGroom — failed work
+// doesn't need grooming, but the learner still extracts antibodies.
+func spawnFailureLearner(ctx workflow.Context, logger log.Logger, req TaskRequest, plan StructuredPlan, baseWorkDir string) {
+	learnerOpts := workflow.ChildWorkflowOptions{
+		ParentClosePolicy: enumspb.PARENT_CLOSE_POLICY_ABANDON,
+		WorkflowID:        fmt.Sprintf("learner-fail-%s-%d", req.TaskID, workflow.Now(ctx).Unix()),
+	}
+	learnerCtx := workflow.WithChildOptions(ctx, learnerOpts)
+	learnerReq := LearnerRequest{
+		TaskID:         req.TaskID,
+		Project:        req.Project,
+		WorkDir:        baseWorkDir,
+		Agent:          req.Agent,
+		DoDPassed:      false,
+		FilesChanged:   plan.FilesToModify,
+		PreviousErrors: plan.PreviousErrors,
+		Tier:           "fast",
+	}
+	learnerFut := workflow.ExecuteChildWorkflow(learnerCtx, ContinuousLearnerWorkflow, learnerReq)
+	var learnerExec workflow.Execution
+	if err := learnerFut.GetChildWorkflowExecution().Get(ctx, &learnerExec); err != nil {
+		logger.Warn(SharkPrefix+" CHUM: Failure learner failed to start", "error", err)
+	} else {
+		logger.Info(SharkPrefix+" CHUM: Failure learner started", "WorkflowID", learnerExec.ID)
 	}
 }
 

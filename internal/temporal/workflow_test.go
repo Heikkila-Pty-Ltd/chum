@@ -55,6 +55,52 @@ func stubActivities(env *testsuite.TestWorkflowEnvironment) {
 	// Some failure paths spawn planning rescue; keep rescue workflows registered in tests.
 	env.OnWorkflow(AutonomousPlanningCeremonyWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
 	env.OnWorkflow(PlanningCeremonyWorkflow, mock.Anything, mock.Anything).Return(&TaskRequest{}, nil).Maybe()
+
+	stubInfraActivities(env)
+}
+
+// stubInfraActivities mocks all infrastructure/side-channel activities that
+// ChumAgentWorkflow may call but that don't affect core workflow logic.
+// All are .Maybe() so tests that don't exercise these paths won't fail.
+// Add new infrastructure activities HERE to prevent test breakage.
+func stubInfraActivities(env *testsuite.TestWorkflowEnvironment) {
+	// Graph-brain tracing
+	env.OnActivity(a.RecordGraphTraceEventActivity, mock.Anything, mock.Anything).Return("", nil).Maybe()
+	env.OnActivity(a.BackpropagateRewardActivity, mock.Anything, mock.Anything).Return(nil).Maybe()
+
+	// Matrix notifications
+	env.OnActivity(a.NotifyActivity, mock.Anything, mock.Anything).Return(nil).Maybe()
+
+	// Task lifecycle
+	env.OnActivity(a.CloseTaskActivity, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+
+	// Worktree management
+	env.OnActivity(a.SetupWorktreeActivity, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return("", nil).Maybe()
+	env.OnActivity(a.CleanupWorktreeActivity, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnActivity(a.PushWorktreeActivity, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnActivity(a.GetWorktreeDiffActivity, mock.Anything, mock.Anything).Return("", nil).Maybe()
+	env.OnActivity(a.MergeToMainActivity, mock.Anything, mock.Anything).Return(nil).Maybe()
+
+	// Health/logging
+	env.OnActivity(a.RecordHealthEventActivity, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnActivity(a.RecordOrganismLogActivity, mock.Anything, mock.Anything).Return(nil).Maybe()
+
+	// Genome
+	env.OnActivity(a.GetGenomeForPromptActivity, mock.Anything, mock.Anything).Return("", nil).Maybe()
+	env.OnActivity(a.EvolveGenomeActivity, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnActivity(a.HibernateGenomeActivity, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+
+	// Failure handling
+	env.OnActivity(a.RecordFailureActivity, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+	env.OnActivity(a.FileInvestigationTaskActivity, mock.Anything, mock.Anything).Return("", nil).Maybe()
+	env.OnActivity(a.FailureTriageActivity, mock.Anything, mock.Anything).Return(&FailureTriageResult{
+		Decision: "retry", Guidance: "try harder", Category: "logic",
+	}, nil).Maybe()
+	env.OnActivity(a.AutoFixLintActivity, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
+
+	// Bug/Protein priming
+	env.OnActivity(a.GetBugPrimingActivity, mock.Anything, mock.Anything, mock.Anything).Return("", nil).Maybe()
+	env.OnActivity(a.GetProteinInstructionsActivity, mock.Anything, mock.Anything).Return("", nil).Maybe()
 }
 
 // TestCHUMChildWorkflowsSpawn verifies that ChumAgentWorkflow spawns
@@ -179,13 +225,7 @@ func TestCHUMNotSpawnedOnFailure(t *testing.T) {
 	env.OnWorkflow(AutonomousPlanningCeremonyWorkflow, mock.Anything, mock.Anything).Return(&TurtlePlanningResult{}, nil).Maybe()
 	env.OnWorkflow(PlanningCeremonyWorkflow, mock.Anything, mock.Anything).Return(&TaskRequest{}, nil).Maybe()
 
-	env.OnActivity(a.AutoFixLintActivity, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
-	env.OnActivity(a.RecordFailureActivity, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
-	env.OnActivity(a.GetBugPrimingActivity, mock.Anything, mock.Anything, mock.Anything).Return("", nil).Maybe()
-	env.OnActivity(a.GetProteinInstructionsActivity, mock.Anything, mock.Anything).Return("", nil).Maybe()
-	env.OnActivity(a.EvolveGenomeActivity, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
-	env.OnActivity(a.HibernateGenomeActivity, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
-	env.OnActivity(a.FileInvestigationTaskActivity, mock.Anything, mock.Anything).Return("", nil).Maybe()
+	stubInfraActivities(env)
 
 	env.ExecuteWorkflow(ChumAgentWorkflow, TaskRequest{
 		TaskID:  "test-morsel-fail",
@@ -849,22 +889,14 @@ func TestStepDurationLoggingEscalation(t *testing.T) {
 		Passed: false, Failures: []string{"tests failed"},
 	}, nil)
 	env.OnActivity(a.EscalateActivity, mock.Anything, mock.Anything).Return(nil)
-	env.OnActivity(a.RecordFailureActivity, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
-	env.OnActivity(a.AutoFixLintActivity, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
-	env.OnActivity(a.FailureTriageActivity, mock.Anything, mock.Anything).Return(&FailureTriageResult{
-		Decision: "retry", Guidance: "try again", Category: "logic",
-	}, nil).Maybe()
-	env.OnActivity(a.GetBugPrimingActivity, mock.Anything, mock.Anything, mock.Anything).Return("", nil).Maybe()
-	env.OnActivity(a.GetProteinInstructionsActivity, mock.Anything, mock.Anything).Return("", nil).Maybe()
-	env.OnActivity(a.EvolveGenomeActivity, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
-	env.OnActivity(a.HibernateGenomeActivity, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
-	env.OnActivity(a.FileInvestigationTaskActivity, mock.Anything, mock.Anything).Return("", nil).Maybe()
-	env.OnActivity(a.GetGenomeForPromptActivity, mock.Anything, mock.Anything).Return("", nil).Maybe()
 
+	// Register child workflows (should not be called on escalation)
 	env.OnWorkflow(ContinuousLearnerWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
 	env.OnWorkflow(TacticalGroomWorkflow, mock.Anything, mock.Anything).Return(nil).Maybe()
 	env.OnWorkflow(AutonomousPlanningCeremonyWorkflow, mock.Anything, mock.Anything).Return(&TurtlePlanningResult{}, nil).Maybe()
 	env.OnWorkflow(PlanningCeremonyWorkflow, mock.Anything, mock.Anything).Return(&TaskRequest{}, nil).Maybe()
+
+	stubInfraActivities(env)
 
 	var outcome OutcomeRecord
 	env.OnActivity(a.RecordOutcomeActivity, mock.Anything, mock.Anything).Run(func(args mock.Arguments) {

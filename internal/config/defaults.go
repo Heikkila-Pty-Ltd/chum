@@ -141,14 +141,8 @@ func applyDefaults(cfg *Config, md toml.MetaData) {
 	if cfg.Dispatch.CostControl.StageCooldown.Duration == 0 {
 		cfg.Dispatch.CostControl.StageCooldown.Duration = 45 * time.Minute
 	}
-	if cfg.Dispatch.CostControl.ChurnPauseWindow.Duration == 0 {
-		cfg.Dispatch.CostControl.ChurnPauseWindow.Duration = 60 * time.Minute
-	}
-	if cfg.Dispatch.CostControl.ChurnPauseFailure == 0 {
-		cfg.Dispatch.CostControl.ChurnPauseFailure = 12
-	}
-	if cfg.Dispatch.CostControl.ChurnPauseTotal == 0 {
-		cfg.Dispatch.CostControl.ChurnPauseTotal = 24
+	if cfg.Dispatch.CostControl.BeachedSharkWindow.Duration == 0 {
+		cfg.Dispatch.CostControl.BeachedSharkWindow.Duration = 24 * time.Hour
 	}
 	if cfg.Dispatch.CostControl.TokenWasteWindow.Duration == 0 {
 		cfg.Dispatch.CostControl.TokenWasteWindow.Duration = 24 * time.Hour

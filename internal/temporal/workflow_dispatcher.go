@@ -330,10 +330,11 @@ func (da *DispatchActivities) ScanCandidatesActivity(ctx context.Context) (*Scan
 	}
 
 	// Exclude beached sharks: tasks that were escalated (failed all retries)
-	// in the last 24h. Without this, the DAG keeps serving them as "ready"
-	// candidates and we burn tokens re-dispatching doomed tasks.
-	if da.Store != nil {
-		cutoff := time.Now().Add(-24 * time.Hour).Format("2006-01-02 15:04:05")
+	// within the configured window. Without this, the DAG keeps serving them as
+	// "ready" candidates and we burn tokens re-dispatching doomed tasks.
+	beachedWindow := cfg.Dispatch.CostControl.BeachedSharkWindow.Duration
+	if beachedWindow > 0 && da.Store != nil {
+		cutoff := time.Now().Add(-beachedWindow).Format("2006-01-02 15:04:05")
 		rows, err := da.Store.DB().QueryContext(ctx,
 			`SELECT DISTINCT morsel_id FROM dispatches
 			 WHERE status = 'escalated' AND dispatched_at > ?`, cutoff)
@@ -350,7 +351,7 @@ func (da *DispatchActivities) ScanCandidatesActivity(ctx context.Context) (*Scan
 			}
 			rows.Close()
 			if beached > 0 {
-				logger.Info(SharkPrefix+" Dispatcher: excluding beached sharks", "count", beached)
+				logger.Info(SharkPrefix+" Dispatcher: excluding beached sharks", "count", beached, "window", beachedWindow)
 			}
 		}
 	}

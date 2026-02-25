@@ -171,8 +171,13 @@ func allDepsClosed(task Task, graph *DepGraph) bool {
 	return true
 }
 
+// isClosedTask returns true for terminal statuses that satisfy dependency resolution.
+// A task is terminal if it is closed, completed, or escalated (failed all retries).
+// Escalated tasks are terminal because the organism died through all tiers —
+// downstream work should not be blocked forever by a dead ancestor.
 func isClosedTask(status string) bool {
-	return normalizeTaskStatus(status) == statusClosed
+	s := normalizeTaskStatus(status)
+	return s == statusClosed || s == "completed" || s == "escalated"
 }
 
 // isDispatchableTask returns true for tasks with status "ready".

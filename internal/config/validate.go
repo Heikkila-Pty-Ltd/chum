@@ -475,25 +475,8 @@ func validateProjectMergeConfig(projectName string, project Project) error {
 }
 
 func validateDispatchCostControlConfig(cc DispatchCostControl) error {
-	if cc.PauseOnChurn {
-		if cc.ChurnPauseWindow.Duration <= 0 {
-			return fmt.Errorf("churn_pause_window must be > 0 when pause_on_churn is enabled")
-		}
-		if cc.ChurnPauseFailure <= 0 {
-			return fmt.Errorf("churn_pause_failure_threshold must be > 0 when pause_on_churn is enabled")
-		}
-		if cc.ChurnPauseTotal <= 0 {
-			return fmt.Errorf("churn_pause_total_threshold must be > 0 when pause_on_churn is enabled")
-		}
-	}
-	if cc.ChurnPauseFailure < 0 {
-		return fmt.Errorf("churn_pause_failure_threshold cannot be negative")
-	}
-	if cc.ChurnPauseTotal < 0 {
-		return fmt.Errorf("churn_pause_total_threshold cannot be negative")
-	}
-	if cc.ChurnPauseWindow.Duration < 0 {
-		return fmt.Errorf("churn_pause_window cannot be negative")
+	if cc.BeachedSharkWindow.Duration < 0 {
+		return fmt.Errorf("beached_shark_window cannot be negative")
 	}
 	if cc.RetryEscalationAttempt < 0 {
 		return fmt.Errorf("retry_escalation_attempt cannot be negative")

@@ -335,16 +335,11 @@ retry_escalation_attempt = 2
 # Hard stop after repeated failures per stage to prevent endless loops overnight.
 per_morsel_stage_attempt_limit = 3
 stage_attempt_window = "6h"
-stage_cooldown = "2h"
 complexity_escalation_minutes = 180
 risky_review_labels = ["risk:high", "security", "migration", "breaking-change", "database"]
 force_spark_at_weekly_usage_pct = 70
 daily_cost_cap_usd = 1.0
 per_morsel_cost_cap_usd = 0.10
-pause_on_churn = true
-churn_pause_window = "6h"
-churn_pause_failure_threshold = 3
-churn_pause_total_threshold = 6
 pause_on_token_waste = true
 token_waste_window = "6h"
 

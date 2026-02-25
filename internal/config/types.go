@@ -276,11 +276,9 @@ type DispatchCostControl struct {
 	StageAttemptWindow          Duration `toml:"stage_attempt_window"`
 	StageCooldown               Duration `toml:"stage_cooldown"`
 
-	// Escalation pause controls for system-level churn/token waste.
-	PauseOnChurn      bool     `toml:"pause_on_churn"`
-	ChurnPauseWindow  Duration `toml:"churn_pause_window"`
-	ChurnPauseFailure int      `toml:"churn_pause_failure_threshold"`
-	ChurnPauseTotal   int      `toml:"churn_pause_total_threshold"`
+	// Beached shark window: how long to exclude escalated tasks from re-dispatch.
+	// Default 24h. Set to "0s" to disable (allow immediate re-dispatch of escalated tasks).
+	BeachedSharkWindow Duration `toml:"beached_shark_window"`
 
 	PauseOnTokenWastage bool     `toml:"pause_on_token_waste"`
 	TokenWasteWindow    Duration `toml:"token_waste_window"`

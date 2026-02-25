@@ -60,11 +60,11 @@ func CrabDecompositionWorkflow(ctx workflow.Context, req CrabDecompositionReques
 	longAO := workflow.ActivityOptions{
 		StartToCloseTimeout: 5 * time.Minute,
 		HeartbeatTimeout:    30 * time.Second,
-		RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 2},
+		RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 3},
 	}
 	mediumAO := workflow.ActivityOptions{
 		StartToCloseTimeout: 3 * time.Minute,
-		RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 2},
+		RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 3},
 	}
 
 	var a *Activities

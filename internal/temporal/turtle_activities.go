@@ -18,7 +18,6 @@ func (a *Activities) TurtlePlanArtifactActivity(ctx context.Context, req TurtleP
 	logger := activity.GetLogger(ctx)
 	logger.Info(TurtlePrefix+" Generating turtle plan artifact", "TaskID", req.TaskID, "Project", req.Project)
 
-	agent := ResolveTierAgent(a.Tiers, "premium")
 	prompt := fmt.Sprintf(`You are a principal engineer creating a decomposition artifact for crab workflow ingestion.
 
 TASK ID: %s
@@ -56,7 +55,7 @@ Rules:
 - Scope items must be concrete and implementation-oriented.`,
 		req.TaskID, req.Project, req.Description, strings.Join(req.Context, "\n"))
 
-	cliResult, err := a.runAgent(ctx, agent, prompt, req.WorkDir)
+	cliResult, _, err := a.runAgentWithFailover(ctx, "premium", prompt, req.WorkDir)
 	if err != nil {
 		logger.Warn(TurtlePrefix+" Planner invocation failed, using deterministic fallback", "error", err)
 		fallback := buildFallbackTurtlePlan(req)
@@ -241,7 +240,7 @@ Consider: What could go wrong? What dependencies exist? What's the simplest path
 		go func(agentName string) {
 			defer wg.Done()
 
-			cliResult, err := a.runAgent(ctx, agentName, prompt, req.WorkDir)
+			cliResult, _, err := a.runAgentWithFailover(ctx, "balanced", prompt, req.WorkDir)
 			if err != nil {
 				results <- agentResult{agent: agentName, err: err}
 				return
@@ -360,7 +359,7 @@ Be constructive. Look for the BEST ideas across all proposals. Converge toward t
 		go func(agentName string) {
 			defer wg.Done()
 
-			cliResult, err := a.runAgent(ctx, agentName, prompt, req.WorkDir)
+			cliResult, _, err := a.runAgentWithFailover(ctx, "balanced", prompt, req.WorkDir)
 			if err != nil {
 				results <- critiqueResult{agent: agentName, err: err}
 				return
@@ -465,8 +464,7 @@ Per-item confidence shows how aligned the team is on each specific deliverable.`
 		req.TaskID, ctxBuf.String())
 
 	// Use the first agent (balanced tier) for synthesis
-	agent := ResolveTierAgent(a.Tiers, "balanced")
-	cliResult, err := a.runAgent(ctx, agent, prompt, req.WorkDir)
+	cliResult, _, err := a.runAgentWithFailover(ctx, "balanced", prompt, req.WorkDir)
 	if err != nil {
 		return nil, fmt.Errorf("convergence failed: %w", err)
 	}
@@ -566,8 +564,7 @@ Order by dependency: independent morsels first, then dependent ones.
 IMPORTANT: Each morsel must be small enough for a shark. If something is too big, split it further.`,
 		req.TaskID, req.Project, consensus.MergedPlan, itemsSummary.String())
 
-	agent := ResolveTierAgent(a.Tiers, "balanced")
-	cliResult, err := a.runAgent(ctx, agent, prompt, req.WorkDir)
+	cliResult, _, err := a.runAgentWithFailover(ctx, "balanced", prompt, req.WorkDir)
 	if err != nil {
 		return nil, fmt.Errorf("decomposition failed: %w", err)
 	}

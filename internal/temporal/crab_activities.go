@@ -146,8 +146,7 @@ Respond with ONLY a JSON array:
 		ambiguityList.String(),
 	)
 
-	agent := ResolveTierAgent(a.Tiers, req.Tier)
-	cliResult, err := a.runAgent(ctx, agent, prompt, req.WorkDir)
+	cliResult, _, err := a.runAgentWithFailover(ctx, req.Tier, prompt, req.WorkDir)
 	if err != nil {
 		logger.Warn(CrabPrefix+" Chief LLM clarification failed", "error", err)
 		// Fall through to tier 3 with all unresolved items.
@@ -330,8 +329,7 @@ Respond with ONLY a JSON array of whales:
 
 	activity.RecordHeartbeat(ctx, "calling-llm-decompose")
 
-	agent := ResolveTierAgent(a.Tiers, req.Tier)
-	cliResult, err := a.runAgent(ctx, agent, prompt, req.WorkDir)
+	cliResult, _, err := a.runAgentWithFailover(ctx, req.Tier, prompt, req.WorkDir)
 	if err != nil {
 		return nil, fmt.Errorf("decomposition LLM call failed: %w", err)
 	}
@@ -454,8 +452,7 @@ Respond with ONLY a JSON array of whales (same format as input, with adjustments
 		morselSummary.String(),
 	)
 
-	agent := ResolveTierAgent(a.Tiers, req.Tier)
-	cliResult, err := a.runAgent(ctx, agent, prompt, req.WorkDir)
+	cliResult, _, err := a.runAgentWithFailover(ctx, req.Tier, prompt, req.WorkDir)
 	if err != nil {
 		return nil, fmt.Errorf("scope review LLM call failed: %w", err)
 	}
@@ -564,8 +561,7 @@ Respond with ONLY a JSON array of sized morsels:
 		truncate(historicalContext.String(), 3000),
 	)
 
-	agent := ResolveTierAgent(a.Tiers, req.Tier)
-	cliResult, err := a.runAgent(ctx, agent, prompt, req.WorkDir)
+	cliResult, _, err := a.runAgentWithFailover(ctx, req.Tier, prompt, req.WorkDir)
 	if err != nil {
 		return nil, fmt.Errorf("sizing LLM call failed: %w", err)
 	}

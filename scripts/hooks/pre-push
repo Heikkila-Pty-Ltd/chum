@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+branch="$(git rev-parse --abbrev-ref HEAD)"
+allowed_pattern='^(feature|chore|fix|refactor|hotfix)/.+'
+
+if [[ "$branch" == "HEAD" ]]; then
+  exit 0
+fi
+
+if [[ "$branch" == "master" || "$branch" == "main" ]]; then
+  echo ""
+  echo "════════════════════════════════════════════════════════════════"
+  echo "❌ ERROR: Push blocked for branch '$branch'."
+  echo "════════════════════════════════════════════════════════════════"
+  echo ""
+  echo "PRs must not originate from master/main."
+  echo "Use feature/*, chore/*, fix/*, refactor/* (or hotfix/* for approved production hotfixes)."
+  echo "This would fail CI: Branch workflow policy."
+  echo ""
+  echo "Create a compliant branch and push that branch instead."
+  echo ""
+  exit 1
+fi
+
+if [[ ! "$branch" =~ $allowed_pattern ]]; then
+  echo ""
+  echo "════════════════════════════════════════════════════════════════"
+  echo "❌ ERROR: Push blocked for non-compliant branch '$branch'."
+  echo "════════════════════════════════════════════════════════════════"
+  echo ""
+  echo "Allowed branch patterns:"
+  echo "  feature/*, chore/*, fix/*, refactor/*"
+  echo "  hotfix/* (approved production hotfixes only)"
+  echo ""
+  echo "This would fail CI: Branch workflow policy."
+  echo "Rename/switch to a compliant branch, then push."
+  echo ""
+  exit 1
+fi
+
+exit 0

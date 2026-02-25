@@ -6,7 +6,7 @@ This project uses **CHUM** for automated task dispatch. Tasks (morsels) live in 
 
 Before coding in CHUM, enforce the branch workflow:
 
-1. Install the local hook: `./scripts/hooks/install.sh`
+1. Install local hooks (`pre-commit` + `pre-push`): `./scripts/hooks/install.sh`
 2. Start from clean `master`, then create one of: `feature/*`, `chore/*`, `fix/*`, `refactor/*`
 3. Optionally create a worktree: `git worktree add -b feature/your-feature ../chum-feature`
 4. Run the worktree training checkpoint in `docs/development/GIT_WORKTREE_WORKFLOW.md`

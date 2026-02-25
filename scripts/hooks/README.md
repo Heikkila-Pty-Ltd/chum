@@ -24,6 +24,18 @@ export CHUM_ALLOW_MASTER_HOTFIX=1
 git commit --no-verify
 ```
 
+### pre-push
+Blocks pushes from branch names that would fail CI branch workflow policy.
+
+Allowed source branch patterns:
+- `feature/*`
+- `chore/*`
+- `fix/*`
+- `refactor/*`
+- `hotfix/*` (approved production hotfixes only)
+
+This ensures branch naming violations are caught before opening/updating PRs.
+
 ### stop-checks.sh
 Use this as an agent **Stop hook** (Claude Code, Codex, etc.) to keep sessions green.
 

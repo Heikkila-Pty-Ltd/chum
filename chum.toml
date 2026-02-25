@@ -6,7 +6,7 @@ tick_interval = "1m"
 max_per_tick = 3
 max_concurrent_coders = 3
 max_concurrent_reviewers = 2
-max_concurrent_total = 4
+max_concurrent_total = 2
 stuck_timeout = "30m"
 max_retries = 2
 log_level = "info"
@@ -43,9 +43,9 @@ require_estimate = true
 require_acceptance = true
 
 [rate_limits]
-window_5h_cap = 999999999   # effectively disabled
-weekly_cap = 999999999       # effectively disabled
-weekly_headroom_pct = 1      # minimal headroom (can't be 0, defaults kicks in)
+window_5h_cap = 500000       # 500k output tokens per 5h window
+weekly_cap = 5000000          # 5M output tokens per week
+weekly_headroom_pct = 20      # 20% headroom before throttling kicks in
 
 # --- Codex only ---
 [providers.codex]
@@ -115,6 +115,13 @@ args = ["exec", "--full-auto", "-c", "model_reasoning_effort=high"]
 model_flag = "-m"
 approval_flags = []
 
+[dispatch.cli.claude-rescue]
+cmd = "claude"
+prompt_mode = "stdin"
+args = ["--dangerously-skip-permissions"]
+model_flag = "--model"
+approval_flags = []
+
 [dispatch.routing]
 fast_backend = "headless_cli"
 balanced_backend = "headless_cli"
@@ -133,6 +140,7 @@ planning_stale_block_threshold = "35m"
 retry_escalation_attempt = 2
 per_morsel_stage_attempt_limit = 3
 stage_attempt_window = "6h"
+beached_shark_window = "6h"
 
 [dispatch.cost_control.higher_learning]
 enabled = false
@@ -146,7 +154,7 @@ premium = "60m"
 branch_prefix = "chum/"
 branch_cleanup_days = 7
 merge_strategy = "squash"
-max_concurrent_per_project = 2
+max_concurrent_per_project = 1
 
 [chief]
 enabled = false

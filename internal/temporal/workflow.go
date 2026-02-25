@@ -310,6 +310,12 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 
 	if err := workflow.ExecuteActivity(planCtx, a.StructuredPlanActivity, req).Get(ctx, &plan); err != nil {
 		recordStep("plan", planStart, "failed")
+		// Close task to prevent infinite re-dispatch — a task that can't even plan
+		// should not be retried every tick until the species hibernates.
+		_ = workflow.ExecuteActivity(
+			workflow.WithActivityOptions(ctx, recordOpts),
+			a.CloseTaskActivity, req.TaskID, "plan_failed",
+		).Get(ctx, nil)
 		return fmt.Errorf("plan generation failed: %w", err)
 	}
 	if plan.TokenUsage.InputTokens > 0 || plan.TokenUsage.OutputTokens > 0 || plan.TokenUsage.CostUSD > 0 ||
@@ -929,57 +935,60 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 		}
 	}
 
-	// ===== PLANNING RESCUE — beached shark → planning ceremony =====
-	// Instead of letting the task rot, spawn a planning ceremony to investigate
-	// WHY it failed and decompose it into better, smaller morsels.
-	var failureContext strings.Builder
-	failureContext.WriteString(fmt.Sprintf("BEACHED SHARK INVESTIGATION: Task `%s` failed after %d attempts across all provider tiers.\n\n", req.TaskID, escalationAttempt))
-	failureContext.WriteString(fmt.Sprintf("ORIGINAL PLAN: %s\n\n", plan.Summary))
-	failureContext.WriteString("FAILURE HISTORY:\n")
-	for i, f := range allFailures {
-		failureContext.WriteString(fmt.Sprintf("  %d. %s\n", i+1, truncate(f, 300)))
-	}
-	failureContext.WriteString("\nINSTRUCTION: Investigate why this task failed repeatedly. Consider:\n")
-	failureContext.WriteString("- Is the task scope too broad? Decompose into smaller, achievable morsels.\n")
-	failureContext.WriteString("- Are there missing prerequisites or dependencies?\n")
-	failureContext.WriteString("- Should the acceptance criteria be revised?\n")
-	failureContext.WriteString("- Is this task fundamentally blocked by infrastructure issues?\n")
-
-	slowStep := req.SlowStepThreshold
-	if slowStep <= 0 {
-		slowStep = defaultSlowStepThreshold
-	}
-	planningWorkflowID := fmt.Sprintf("rescue-%s-%d", req.TaskID, workflow.Now(ctx).Unix())
-	planningReq := PlanningRequest{
-		Project:           req.Project,
-		Agent:             req.Agent,
-		Tier:              "premium",
-		WorkDir:           baseWorkDir,
-		SignalTimeout:     defaultPlanningSignalTimeout,
-		SessionTimeout:    defaultPlanningSessionTimeout,
-		SlowStepThreshold: slowStep,
-		SeedTaskID:        fmt.Sprintf("rescue-%s", req.TaskID),
-		SeedTaskTitle:     fmt.Sprintf("Rescue plan for %s", normalizeTaskTitle(req.TaskID, req.TaskTitle, req.Prompt)),
-		SeedTaskPrompt:    failureContext.String(),
-		AutoMode:          false,
-		TraceSessionID:    planningWorkflowID,
-	}
-	planningOpts := workflow.ChildWorkflowOptions{
-		ParentClosePolicy: enumspb.PARENT_CLOSE_POLICY_ABANDON,
-		WorkflowID:        planningWorkflowID,
-	}
-	planningCtx := workflow.WithChildOptions(ctx, planningOpts)
-	planningFut := workflow.ExecuteChildWorkflow(planningCtx, PlanningCeremonyWorkflow, planningReq)
-	if err := planningFut.GetChildWorkflowExecution().Get(ctx, nil); err != nil {
-		logger.Warn(SharkPrefix+" Planning rescue ceremony failed to start", "error", err)
+	// Guard: don't rescue a rescue — prevent exponential cascade overnight.
+	// Tasks with IDs starting with "rescue-" are already rescue attempts.
+	if strings.HasPrefix(req.TaskID, "rescue-") {
+		logger.Info(SharkPrefix+" Skipping rescue cascade for already-rescued task", "TaskID", req.TaskID)
 	} else {
-		logger.Info(SharkPrefix+" Planning rescue spawned — beached shark will be investigated and rescoped",
-			"TaskID", req.TaskID, "PlanningWorkflowID", planningWorkflowID)
-		notify("planning_rescue", map[string]string{
-			"task":                req.TaskID,
-			"attempts":            fmt.Sprintf("%d", escalationAttempt),
-			"planning_session_id": planningWorkflowID,
-		})
+		var failureContext strings.Builder
+		failureContext.WriteString(fmt.Sprintf("BEACHED SHARK INVESTIGATION: Task `%s` failed after %d attempts across all provider tiers.\n\n", req.TaskID, escalationAttempt))
+		failureContext.WriteString(fmt.Sprintf("ORIGINAL PLAN: %s\n\n", plan.Summary))
+		failureContext.WriteString("FAILURE HISTORY:\n")
+		for i, f := range allFailures {
+			failureContext.WriteString(fmt.Sprintf("  %d. %s\n", i+1, truncate(f, 300)))
+		}
+		failureContext.WriteString("\nINSTRUCTION: Investigate why this task failed repeatedly. Consider:\n")
+		failureContext.WriteString("- Is the task scope too broad? Decompose into smaller, achievable morsels.\n")
+		failureContext.WriteString("- Are there missing prerequisites or dependencies?\n")
+		failureContext.WriteString("- Should the acceptance criteria be revised?\n")
+		failureContext.WriteString("- Is this task fundamentally blocked by infrastructure issues?\n")
+
+		slowStep := req.SlowStepThreshold
+		if slowStep <= 0 {
+			slowStep = defaultSlowStepThreshold
+		}
+		planningWorkflowID := fmt.Sprintf("rescue-%s-%d", req.TaskID, workflow.Now(ctx).Unix())
+		planningReq := PlanningRequest{
+			Project:           req.Project,
+			Agent:             req.Agent,
+			Tier:              "premium",
+			WorkDir:           baseWorkDir,
+			SignalTimeout:     defaultPlanningSignalTimeout,
+			SessionTimeout:    defaultPlanningSessionTimeout,
+			SlowStepThreshold: slowStep,
+			SeedTaskID:        fmt.Sprintf("rescue-%s", req.TaskID),
+			SeedTaskTitle:     fmt.Sprintf("Rescue plan for %s", normalizeTaskTitle(req.TaskID, req.TaskTitle, req.Prompt)),
+			SeedTaskPrompt:    failureContext.String(),
+			AutoMode:          true,
+			TraceSessionID:    planningWorkflowID,
+		}
+		planningOpts := workflow.ChildWorkflowOptions{
+			ParentClosePolicy: enumspb.PARENT_CLOSE_POLICY_ABANDON,
+			WorkflowID:        planningWorkflowID,
+		}
+		planningCtx := workflow.WithChildOptions(ctx, planningOpts)
+		planningFut := workflow.ExecuteChildWorkflow(planningCtx, PlanningCeremonyWorkflow, planningReq)
+		if err := planningFut.GetChildWorkflowExecution().Get(ctx, nil); err != nil {
+			logger.Warn(SharkPrefix+" Planning rescue ceremony failed to start", "error", err)
+		} else {
+			logger.Info(SharkPrefix+" Planning rescue spawned — beached shark will be investigated and rescoped",
+				"TaskID", req.TaskID, "PlanningWorkflowID", planningWorkflowID)
+			notify("planning_rescue", map[string]string{
+				"task":                req.TaskID,
+				"attempts":            fmt.Sprintf("%d", escalationAttempt),
+				"planning_session_id": planningWorkflowID,
+			})
+		}
 	}
 
 	cleanupWorktree()

@@ -166,7 +166,7 @@ func runWatchdogCommand(args []string, logger *slog.Logger) error {
 
 func runHealthCheck(db *sql.DB, logPath string, logger *slog.Logger) *SystemHealthReport {
 	report := &SystemHealthReport{Verdict: "healthy"}
-	cutoff := time.Now().Add(-30 * time.Minute).Format("2006-01-02 15:04:05")
+	cutoff := time.Now().UTC().Add(-30 * time.Minute).Format("2006-01-02 15:04:05")
 
 	// Count dispatches by status in the last 30 minutes.
 	rows, err := db.Query(
@@ -188,7 +188,7 @@ func runHealthCheck(db *sql.DB, logPath string, logger *slog.Logger) *SystemHeal
 					report.EscalationsLast30m = count
 					report.FailuresLast30m += count
 				case "running":
-					report.DispatchesLast30m += count
+					report.RunningWorkflows += count
 				}
 				report.DispatchesLast30m += count
 			}
@@ -235,7 +235,7 @@ func runHealthCheck(db *sql.DB, logPath string, logger *slog.Logger) *SystemHeal
 
 	// Count planning failures in the last hour.
 	var planFails int
-	planCutoff := time.Now().Add(-1 * time.Hour).Format("2006-01-02 15:04:05")
+	planCutoff := time.Now().UTC().Add(-1 * time.Hour).Format("2006-01-02 15:04:05")
 	//nolint:errcheck // best-effort metrics
 	db.QueryRow(
 		`SELECT COUNT(*) FROM organism_logs

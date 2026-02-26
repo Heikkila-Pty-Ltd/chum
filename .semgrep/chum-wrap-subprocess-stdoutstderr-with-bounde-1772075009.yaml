@@ -1,0 +1,24 @@
+rules:
+  - id: chum-go-unbounded-subprocess-output-buffer
+    patterns:
+      - pattern-either:
+          - pattern: |
+              var $BUF bytes.Buffer
+              ...
+              $CMD.Stdout = &$BUF
+          - pattern: |
+              var $BUF bytes.Buffer
+              ...
+              $CMD.Stderr = &$BUF
+          - pattern: |
+              $CMD.Stdout = &bytes.Buffer{}
+          - pattern: |
+              $CMD.Stderr = &bytes.Buffer{}
+          - pattern: |
+              $CMD.Stdout = bytes.NewBuffer(...)
+          - pattern: |
+              $CMD.Stderr = bytes.NewBuffer(...)
+    message: |
+      Subprocess output is being captured with an unbounded bytes.Buffer. In shared command runners, wrap stdout/stderr with a bounded writer (for example, the `limitedWriter` + truncation constants pattern used in `internal/temporal/stingray_helpers.go`) so command output stays useful without unbounded memory growth.
+    languages: [go]
+    severity: WARNING

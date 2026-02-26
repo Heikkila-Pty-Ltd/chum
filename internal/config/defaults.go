@@ -208,7 +208,8 @@ func applyDefaults(cfg *Config, md toml.MetaData) {
 	}
 
 	// Project branch defaults
-	for name, project := range cfg.Projects {
+	for name := range cfg.Projects {
+		project := cfg.Projects[name]
 		if project.BaseBranch == "" {
 			project.BaseBranch = "main"
 		}
@@ -317,7 +318,7 @@ func ensureRetryPolicyDefaults(policy RetryPolicy) RetryPolicy {
 	return policy
 }
 
-func mergeRetryPolicy(base RetryPolicy, override RetryPolicy) RetryPolicy {
+func mergeRetryPolicy(base, override RetryPolicy) RetryPolicy {
 	if override.MaxRetries != 0 {
 		base.MaxRetries = override.MaxRetries
 	}

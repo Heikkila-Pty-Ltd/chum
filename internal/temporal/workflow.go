@@ -375,7 +375,7 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 	var lastFailedProvider string
 	var lastFailedTier string
 	_ = lastFailedProvider // used in escalation path
-	_ = lastFailedTier    // used in escalation path
+	_ = lastFailedTier     // used in escalation path
 
 	// Build execution chain — either from TaskRequest or fallback to single provider.
 	chain := req.EscalationChain
@@ -409,7 +409,6 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 		if req.Reviewer == "" {
 			req.Reviewer = DefaultReviewer(tier.CLI)
 		}
-
 
 		logger.Info(SharkPrefix+" Tier escalation",
 			"Tier", tier.Tier, "Provider", tier.ProviderKey, "CLI", tier.CLI, "Model", tier.Model,
@@ -758,7 +757,7 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 			logger.Warn(SharkPrefix+" DoD failed", "Attempt", attempt+1, "Failures", failureMsg)
 
 			// --- FAILURE TRIAGE — read output, decide retry vs rescope ---
-			// Every failure is analysed. The triage reads the agent's actual
+			// Every failure is analyzed. The triage reads the agent's actual
 			// output and decides: retry with guidance, or send to turtles.
 			triageStart := workflow.Now(ctx)
 			triageCtx := workflow.WithActivityOptions(ctx, triageOpts)

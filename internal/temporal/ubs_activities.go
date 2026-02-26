@@ -152,7 +152,7 @@ func (a *Activities) GetBugPrimingActivity(ctx context.Context, provider, specie
 		logger.Warn(SharkPrefix+" Failed to get provider weaknesses (non-fatal)", "error", err)
 	} else if len(providerBugs) > 0 {
 		lines := []string{fmt.Sprintf("⚠️ PROVIDER BUG PROFILE (%s):", provider)}
-		lines = append(lines, fmt.Sprintf("Your model commonly produces these bugs:"))
+		lines = append(lines, "Your model commonly produces these bugs:")
 		for i, b := range providerBugs {
 			sev := strings.ToUpper(b.Severity)
 			lines = append(lines, fmt.Sprintf("  %d. [%s] %s (%d occurrences, %d self-fixed) — %s",
@@ -289,7 +289,7 @@ func (a *Activities) UBSBaselineScanActivity(ctx context.Context, project, workD
 			Title: title,
 			Description: fmt.Sprintf("UBS baseline scan found %d %s-severity issues in category: %s\n\nDetail: %s\n\nFix each instance. Run `ubs %s --format=text` to see exact locations.",
 				f.Count, f.Severity, f.Category, f.Detail, workDir),
-			Acceptance: fmt.Sprintf("- All %s issues in category '%s' resolved\n- go build ./... passes\n- UBS scan shows 0 findings in this category", f.Severity, f.Category),
+			Acceptance:      fmt.Sprintf("- All %s issues in category '%s' resolved\n- go build ./... passes\n- UBS scan shows 0 findings in this category", f.Severity, f.Category),
 			Type:            "task",
 			Priority:        priority,
 			EstimateMinutes: estimate,
@@ -310,8 +310,10 @@ func (a *Activities) UBSBaselineScanActivity(ctx context.Context, project, workD
 
 // parseUBSTextFindings extracts critical and warning categories from UBS text output.
 // UBS text format uses:
-//   🔥 CRITICAL (N found)
-//   ⚠ Warning (N found)
+//
+//	🔥 CRITICAL (N found)
+//	⚠ Warning (N found)
+//
 // followed by a description line.
 func parseUBSTextFindings(text string) []ubsBaselineFinding {
 	var findings []ubsBaselineFinding

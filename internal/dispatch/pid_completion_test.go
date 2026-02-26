@@ -24,7 +24,7 @@ exit 0`
 		t.Fatalf("Failed to write test script: %v", err)
 	}
 
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// Override the openclaw command to run our test script instead
 	pid, err := d.dispatchTestProcess(ctx, scriptPath)
@@ -78,7 +78,7 @@ exit 42`
 		t.Fatalf("Failed to write test script: %v", err)
 	}
 
-	ctx := context.Background()
+	ctx := t.Context()
 
 	pid, err := d.dispatchTestProcess(ctx, scriptPath)
 	if err != nil {
@@ -137,7 +137,7 @@ exit 0`
 		t.Fatalf("Failed to write test script: %v", err)
 	}
 
-	ctx := context.Background()
+	ctx := t.Context()
 
 	pid, err := d.dispatchTestProcess(ctx, scriptPath)
 	if err != nil {
@@ -213,7 +213,7 @@ exit 5`
 		t.Fatalf("Failed to write test script: %v", err)
 	}
 
-	ctx := context.Background()
+	ctx := t.Context()
 
 	pid, err := d.dispatchTestProcess(ctx, scriptPath)
 	if err != nil {

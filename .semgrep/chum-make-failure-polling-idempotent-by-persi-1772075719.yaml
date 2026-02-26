@@ -1,0 +1,40 @@
+rules:
+  - id: chum-failure-polling-nonidempotent
+    patterns:
+      - pattern-inside: |
+          func $FUNC($...ARGS) {
+            ...
+          }
+      - pattern-either:
+          - patterns:
+              - pattern-either:
+                  - pattern: |
+                      $LAST_CHECK := time.Now()
+                  - pattern: |
+                      var $LAST_CHECK = time.Now()
+              - pattern-either:
+                  - pattern: |
+                      $Q := fmt.Sprintf($FMT, ...)
+                  - pattern: |
+                      $Q = fmt.Sprintf($FMT, ...)
+              - metavariable-regex:
+                  metavariable: $FMT
+                  regex: "(?is).*ExecutionStatus\\s*=\\s*['\\\"]Failed['\\\"].*CloseTime\\s*>.*"
+          - patterns:
+              - pattern-either:
+                  - pattern: |
+                      $SEEN := make(map[string]struct{})
+                  - pattern: |
+                      $SEEN := make(map[string]bool)
+              - pattern-either:
+                  - pattern: |
+                      $Q := fmt.Sprintf($FMT, ...)
+                  - pattern: |
+                      $Q = fmt.Sprintf($FMT, ...)
+              - metavariable-regex:
+                  metavariable: $FMT
+                  regex: "(?is).*ExecutionStatus\\s*=\\s*['\\\"]Failed['\\\"].*CloseTime\\s*>.*"
+    message: |
+      This failure scanner is likely non-idempotent. For periodic queries like `ExecutionStatus='Failed' AND CloseTime > <cursor>`, persist the polling cursor (for example in SQLite) and keep durable processed-workflow dedup keys. Do not rely on `time.Now()` cursors or in-memory-only seen maps.
+    languages: [go]
+    severity: WARNING

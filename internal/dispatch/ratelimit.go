@@ -37,14 +37,14 @@ func NewRateLimiter(s *store.Store, cfg config.RateLimits) *RateLimiter {
 
 // CanDispatchAuthed checks both the 5h rolling window and weekly cap.
 // Returns (true, "") if dispatch is allowed, or (false, reason) if blocked.
-func (r *RateLimiter) CanDispatchAuthed() (bool, string) {
+func (r *RateLimiter) CanDispatchAuthed() (allowed bool, reason string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	return r.canDispatchAuthedLocked()
 }
 
-func (r *RateLimiter) canDispatchAuthedLocked() (bool, string) {
+func (r *RateLimiter) canDispatchAuthedLocked() (allowed bool, reason string) {
 	count5h, err := r.store.CountAuthedUsage5h()
 	if err != nil {
 		return false, fmt.Sprintf("error checking 5h usage: %v", err)
@@ -117,7 +117,7 @@ func (r *RateLimiter) IsInHeadroomWarning() bool {
 // PickAndReserveProvider selects a provider from the given tier, respecting and reserving rate limits.
 // Returns (provider, usageID, cleanupFunc) if successful.
 // If cleanupFunc is non-nil, the caller MUST call it if the dispatch subsequently fails.
-func (r *RateLimiter) PickAndReserveProvider(tier string, providers map[string]config.Provider, tiers config.Tiers, agentID, morselID string) (*config.Provider, int64, func(), error) {
+func (r *RateLimiter) PickAndReserveProvider(tier string, providers map[string]config.Provider, tiers config.Tiers, agentID, morselID string) (provider *config.Provider, usageID int64, cleanup func(), err error) {
 	var tierProviders []string
 	switch tier {
 	case "fast":
@@ -144,7 +144,7 @@ func (r *RateLimiter) PickAndReserveProviderFromCandidates(
 	providers map[string]config.Provider,
 	excludeModels map[string]bool,
 	agentID, morselID string,
-) (*config.Provider, string, int64, func(), error) {
+) (provider *config.Provider, providerName string, usageID int64, cleanup func(), err error) {
 	return r.pickAndReserveFromCandidates(candidates, providers, excludeModels, agentID, morselID)
 }
 
@@ -154,7 +154,7 @@ func (r *RateLimiter) pickAndReserveFromCandidates(
 	providers map[string]config.Provider,
 	excludeModels map[string]bool,
 	agentID, morselID string,
-) (*config.Provider, string, int64, func(), error) {
+) (provider *config.Provider, providerName string, usageID int64, cleanup func(), err error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -186,15 +186,15 @@ func (r *RateLimiter) pickAndReserveFromCandidates(
 
 		// Success with reservation
 		cleanup := func() {
-			_ = r.ReleaseAuthedDispatch(usageID)
+			if releaseErr := r.ReleaseAuthedDispatch(usageID); releaseErr != nil {
+				return
+			}
 		}
 		return &p, name, usageID, cleanup, nil
 	}
 
 	return nil, "", 0, nil, nil
 }
-
-
 
 // DowngradeTier returns the next lower tier, or "" if already at lowest.
 func DowngradeTier(tier string) string {

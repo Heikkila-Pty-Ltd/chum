@@ -104,8 +104,8 @@ func (s *Store) SeedProteins() error {
 		Name:     "React Component Build Sequence",
 		Molecules: []Molecule{
 			{
-				ID:    "read-types",
-				Order: 1,
+				ID:     "read-types",
+				Order:  1,
 				Action: "script",
 				Instruction: `BEFORE writing any code, you MUST read the project's type definitions.
 Run: cat lib/types.ts (or find the equivalent types file).
@@ -116,8 +116,8 @@ If the types file doesn't exist, check: types/, interfaces/, or grep for 'interf
 				Provider: "any",
 			},
 			{
-				ID:    "build-component",
-				Order: 2,
+				ID:     "build-component",
+				Order:  2,
 				Action: "prompt",
 				Instruction: `Build the component using ONLY the field names confirmed in the type-reading step.
 Rules:
@@ -132,8 +132,8 @@ Rules:
 				Provider: "any",
 			},
 			{
-				ID:    "audit-component",
-				Order: 3,
+				ID:     "audit-component",
+				Order:  3,
 				Action: "prompt",
 				Skill:  "/audit",
 				Instruction: `Audit the completed component:
@@ -176,19 +176,19 @@ If any issues found, fix them and re-run npm run build.`,
 		Name:     "Go Feature Build Sequence",
 		Molecules: []Molecule{
 			{
-				ID:    "read-interfaces",
-				Order: 1,
+				ID:     "read-interfaces",
+				Order:  1,
 				Action: "script",
 				Instruction: `BEFORE writing any code, read the existing interfaces and types.
 Run: grep -rn "type.*struct\|type.*interface\|func (" in the relevant package directory.
 Record EXACT type names, method signatures, and field names.
-Check existing tests to understand expected behaviour.
+Check existing tests to understand expected behavior.
 Do NOT guess — get them from the source.`,
 				Provider: "any",
 			},
 			{
-				ID:    "implement",
-				Order: 2,
+				ID:     "implement",
+				Order:  2,
 				Action: "prompt",
 				Instruction: `Implement the feature using ONLY types and interfaces confirmed in step 1.
 Rules:
@@ -202,8 +202,8 @@ Rules:
 				Provider: "any",
 			},
 			{
-				ID:    "verify",
-				Order: 3,
+				ID:     "verify",
+				Order:  3,
 				Action: "script",
 				Instruction: `Verify the implementation:
 1. Run: go build ./... — must succeed with zero errors
@@ -234,7 +234,7 @@ Rules:
 	return err
 }
 
-// InsertProtein stores a newly synthesised protein. Uses INSERT OR REPLACE
+// InsertProtein stores a newly synthesized protein. Uses INSERT OR REPLACE
 // so it can safely be called for both new proteins and protein forks.
 func (s *Store) InsertProtein(p Protein) error {
 	molJSON, err := json.Marshal(p.Molecules)

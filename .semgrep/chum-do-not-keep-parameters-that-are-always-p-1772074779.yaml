@@ -1,0 +1,21 @@
+rules:
+  - id: chum-avoid-constant-only-maxlen-parameter
+    patterns:
+      - pattern-either:
+          - pattern: |
+              func truncateWithFlag($VALUE string, $MAX_LEN int) {
+                ...
+              }
+          - pattern: |
+              func truncateWithFlag($VALUE string, $MAX_LEN int) $RET {
+                ...
+              }
+      - pattern: truncateWithFlag($X, stingrayCommandOutputTruncateLen)
+    message: |
+      `truncateWithFlag` has a `maxLen` parameter, but call sites pass the same constant (`stingrayCommandOutputTruncateLen`).
+      Remove `maxLen` from the function signature and use the constant internally, or introduce real variable call sites.
+    languages: [go]
+    severity: WARNING
+    paths:
+      include:
+        - internal/temporal/stingray_helpers.go

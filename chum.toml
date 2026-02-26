@@ -47,12 +47,19 @@ window_5h_cap = 99999999      # uncapped — let it rip
 weekly_cap = 99999999          # uncapped — let it rip
 weekly_headroom_pct = 0        # no throttling headroom
 
-# --- Codex only ---
+# --- Multi-provider round-robin ---
 [providers.codex]
 tier = "fast"
 authed = true
 model = "gpt-5.3-codex"
 cli = "codex"
+enabled = true
+
+[providers.gemini]
+tier = "fast"
+authed = true
+model = "gemini-2.5-flash"
+cli = "gemini"
 enabled = true
 
 [providers.codex-medium]
@@ -62,6 +69,13 @@ model = "gpt-5.3-codex"
 cli = "codex-medium"
 enabled = true
 
+[providers.gemini-high]
+tier = "balanced"
+authed = true
+model = "gemini-2.5-pro"
+cli = "gemini-high"
+enabled = true
+
 [providers.codex-high]
 tier = "premium"
 authed = true
@@ -69,10 +83,17 @@ model = "gpt-5.3-codex"
 cli = "codex-high"
 enabled = true
 
+[providers.claude]
+tier = "premium"
+authed = true
+model = "claude-sonnet-4-5"
+cli = "claude"
+enabled = true
+
 [tiers]
-fast = ["codex"]
-balanced = ["codex-medium"]
-premium = ["codex-high"]
+fast = ["gemini", "codex"]
+balanced = ["codex-medium", "gemini-high"]
+premium = ["codex-high", "claude"]
 
 [health]
 check_interval = "2m"
@@ -115,7 +136,21 @@ args = ["exec", "--full-auto", "-c", "model_reasoning_effort=high"]
 model_flag = "-m"
 approval_flags = []
 
-[dispatch.cli.claude-rescue]
+[dispatch.cli.gemini]
+cmd = "gemini"
+prompt_mode = "stdin"
+args = ["-p", "", "--yolo"]
+model_flag = "--model"
+approval_flags = []
+
+[dispatch.cli.gemini-high]
+cmd = "gemini"
+prompt_mode = "stdin"
+args = ["-p", "", "--yolo", "--model", "gemini-2.5-pro"]
+model_flag = "--model"
+approval_flags = []
+
+[dispatch.cli.claude]
 cmd = "claude"
 prompt_mode = "stdin"
 args = ["--dangerously-skip-permissions"]
@@ -153,7 +188,7 @@ premium = "60m"
 branch_prefix = "chum/"
 branch_cleanup_days = 7
 merge_strategy = "squash"
-max_concurrent_per_project = 1
+max_concurrent_per_project = 3
 
 [chief]
 enabled = false

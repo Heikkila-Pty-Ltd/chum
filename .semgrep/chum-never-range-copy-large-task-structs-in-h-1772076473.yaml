@@ -1,0 +1,28 @@
+rules:
+  - id: chum-go-avoid-range-value-copy-large-task
+    patterns:
+      - pattern-either:
+          - pattern: |
+              for _, $TASK := range $TASKS {
+                ...
+              }
+          - pattern: |
+              for $I, $TASK := range $TASKS {
+                ...
+              }
+      - metavariable-regex:
+          metavariable: $TASKS
+          regex: (?i)^tasks$
+      - metavariable-regex:
+          metavariable: $TASK
+          regex: (?i)^task$
+    message: |
+      This range loop copies each `task` value on every iteration. For large structs, this creates avoidable allocations/cpu cost and can introduce stale-copy logic bugs.
+      Prefer index/pointer iteration instead:
+      `for i := range tasks { t := &tasks[i]; ... }`
+      or iterate over a narrowed/lightweight struct.
+    languages: [go]
+    severity: WARNING
+    paths:
+      include:
+        - internal/temporal/stingray_activities.go

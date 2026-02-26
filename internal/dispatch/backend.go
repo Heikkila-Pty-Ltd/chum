@@ -20,6 +20,8 @@ type Handle struct {
 }
 
 // DispatchOpts holds parameters for a new dispatch.
+//
+//nolint:revive // Retained name for compatibility across internal package boundaries.
 type DispatchOpts struct {
 	Agent         string
 	Prompt        string
@@ -32,6 +34,8 @@ type DispatchOpts struct {
 }
 
 // DispatchStatus represents the current state of a dispatch.
+//
+//nolint:revive // Retained name for compatibility across internal package boundaries.
 type DispatchStatus struct {
 	State    string // "running", "completed", "failed", "unknown"
 	ExitCode int

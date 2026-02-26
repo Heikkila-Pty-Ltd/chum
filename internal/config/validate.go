@@ -31,7 +31,8 @@ func validate(cfg *Config) error {
 	}
 
 	hasEnabled := false
-	for projectName, p := range cfg.Projects {
+	for projectName := range cfg.Projects {
+		p := cfg.Projects[projectName]
 		if p.Enabled {
 			hasEnabled = true
 		}
@@ -111,7 +112,7 @@ func validate(cfg *Config) error {
 	}
 
 	// Validate rate limit budget configuration
-	if cfg.RateLimits.Budget != nil && len(cfg.RateLimits.Budget) > 0 {
+	if len(cfg.RateLimits.Budget) > 0 {
 		total := 0
 		for project, percentage := range cfg.RateLimits.Budget {
 			if percentage < 0 {
@@ -139,7 +140,7 @@ func validate(cfg *Config) error {
 		}
 		if cfg.API.Security.AuditLog != "" {
 			dir := ExpandHome(filepath.Dir(cfg.API.Security.AuditLog))
-			if err := os.MkdirAll(dir, 0755); err != nil {
+			if err := os.MkdirAll(dir, 0o755); err != nil {
 				return fmt.Errorf("cannot create audit log directory %q: %w", dir, err)
 			}
 		}
@@ -230,7 +231,8 @@ func (cfg *Config) MissingProjectRoomRouting() []string {
 	}
 
 	missing := make([]string, 0)
-	for name, project := range cfg.Projects {
+	for name := range cfg.Projects {
+		project := cfg.Projects[name]
 		if !project.Enabled {
 			continue
 		}
@@ -254,7 +256,7 @@ func (c Cadence) StartWeekday() (time.Weekday, error) {
 }
 
 // StartClock parses cadence sprint_start_time as HH:MM.
-func (c Cadence) StartClock() (int, int, error) {
+func (c Cadence) StartClock() (hour, minute int, err error) {
 	return parseClock(c.SprintStartTime)
 }
 
@@ -335,18 +337,18 @@ func parseWeekday(raw string) (time.Weekday, error) {
 	}
 }
 
-func parseClock(raw string) (int, int, error) {
+func parseClock(raw string) (hour, minute int, err error) {
 	value := strings.TrimSpace(raw)
 	if len(value) != 5 || value[2] != ':' {
 		return 0, 0, fmt.Errorf("must be in HH:MM format")
 	}
 	hourRaw := value[:2]
 	minuteRaw := value[3:]
-	hour, err := strconv.Atoi(hourRaw)
+	hour, err = strconv.Atoi(hourRaw)
 	if err != nil {
 		return 0, 0, fmt.Errorf("hour must be numeric")
 	}
-	minute, err := strconv.Atoi(minuteRaw)
+	minute, err = strconv.Atoi(minuteRaw)
 	if err != nil {
 		return 0, 0, fmt.Errorf("minute must be numeric")
 	}
@@ -357,7 +359,7 @@ func parseClock(raw string) (int, int, error) {
 }
 
 // validateSprintPlanningConfig validates sprint planning configuration for a project.
-func validateSprintPlanningConfig(projectName string, project Project) error {
+func validateSprintPlanningConfig(_ string, project Project) error {
 	// Sprint planning day validation
 	if project.SprintPlanningDay != "" {
 		validDays := map[string]bool{
@@ -430,7 +432,7 @@ func validateSprintPlanningConfig(projectName string, project Project) error {
 }
 
 // validateDoDConfig validates Definition of Done configuration for a project.
-func validateDoDConfig(projectName string, dod DoDConfig) error {
+func validateDoDConfig(_ string, dod DoDConfig) error {
 	// Validate coverage_min range
 	if dod.CoverageMin < 0 {
 		return fmt.Errorf("coverage_min cannot be negative: %d", dod.CoverageMin)
@@ -705,7 +707,7 @@ func ValidateDispatchConfig(cfg *Config) error {
 }
 
 // validateCLIConfig validates an individual CLI configuration.
-func validateCLIConfig(name string, config CLIConfig) error {
+func validateCLIConfig(_ string, config CLIConfig) error {
 	// Validate command is specified
 	if config.Cmd == "" {
 		return fmt.Errorf("cmd is required")
@@ -743,7 +745,7 @@ func validateCLIConfig(name string, config CLIConfig) error {
 // 1) providers.<name>.cli when set
 // 2) dispatch.cli.codex when present
 // 3) lexicographically first dispatch.cli key
-func resolveProviderCLIKey(explicitCLI string, cliConfigs map[string]CLIConfig) (key string, source string) {
+func resolveProviderCLIKey(explicitCLI string, cliConfigs map[string]CLIConfig) (key, source string) {
 	if trimmed := strings.TrimSpace(explicitCLI); trimmed != "" {
 		return trimmed, "provider.cli"
 	}

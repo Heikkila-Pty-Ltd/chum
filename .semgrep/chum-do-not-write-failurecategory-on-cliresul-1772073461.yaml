@@ -1,0 +1,39 @@
+rules:
+  - id: chum-dead-cliresult-failurecategory-before-exit
+    paths:
+      include:
+        - internal/temporal/crab_activities.go
+        - internal/temporal/turtle_activities.go
+        - internal/temporal/learner_activities.go
+    patterns:
+      - pattern-inside: |
+          ...
+          runAgentWithFailover(...)
+          ...
+      - pattern-either:
+          - pattern: |
+              if $ERR != nil {
+                ...
+                cliResult.FailureCategory = $CATEGORY
+                ...
+                return
+              }
+          - pattern: |
+              if $ERR != nil {
+                ...
+                cliResult.FailureCategory = $CATEGORY
+                ...
+                return ...
+              }
+          - pattern: |
+              if $ERR != nil {
+                ...
+                cliResult.FailureCategory = $CATEGORY
+                ...
+                continue
+              }
+    message: |
+      Dead write on error path: `cliResult.FailureCategory` is assigned in a branch that immediately exits (`return`/`continue`), so it is never read.
+      Remove the assignment and let the error path (return, fallback, or continue) drive behavior.
+    languages: [go]
+    severity: WARNING

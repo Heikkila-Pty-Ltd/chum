@@ -28,7 +28,7 @@ func TestOpenClawClientReadMessagesParsesMessages(t *testing.T) {
 	}
 	client := NewOpenClawClient(runner, 50)
 
-	msgs, next, err := client.ReadMessages(context.Background(), "!room:matrix.org", "$prev")
+	msgs, next, err := client.ReadMessages(t.Context(), "!room:matrix.org", "$prev")
 	if err != nil {
 		t.Fatalf("ReadMessages returned error: %v", err)
 	}
@@ -64,7 +64,7 @@ func TestOpenClawClientReadMessagesUsesAfterCursorArgument(t *testing.T) {
 	}
 	client := NewOpenClawClient(runner, 10)
 
-	_, _, err := client.ReadMessages(context.Background(), "!room:matrix.org", "$cursor")
+	_, _, err := client.ReadMessages(t.Context(), "!room:matrix.org", "$cursor")
 	if err != nil {
 		t.Fatalf("ReadMessages returned error: %v", err)
 	}
@@ -84,7 +84,7 @@ func TestOpenClawClientReadMessagesHandlesRunnerError(t *testing.T) {
 	}
 	client := NewOpenClawClient(runner, 20)
 
-	_, _, err := client.ReadMessages(context.Background(), "!room:matrix.org", "")
+	_, _, err := client.ReadMessages(t.Context(), "!room:matrix.org", "")
 	if err == nil {
 		t.Fatal("expected runner error")
 	}

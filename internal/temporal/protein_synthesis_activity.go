@@ -11,7 +11,7 @@ import (
 	"github.com/antigravity-dev/chum/internal/store"
 )
 
-// ProteinSynthesisRequest contains the inputs for synthesising a new protein
+// ProteinSynthesisRequest contains the inputs for synthesizing a new protein
 // from observed success patterns for a species.
 type ProteinSynthesisRequest struct {
 	Species         string `json:"species"`
@@ -23,13 +23,13 @@ type ProteinSynthesisRequest struct {
 
 // ProteinSynthesisResult is the output of a protein synthesis attempt.
 type ProteinSynthesisResult struct {
-	ProteinID  string `json:"protein_id"`
-	Name       string `json:"name"`
-	Molecules  int    `json:"molecules"`
-	Synthesized bool  `json:"synthesized"`
+	ProteinID   string `json:"protein_id"`
+	Name        string `json:"name"`
+	Molecules   int    `json:"molecules"`
+	Synthesized bool   `json:"synthesized"`
 }
 
-// SynthesizeProteinActivity analyses accumulated success patterns for a species
+// SynthesizeProteinActivity analyzes accumulated success patterns for a species
 // and generates a new protein — a deterministic molecule sequence that future
 // dispatches will follow. This is the bridge from "immune system" (preventing
 // errors) to "capability extension" (codifying what works).
@@ -44,7 +44,7 @@ type ProteinSynthesisResult struct {
 // the protein into future dispatches for this species — the loop closes itself.
 func (a *Activities) SynthesizeProteinActivity(ctx context.Context, req ProteinSynthesisRequest) (*ProteinSynthesisResult, error) {
 	logger := activity.GetLogger(ctx)
-	logger.Info(PaleontologistPrefix+" Synthesising protein",
+	logger.Info(PaleontologistPrefix+" Synthesizing protein",
 		"Species", req.Species, "Successes", req.TotalSuccesses)
 
 	if a.Store == nil {
@@ -118,7 +118,7 @@ A protein is a deterministic sequence of "molecules" (steps) that the coding age
 CONTEXT:
 %s
 
-Your job: synthesise a protein for this species. The protein should encode the PROVEN workflow that has succeeded %d times. Extract the common step sequence that leads to success.
+Your job: synthesize a protein for this species. The protein should encode the PROVEN workflow that has succeeded %d times. Extract the common step sequence that leads to success.
 
 RULES:
 - Each molecule must be a specific, actionable step (not "do the task")
@@ -217,12 +217,12 @@ Respond with ONLY a JSON object:
 // MutateProteinRequest contains the inputs for mutating an existing protein
 // based on fold retro feedback.
 type MutateProteinRequest struct {
-	ProteinID     string `json:"protein_id"`
-	Species       string `json:"species"`
-	RetroVerdict  string `json:"retro_verdict"`  // "rewrite", "split", or "merge"
-	RetroImprove  []string `json:"retro_improve"` // improvement suggestions from retro
-	RetroFailed   []string `json:"retro_failed"`  // what failed
-	FoldCount     int    `json:"fold_count"`       // how many folds the protein has
+	ProteinID    string   `json:"protein_id"`
+	Species      string   `json:"species"`
+	RetroVerdict string   `json:"retro_verdict"` // "rewrite", "split", or "merge"
+	RetroImprove []string `json:"retro_improve"` // improvement suggestions from retro
+	RetroFailed  []string `json:"retro_failed"`  // what failed
+	FoldCount    int      `json:"fold_count"`    // how many folds the protein has
 }
 
 // MutateProteinResult is the output of a protein mutation.
@@ -373,11 +373,11 @@ Respond with ONLY a JSON object:
 
 // SynthesizeProteinCandidatesActivity is the orchestrator called by
 // PaleontologistWorkflow. It fetches protein candidates from the store
-// and synthesises a protein for each candidate that doesn't have one yet.
+// and synthesizes a protein for each candidate that doesn't have one yet.
 // Returns the number of proteins successfully synthesized.
 func (a *Activities) SynthesizeProteinCandidatesActivity(ctx context.Context, req PaleontologistRequest) (int, error) {
 	logger := activity.GetLogger(ctx)
-	logger.Info(PaleontologistPrefix + " Synthesising proteins for candidates")
+	logger.Info(PaleontologistPrefix + " Synthesizing proteins for candidates")
 
 	if a.Store == nil {
 		return 0, nil

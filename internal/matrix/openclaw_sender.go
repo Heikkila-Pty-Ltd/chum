@@ -66,7 +66,7 @@ func (s *OpenClawSender) SendMessage(ctx context.Context, roomID, message string
 	out, err := s.runner.Run(ctx, "openclaw", args...)
 	if err != nil {
 		if directErr != nil {
-			return fmt.Errorf("direct matrix send failed: %v; openclaw message send failed: %w (%s)", directErr, err, compactOutput(out))
+			return fmt.Errorf("direct matrix send failed: %w; openclaw message send failed: %w (%s)", directErr, err, compactOutput(out))
 		}
 		return fmt.Errorf("openclaw message send failed: %w (%s)", err, compactOutput(out))
 	}

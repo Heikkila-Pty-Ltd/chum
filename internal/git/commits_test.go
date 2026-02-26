@@ -3,7 +3,6 @@ package git
 import (
 	"reflect"
 	"testing"
-	"time"
 )
 
 func TestExtractMorselIDs(t *testing.T) {
@@ -150,10 +149,7 @@ func TestIsLikelyMorselID(t *testing.T) {
 func TestCommit_MorselIDs(t *testing.T) {
 	// Test that Commit struct properly extracts morsel IDs
 	commit := Commit{
-		Hash:    "abc123",
 		Message: "feat(chum-xyz): implement feature for chum-abc.1",
-		Author:  "test@example.com",
-		Date:    time.Now(),
 	}
 
 	commit.MorselIDs = ExtractMorselIDs(commit.Message)

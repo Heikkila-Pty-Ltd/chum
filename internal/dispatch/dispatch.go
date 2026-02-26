@@ -3,6 +3,7 @@ package dispatch
 import (
 	"context"
 	_ "embed"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -54,7 +55,7 @@ func openclawShellScriptWithPromptInlineLimit(promptInlineLimit int) string {
 }
 
 // writeToTempFile creates a temporary file and writes content to it
-func writeToTempFile(content string, prefix string) (string, error) {
+func writeToTempFile(content, prefix string) (string, error) {
 	tmpFile, err := os.CreateTemp("", prefix)
 	if err != nil {
 		return "", err
@@ -71,7 +72,7 @@ func writeToTempFile(content string, prefix string) (string, error) {
 
 // openclawCommandArgs creates command arguments that safely pass all parameters
 // via temporary files to avoid shell parsing issues
-func openclawCommandArgs(msgPath, agent, thinking, provider string) ([]string, []string, error) {
+func openclawCommandArgs(msgPath, agent, thinking, provider string) (args, tempFiles []string, err error) {
 	// Create temp files for each parameter to avoid shell escaping issues
 	agentPath, err := writeToTempFile(agent, "chum-agent-*.txt")
 	if err != nil {
@@ -91,8 +92,8 @@ func openclawCommandArgs(msgPath, agent, thinking, provider string) ([]string, [
 		return nil, nil, fmt.Errorf("create provider temp file: %w", err)
 	}
 
-	args := []string{"-c", openclawShellScript(), "_", msgPath, agentPath, thinkingPath, providerPath}
-	tempFiles := []string{agentPath, thinkingPath, providerPath}
+	args = []string{"-c", openclawShellScript(), "_", msgPath, agentPath, thinkingPath, providerPath}
+	tempFiles = []string{agentPath, thinkingPath, providerPath}
 
 	return args, tempFiles, nil
 }
@@ -163,7 +164,7 @@ func ThinkingLevel(tier string) string {
 }
 
 // Dispatch starts an openclaw agent process in the background and returns its PID.
-func (d *Dispatcher) Dispatch(ctx context.Context, agent string, prompt string, provider string, thinkingLevel string, workDir string) (pid int, err error) {
+func (d *Dispatcher) Dispatch(ctx context.Context, agent, prompt, provider, thinkingLevel, workDir string) (pid int, err error) {
 	if len(agent) > MaxCLIArgSize {
 		return 0, fmt.Errorf("dispatch: agent configuration too large for CLI execution")
 	}
@@ -197,7 +198,7 @@ func (d *Dispatcher) Dispatch(ctx context.Context, agent string, prompt string, 
 	// Legacy compatibility boundary: openclaw execution intentionally remains
 	// a shell-based helper path in this ticket.
 	// Use context.Background() so the child process survives if chum
-	// exits in --once mode (the parent context gets cancelled on exit).
+	// exits in --once mode (the parent context gets canceled on exit).
 	cmd := exec.Command("sh", args...)
 	cmd.Dir = workDir
 
@@ -265,7 +266,8 @@ func (d *Dispatcher) monitorProcess(pid int) {
 	info.state = "exited"
 
 	if err != nil {
-		if exitError, ok := err.(*exec.ExitError); ok {
+		var exitError *exec.ExitError
+		if errors.As(err, &exitError) {
 			info.exitCode = exitError.ExitCode()
 		} else {
 			// Process was killed or failed to start properly

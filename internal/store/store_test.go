@@ -748,7 +748,7 @@ func TestMarkDispatchPendingRetryUpdatesStageAndCompletion(t *testing.T) {
 	if !d.NextRetryAt.Valid {
 		t.Fatal("expected next_retry_at to be set")
 	}
-	if d.NextRetryAt.Time.Sub(time.Now()) <= 0 {
+	if time.Until(d.NextRetryAt.Time) <= 0 {
 		t.Fatal("expected next_retry_at in the future")
 	}
 }
@@ -871,7 +871,7 @@ func TestHasRecentConsecutiveFailures_IncludesFailureLikeStatuses(t *testing.T) 
 	s := tempStore(t)
 	morselID := "morsel-failure-like"
 
-	statuses := []string{"failed", "failed", "cancelled"}
+	statuses := []string{"failed", "failed", "canceled"}
 	for i, status := range statuses {
 		id, err := s.RecordDispatch(morselID, "proj", "agent-1", "cerebras", "fast", 100+i, "", "prompt", "", "", "")
 		if err != nil {
@@ -893,7 +893,7 @@ func TestHasRecentConsecutiveFailures_IncludesFailureLikeStatuses(t *testing.T) 
 		t.Fatalf("HasRecentConsecutiveFailures returned error: %v", err)
 	}
 	if !got {
-		t.Fatal("expected cancelled+failed+failed streak to count as quarantine failures")
+		t.Fatal("expected canceled+failed+failed streak to count as quarantine failures")
 	}
 }
 

@@ -141,7 +141,7 @@ func TestPollOnceRoutesMessagesAndSkipsBotSender(t *testing.T) {
 		},
 	}, client, dispatcher, nil)
 
-	if err := poller.PollOnce(context.Background()); err != nil {
+	if err := poller.PollOnce(t.Context()); err != nil {
 		t.Fatalf("PollOnce returned error: %v", err)
 	}
 
@@ -182,7 +182,7 @@ func TestPollOnceContinuesOnRoomReadError(t *testing.T) {
 		},
 	}, client, dispatcher, nil)
 
-	if err := poller.PollOnce(context.Background()); err != nil {
+	if err := poller.PollOnce(t.Context()); err != nil {
 		t.Fatalf("PollOnce returned error: %v", err)
 	}
 	if len(dispatcher.calls) != 1 {
@@ -204,7 +204,7 @@ func TestPollOnceDisabledDoesNothing(t *testing.T) {
 		},
 	}, client, dispatcher, nil)
 
-	if err := poller.PollOnce(context.Background()); err != nil {
+	if err := poller.PollOnce(t.Context()); err != nil {
 		t.Fatalf("PollOnce returned error: %v", err)
 	}
 	if len(client.calls) != 0 {
@@ -236,7 +236,7 @@ func TestPollOnceFallsBackToMainOnDispatchFailure(t *testing.T) {
 		},
 	}, client, dispatcher, nil)
 
-	if err := poller.PollOnce(context.Background()); err != nil {
+	if err := poller.PollOnce(t.Context()); err != nil {
 		t.Fatalf("PollOnce returned error: %v", err)
 	}
 	if len(dispatcher.calls) != 2 {
@@ -338,7 +338,7 @@ func TestPollOnceRoutesScrumStatusCommandToMatrixSender(t *testing.T) {
 		Store:  store,
 	}, client, &fakeDispatcher{}, nil)
 
-	if err := poller.PollOnce(context.Background()); err != nil {
+	if err := poller.PollOnce(t.Context()); err != nil {
 		t.Fatalf("PollOnce returned error: %v", err)
 	}
 	if len(sender.messages) != 1 {
@@ -399,7 +399,7 @@ func TestPollOnceRoutesScrumPriorityCommandToMatrixSender(t *testing.T) {
 		DAG:      dag,
 	}, client, &fakeDispatcher{}, nil)
 
-	if err := poller.PollOnce(context.Background()); err != nil {
+	if err = poller.PollOnce(t.Context()); err != nil {
 		t.Fatalf("PollOnce returned error: %v", err)
 	}
 
@@ -445,7 +445,7 @@ func TestPollOnceRoutesScrumCreateCommandToMatrixSender(t *testing.T) {
 		DAG:      dag,
 	}, client, &fakeDispatcher{}, nil)
 
-	if err := poller.PollOnce(context.Background()); err != nil {
+	if err := poller.PollOnce(t.Context()); err != nil {
 		t.Fatalf("PollOnce returned error: %v", err)
 	}
 	if len(sender.messages) != 1 {
@@ -494,7 +494,7 @@ func TestPollOnceRoutesScrumCancelCommandToMatrixSender(t *testing.T) {
 		Sender:   sender,
 	}, client, &fakeDispatcher{}, nil)
 
-	if err := poller.PollOnce(context.Background()); err != nil {
+	if err := poller.PollOnce(t.Context()); err != nil {
 		t.Fatalf("PollOnce returned error: %v", err)
 	}
 	if len(canceler.cancelledIDs) != 1 || canceler.cancelledIDs[0] != 99 {
@@ -503,7 +503,7 @@ func TestPollOnceRoutesScrumCancelCommandToMatrixSender(t *testing.T) {
 	if len(sender.messages) != 1 {
 		t.Fatalf("expected 1 response, got %d", len(sender.messages))
 	}
-	if !strings.Contains(sender.messages[0], "Cancelled dispatch 99") {
+	if !strings.Contains(sender.messages[0], "Canceled dispatch 99") {
 		t.Fatalf("unexpected response: %q", sender.messages[0])
 	}
 }
@@ -530,7 +530,7 @@ func TestPollOnceRejectsScrumCommandWithoutPermission(t *testing.T) {
 		CommandSenders: []string{"@trusted:matrix.org"},
 	}, client, &fakeDispatcher{}, nil)
 
-	if err := poller.PollOnce(context.Background()); err != nil {
+	if err := poller.PollOnce(t.Context()); err != nil {
 		t.Fatalf("PollOnce returned error: %v", err)
 	}
 	if len(sender.messages) != 1 {
@@ -562,7 +562,7 @@ func TestPollOnceRejectsMalformedScrumCommand(t *testing.T) {
 		Sender: sender,
 	}, client, &fakeDispatcher{}, nil)
 
-	if err := poller.PollOnce(context.Background()); err != nil {
+	if err := poller.PollOnce(t.Context()); err != nil {
 		t.Fatalf("PollOnce returned error: %v", err)
 	}
 	if len(sender.messages) != 1 {

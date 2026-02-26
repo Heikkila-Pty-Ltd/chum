@@ -1,0 +1,14 @@
+rules:
+  - id: chum-no-silenced-recover-in-defer
+    patterns:
+      - pattern-inside: |
+          defer func(...) {
+            ...
+          }(...)
+      - pattern: _ = recover()
+    message: |
+      Do not silence panic recovery with `_ = recover()` in deferred handlers.
+      Call `recover()` explicitly and branch on the value instead, for example:
+      `if r := recover(); r != nil { ... }`.
+    languages: [go]
+    severity: WARNING

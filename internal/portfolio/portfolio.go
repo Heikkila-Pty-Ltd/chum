@@ -164,7 +164,7 @@ func gatherProjectBacklog(ctx context.Context, projectName string, project confi
 	return backlog, nil
 }
 
-// filterOpenTasks returns only open tasks (excludes closed, cancelled, etc.)
+// filterOpenTasks returns only open tasks (excludes closed, canceled, etc.)
 func filterOpenTasks(allTasks []graph.Task) []graph.Task {
 	var open []graph.Task
 	for _, task := range allTasks {

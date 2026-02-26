@@ -83,6 +83,20 @@ func (s *Store) RecordHealthEventWithDispatch(eventType, details string, dispatc
 	return nil
 }
 
+// HasRecentHealthEvent checks if a health event with the given type and details
+// substring was recorded within the last `within` duration. Used to suppress
+// duplicate Matrix notifications (e.g. stale hibernator alerts).
+func (s *Store) HasRecentHealthEvent(eventType, detailsSubstring string, within time.Duration) bool {
+	cutoff := time.Now().UTC().Add(-within).Format("2006-01-02 15:04:05")
+	var count int
+	err := s.db.QueryRow(
+		`SELECT COUNT(*) FROM health_events
+		 WHERE event_type = ? AND details LIKE '%' || ? || '%' AND created_at >= ?`,
+		eventType, detailsSubstring, cutoff,
+	).Scan(&count)
+	return err == nil && count > 0
+}
+
 // RecordTickMetrics records metrics for a scheduler tick.
 func (s *Store) RecordTickMetrics(project string, open, ready, dispatched, completed, failed, stuck int) error {
 	_, err := s.db.Exec(

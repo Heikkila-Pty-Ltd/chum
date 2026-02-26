@@ -9,12 +9,12 @@ import (
 	"go.temporal.io/sdk/activity"
 )
 
-// FailureTriageActivity analyses a pipeline failure and decides whether to
+// FailureTriageActivity analyzes a pipeline failure and decides whether to
 // retry with specific guidance or rescope the task to turtles/crabs.
 //
 // It reads the agent's raw output text, combines it with structured failure
 // info, and asks a fast LLM to triage. This closes the feedback loop —
-// every failure is analysed, not just escalations.
+// every failure is analyzed, not just escalations.
 func (a *Activities) FailureTriageActivity(ctx context.Context, req FailureTriageRequest) (*FailureTriageResult, error) {
 	logger := activity.GetLogger(ctx)
 	logger.Info(OctopusPrefix+" Triaging failure",
@@ -40,7 +40,7 @@ func (a *Activities) FailureTriageActivity(ctx context.Context, req FailureTriag
 			"AGENT OUTPUT (last portion):\n"+truncate(req.AgentOutput, 4000))
 	}
 
-	prompt := fmt.Sprintf(`You are a failure triage system for an AI coding pipeline. A task just failed. Analyse the failure and decide what to do next.
+	prompt := fmt.Sprintf(`You are a failure triage system for an AI coding pipeline. A task just failed. Analyze the failure and decide what to do next.
 
 %s
 

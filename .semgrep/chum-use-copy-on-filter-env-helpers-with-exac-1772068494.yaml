@@ -1,0 +1,23 @@
+rules:
+  - id: chum-env-filter-copy-on-filter-exact-key-eq
+    patterns:
+      - pattern-either:
+          - pattern: |
+              if strings.HasPrefix($ENTRY, $KEY) {
+                ...
+              }
+          - pattern: |
+              if !strings.HasPrefix($ENTRY, $KEY) {
+                ...
+              }
+          - pattern: |
+              $ENV = append($ENV[:$I], $ENV[$I+1:]...)
+    message: |
+      Env filtering should use copy-on-filter with exact `KEY=` matching.
+      Match on `strings.HasPrefix(entry, key + "=")` to avoid removing similarly named vars,
+      and return a new slice instead of mutating the input env slice in place.
+    languages: [go]
+    severity: WARNING
+    paths:
+      include:
+        - internal/temporal/agent_cli.go

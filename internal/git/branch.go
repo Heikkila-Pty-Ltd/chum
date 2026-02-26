@@ -45,7 +45,8 @@ func BranchExists(workspace, branch string) (bool, error) {
 	err := cmd.Run()
 	if err != nil {
 		// Exit code 1 means branch doesn't exist, other errors are real failures
-		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
 			return false, nil
 		}
 		return false, fmt.Errorf("failed to check if branch %s exists: %w", branch, err)
@@ -109,13 +110,11 @@ func EnsureFeatureBranchWithBase(workspace, morselID, baseBranch, branchPrefix s
 	} else {
 		// Branch doesn't exist, create it from the specified base branch
 		// Try to fetch from origin (optional - ignore if no remote)
-		cmd := exec.Command("git", "fetch", "origin")
-		cmd.Dir = workspace
-		cmd.CombinedOutput() // Ignore errors - remote may not exist
+		runBestEffortGitCommand(workspace, "fetch", "origin")
 
 		// Try to create from remote branch first, fall back to local
 		remoteBranch := fmt.Sprintf("origin/%s", baseBranch)
-		cmd = exec.Command("git", "checkout", "-b", branchName, remoteBranch)
+		cmd := exec.Command("git", "checkout", "-b", branchName, remoteBranch)
 		cmd.Dir = workspace
 		if err := cmd.Run(); err != nil {
 			// If remote branch doesn't exist, try local branch
@@ -152,7 +151,7 @@ func MergeBranchIntoBase(workspace, featureBranch, baseBranch, mergeStrategy str
 		if isMergeConflictText(text) {
 			if strategy != "rebase" {
 				abortMergeInProgress(workspace)
-				_, _ = runGitCommand(workspace, "checkout", baseBranch)
+				runBestEffortGitCommand(workspace, "checkout", baseBranch)
 			}
 			return fmt.Errorf("%w: %s", ErrMergeConflict, text)
 		}
@@ -174,11 +173,11 @@ func MergeBranchIntoBase(workspace, featureBranch, baseBranch, mergeStrategy str
 		}
 		if _, rebaseErr := runGitCommand(workspace, "rebase", baseBranch); rebaseErr != nil {
 			if isMergeConflictText(rebaseErr.Error()) {
-				_, _ = runGitCommand(workspace, "rebase", "--abort")
-				_, _ = runGitCommand(workspace, "checkout", baseBranch)
+				runBestEffortGitCommand(workspace, "rebase", "--abort")
+				runBestEffortGitCommand(workspace, "checkout", baseBranch)
 				return fmt.Errorf("%w: %s", ErrMergeConflict, strings.TrimSpace(rebaseErr.Error()))
 			}
-			_, _ = runGitCommand(workspace, "checkout", baseBranch)
+			runBestEffortGitCommand(workspace, "checkout", baseBranch)
 			return fmt.Errorf("failed to rebase branch %s onto %s: %w", featureBranch, baseBranch, rebaseErr)
 		}
 		if _, checkoutErr := runGitCommand(workspace, "checkout", baseBranch); checkoutErr != nil {
@@ -253,6 +252,14 @@ func runGitCommand(workspace string, args ...string) (string, error) {
 
 func abortMergeInProgress(workspace string) {
 	if _, err := runGitCommand(workspace, "merge", "--abort"); err != nil {
-		_, _ = runGitCommand(workspace, "reset", "--merge")
+		runBestEffortGitCommand(workspace, "reset", "--merge")
+	}
+}
+
+func runBestEffortGitCommand(workspace string, args ...string) {
+	cmd := exec.Command("git", args...)
+	cmd.Dir = workspace
+	if _, err := cmd.CombinedOutput(); err != nil {
+		return
 	}
 }

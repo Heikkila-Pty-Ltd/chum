@@ -8,24 +8,24 @@ import (
 
 // TaskRequest is submitted via the API to start a workflow.
 type TaskRequest struct {
-	TaskID            string           `json:"task_id"`
-	Project           string           `json:"project"`
-	Prompt            string           `json:"prompt"`
-	TaskTitle         string           `json:"task_title"` // human-readable task title for workflow searchability and display
-	Agent             string           `json:"agent"`      // primary coding agent (keyword): claude|codex|gemini
-	Model             string           `json:"model"`      // model override for the CLI (e.g. "haiku", "gemini-2.5-flash")
-	Reviewer          string           `json:"reviewer"`   // review agent — auto-assigned if empty
-	WorkDir           string           `json:"work_dir"`
-	Provider          string           `json:"provider"`
-	Priority          int              `json:"priority"`            // scheduling priority expected as an int in range [0,4], where 0 is highest
-	DoDChecks         []string         `json:"dod_checks"`          // e.g. ["go build ./cmd/chum", "go test ./..."]
-	SlowStepThreshold time.Duration    `json:"slow_step_threshold"` // steps exceeding this are flagged slow
-	EscalationChain     []EscalationTier `json:"escalation_chain"`              // ordered tiers for fail-upward retry
+	TaskID              string           `json:"task_id"`
+	Project             string           `json:"project"`
+	Prompt              string           `json:"prompt"`
+	TaskTitle           string           `json:"task_title"` // human-readable task title for workflow searchability and display
+	Agent               string           `json:"agent"`      // primary coding agent (keyword): claude|codex|gemini
+	Model               string           `json:"model"`      // model override for the CLI (e.g. "haiku", "gemini-2.5-flash")
+	Reviewer            string           `json:"reviewer"`   // review agent — auto-assigned if empty
+	WorkDir             string           `json:"work_dir"`
+	Provider            string           `json:"provider"`
+	Priority            int              `json:"priority"`                        // scheduling priority expected as an int in range [0,4], where 0 is highest
+	DoDChecks           []string         `json:"dod_checks"`                      // e.g. ["go build ./cmd/chum", "go test ./..."]
+	SlowStepThreshold   time.Duration    `json:"slow_step_threshold"`             // steps exceeding this are flagged slow
+	EscalationChain     []EscalationTier `json:"escalation_chain"`                // ordered tiers for fail-upward retry
 	MaxRetriesOverride  int              `json:"max_retries_override,omitempty"`  // if >0, overrides retriesForTier for ALL tiers
 	MaxHandoffsOverride int              `json:"max_handoffs_override,omitempty"` // if >0, overrides maxHandoffs constant
 	PreviousErrors      []string         `json:"previous_errors,omitempty"`
-	ExplosionID       string           `json:"explosion_id,omitempty"`    // If set, workflow runs in isolated sandbox mode (Cambrian Explosion)
-	TraceSessionID    string           `json:"trace_session_id,omitempty"` // Graph-Brain trace session ID
+	ExplosionID         string           `json:"explosion_id,omitempty"`     // If set, workflow runs in isolated sandbox mode (Cambrian Explosion)
+	TraceSessionID      string           `json:"trace_session_id,omitempty"` // Graph-Brain trace session ID
 }
 
 // EscalationTier defines one level in the fail-upward chain.
@@ -173,6 +173,7 @@ type StepMetric struct {
 	Status    string  `json:"status"` // "ok", "failed", "skipped"
 	Slow      bool    `json:"slow,omitempty"`
 }
+
 // OrganismLog captures a structured log entry for any non-shark organism
 // (turtle, crab, learner, groomer, dispatcher, explosion, etc.).
 type OrganismLog struct {
@@ -180,7 +181,7 @@ type OrganismLog struct {
 	WorkflowID   string  `json:"workflow_id"`
 	TaskID       string  `json:"task_id"`
 	Project      string  `json:"project"`
-	Status       string  `json:"status"`  // completed, failed, escalated, throttled
+	Status       string  `json:"status"` // completed, failed, escalated, throttled
 	DurationS    float64 `json:"duration_s"`
 	Details      string  `json:"details"` // free-text summary of what happened
 	Steps        int     `json:"steps"`   // phase/step count
@@ -445,13 +446,13 @@ type FailureTriageRequest struct {
 	Tier        string   `json:"tier"`
 }
 
-// FailureTriageResult is the LLM's triage decision after analysing a failure.
+// FailureTriageResult is the LLM's triage decision after analyzing a failure.
 type FailureTriageResult struct {
-	Decision      string   `json:"decision"`        // "retry" or "rescope"
-	Guidance      string   `json:"guidance"`         // if retry: specific instruction for next attempt
-	RescopeReason string   `json:"rescope_reason"`   // if rescope: why this needs turtle/crab intervention
-	Antibodies    []string `json:"antibodies"`       // patterns to inject into genome
-	Category      string   `json:"category"`         // "infrastructure", "logic", "scope", "complexity"
+	Decision      string   `json:"decision"`       // "retry" or "rescope"
+	Guidance      string   `json:"guidance"`       // if retry: specific instruction for next attempt
+	RescopeReason string   `json:"rescope_reason"` // if rescope: why this needs turtle/crab intervention
+	Antibodies    []string `json:"antibodies"`     // patterns to inject into genome
+	Category      string   `json:"category"`       // "infrastructure", "logic", "scope", "complexity"
 }
 
 // TacticalGroomRequest is passed to TacticalGroomWorkflow after a task completes.
@@ -572,8 +573,8 @@ type DispatchCandidate struct {
 	SlowStepThreshold time.Duration     `json:"slow_step_threshold"`
 	EstimateMinutes   int               `json:"estimate_minutes"`
 	PreviousErrors    []string          `json:"previous_errors,omitempty"`
-	Generation        int               `json:"generation"` // 0 = new species
-	Complexity        int               `json:"complexity"` // 0-100 score
+	Generation        int               `json:"generation"`    // 0 = new species
+	Complexity        int               `json:"complexity"`    // 0-100 score
 	HasCrabSeal       bool              `json:"has_crab_seal"` // true if properly decomposed/sized for direct dispatch
 	PlannerEdgeStats  []PlannerEdgeStat `json:"planner_edge_stats,omitempty"`
 }
@@ -591,7 +592,7 @@ type ScanCandidatesResult struct {
 	AvailableAgents        []string            `json:"available_agents"`         // enabled CLI agent names from config
 	EscalationTiers        []EscalationTier    `json:"escalation_tiers"`         // pre-computed escalation chain from config
 	EnablePlannerV2        bool                `json:"enable_planner_v2"`
-	MaxRetriesOverride     int                 `json:"max_retries_override,omitempty"` // higher-learning: per-tier retry cap (0 = use default)
+	MaxRetriesOverride     int                 `json:"max_retries_override,omitempty"`  // higher-learning: per-tier retry cap (0 = use default)
 	MaxHandoffsOverride    int                 `json:"max_handoffs_override,omitempty"` // higher-learning: handoff cap (0 = use default)
 }
 

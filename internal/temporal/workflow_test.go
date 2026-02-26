@@ -1180,8 +1180,8 @@ func TestDispatcherDefersPlanningWhilePlanningSessionIsRunning(t *testing.T) {
 
 	require.True(t, env.IsWorkflowCompleted())
 	require.NoError(t, env.GetWorkflowError())
-	require.False(t, planningCalled, "planning should be deferred while another planning session is active")
-	require.True(t, directCalled, "direct crab-emitted morsels should still dispatch")
+	require.False(t, planningCalled, "planning should not start when a planning session is already active")
+	require.True(t, directCalled, "candidates should dispatch directly when planning slot is full")
 }
 
 func TestDispatcherStartsAtMostOnePlanningCeremonyPerTick(t *testing.T) {
@@ -1226,11 +1226,17 @@ func TestDispatcherStartsAtMostOnePlanningCeremonyPerTick(t *testing.T) {
 		planningCalls++
 	}).Return(&TaskRequest{TaskID: "plan-1"}, nil).Maybe()
 
+	directCalls := 0
+	env.OnWorkflow(ChumAgentWorkflow, mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+		directCalls++
+	}).Return(nil).Maybe()
+
 	env.ExecuteWorkflow(DispatcherWorkflow, struct{}{})
 
 	require.True(t, env.IsWorkflowCompleted())
 	require.NoError(t, env.GetWorkflowError())
 	require.Equal(t, 1, planningCalls, "dispatcher should start at most one planning ceremony per tick")
+	require.Equal(t, 1, directCalls, "second candidate should dispatch directly when planning slot is taken")
 }
 
 // TestFailureTriageRetryGuidance verifies that when triage returns "retry"

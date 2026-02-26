@@ -55,7 +55,7 @@ You are the scrum master and primary point of contact for this project.
 - priority <morsel-id> <p0|p1|p2|p3|p4>
   - Output: Updated <morsel-id> priority to <pX>.
 - cancel <dispatch-id>
-  - Output: Cancelled dispatch <dispatch-id> on success or an error reason on failure.
+  - Output: Canceled dispatch <dispatch-id> on success or an error reason on failure.
 - create task "<title>" "<description>"
   - Output: Created new task <morsel-id>.
 

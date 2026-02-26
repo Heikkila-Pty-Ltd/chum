@@ -123,7 +123,7 @@ func verifyBackupIntegrity(backupPath string) (map[string]interface{}, error) {
 
 	counts, err := dbutil.CountTableRows(backupPath, dbutil.KnownTables)
 	if err != nil {
-		return nil, fmt.Errorf("count table rows: %v", err)
+		return nil, fmt.Errorf("count table rows: %w", err)
 	}
 	info["table_counts"] = counts
 
@@ -137,7 +137,7 @@ func verifyRestoredDatabase(dbPath string) error {
 
 	counts, err := dbutil.CountTableRows(dbPath, dbutil.KnownTables)
 	if err != nil {
-		return fmt.Errorf("count table rows: %v", err)
+		return fmt.Errorf("count table rows: %w", err)
 	}
 	for table, count := range counts {
 		if count >= 0 {

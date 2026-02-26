@@ -144,22 +144,25 @@ func DispatcherWorkflow(ctx workflow.Context, _ struct{}) error {
 			// - High-complexity work
 			if shouldRouteToPlanningCeremony(*c) {
 				if result.PlanningRunning > 0 || planningDispatchedThisTick {
-					logger.Info(SharkPrefix+" Dispatcher: planning ceremony already active; deferring candidate",
+					logger.Info(SharkPrefix+" Dispatcher: planning slot full; dispatching directly",
 						"task", c.TaskID,
 						"project", c.Project,
 						"planning_running", result.PlanningRunning,
 					)
-					continue
+					// Fall through to direct dispatch instead of blocking
+					// all work while a single planning ceremony runs.
+					future = workflow.ExecuteChildWorkflow(childCtx, ChumAgentWorkflow, req)
+				} else {
+					planningReq := seededPlanningRequestFromCandidate(
+						*c,
+						agent,
+						slowStep,
+						result.PlanningSignalTimeout,
+						result.PlanningSessionTimeout,
+					)
+					future = workflow.ExecuteChildWorkflow(childCtx, PlanningCeremonyWorkflow, planningReq)
+					requiresPlanning = true
 				}
-				planningReq := seededPlanningRequestFromCandidate(
-					*c,
-					agent,
-					slowStep,
-					result.PlanningSignalTimeout,
-					result.PlanningSessionTimeout,
-				)
-				future = workflow.ExecuteChildWorkflow(childCtx, PlanningCeremonyWorkflow, planningReq)
-				requiresPlanning = true
 			} else {
 				// Familiar/simple work executes directly.
 				// Standard single-agent execution loop.
@@ -438,6 +441,28 @@ func (da *DispatchActivities) ScanCandidatesActivity(ctx context.Context) (*Scan
 		if listErr != nil {
 			logger.Warn(SharkPrefix+" Dispatcher: DAG ListTasks failed", "project", name, "error", listErr)
 			continue
+		}
+
+		// Auto-promote groomed open tasks to ready when grooming agents are disabled.
+		// Without crab/chief, nothing moves tasks from open→ready, so the dispatcher
+		// must do it for tasks that already have estimates and acceptance criteria.
+		if !cfg.Chief.Enabled && !cfg.Crab.Enabled {
+			promoted := 0
+			for i := range all {
+				t := &all[i]
+				if t.Status == "open" && t.EstimateMinutes > 0 && t.Acceptance != "" &&
+					t.Type != "epic" && t.Type != "whale" {
+					if err := da.DAG.UpdateTask(ctx, t.ID, map[string]any{"status": "ready"}); err != nil {
+						logger.Warn(SharkPrefix+" Dispatcher: auto-promote failed", "task", t.ID, "error", err)
+						continue
+					}
+					t.Status = "ready"
+					promoted++
+				}
+			}
+			if promoted > 0 {
+				logger.Info(SharkPrefix+" Dispatcher: auto-promoted open→ready", "project", name, "count", promoted)
+			}
 		}
 
 		depGraph := graph.BuildDepGraph(all)

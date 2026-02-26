@@ -1,0 +1,51 @@
+rules:
+  - id: chum-dispatch-cost-control-applydefaults-contract
+    patterns:
+      - pattern-either:
+          - patterns:
+              - pattern: |
+                  func applyDefaults($CFG *Config, $MD toml.MetaData) {
+                    ...
+                  }
+              - pattern-not: |
+                  if $CFG.Dispatch.CostControl.PlanningCandidateTopK == 0 {
+                    ...
+                  }
+          - patterns:
+              - pattern: |
+                  func applyDefaults($CFG *Config, $MD toml.MetaData) {
+                    ...
+                  }
+              - pattern-not: |
+                  if $CFG.Dispatch.CostControl.PlanningSignalTimeout.Duration == 0 {
+                    ...
+                  }
+          - patterns:
+              - pattern: |
+                  func applyDefaults($CFG *Config, $MD toml.MetaData) {
+                    ...
+                  }
+              - pattern-not: |
+                  if $CFG.Dispatch.CostControl.PlanningSessionTimeout.Duration == 0 {
+                    ...
+                  }
+          - patterns:
+              - pattern: |
+                  func applyDefaults($CFG *Config, $MD toml.MetaData) {
+                    ...
+                  }
+              - pattern-not: |
+                  if $CFG.Dispatch.CostControl.PlanningStaleBlockThreshold.Duration == 0 {
+                    ...
+                  }
+    message: |
+      Dispatch cost-control planning knobs must ship as a 3-file contract in one change:
+      1) field/tag in internal/config/types.go (DispatchCostControl),
+      2) zero-value fallback in applyDefaults in internal/config/defaults.go,
+      3) matching key under [dispatch.cost_control] in chum.toml.
+      Add the missing applyDefaults fallback and confirm the type + TOML example are updated in the same morsel.
+    languages: [go]
+    severity: ERROR
+    paths:
+      include:
+        - internal/config/defaults.go

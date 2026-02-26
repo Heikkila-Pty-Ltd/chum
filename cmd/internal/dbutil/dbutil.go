@@ -32,19 +32,19 @@ func Die(format string, args ...interface{}) {
 func CopyFile(src, dst string) error {
 	srcFile, err := os.Open(src)
 	if err != nil {
-		return fmt.Errorf("open source: %v", err)
+		return fmt.Errorf("open source: %w", err)
 	}
 	defer srcFile.Close()
 
 	dstFile, err := os.Create(dst)
 	if err != nil {
-		return fmt.Errorf("create destination: %v", err)
+		return fmt.Errorf("create destination: %w", err)
 	}
 	defer dstFile.Close()
 
 	buf := make([]byte, 1024*1024) // 1 MB buffer
 	if _, err := io.CopyBuffer(dstFile, srcFile, buf); err != nil {
-		return fmt.Errorf("copy: %v", err)
+		return fmt.Errorf("copy: %w", err)
 	}
 
 	return dstFile.Sync()
@@ -55,13 +55,13 @@ func CopyFile(src, dst string) error {
 func CheckIntegrity(dbPath string) error {
 	db, err := sql.Open("sqlite", dbPath+"?mode=ro")
 	if err != nil {
-		return fmt.Errorf("open database: %v", err)
+		return fmt.Errorf("open database: %w", err)
 	}
 	defer db.Close()
 
 	var result string
 	if err := db.QueryRow("PRAGMA integrity_check").Scan(&result); err != nil {
-		return fmt.Errorf("integrity check query: %v", err)
+		return fmt.Errorf("integrity check query: %w", err)
 	}
 	if result != "ok" {
 		return fmt.Errorf("integrity check failed: %s", result)
@@ -74,7 +74,7 @@ func CheckIntegrity(dbPath string) error {
 func CountTableRows(dbPath string, tables []string) (map[string]int, error) {
 	db, err := sql.Open("sqlite", dbPath+"?mode=ro")
 	if err != nil {
-		return nil, fmt.Errorf("open database: %v", err)
+		return nil, fmt.Errorf("open database: %w", err)
 	}
 	defer db.Close()
 

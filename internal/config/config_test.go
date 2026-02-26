@@ -150,8 +150,8 @@ func TestReloadCanBeCalledMultipleTimes(t *testing.T) {
 	}
 
 	updated := strings.Replace(validConfig, `log_level = "info"`, `log_level = "debug"`, 1)
-	if err := os.WriteFile(path, []byte(updated), 0644); err != nil {
-		t.Fatalf("rewrite config failed: %v", err)
+	if writeErr := os.WriteFile(path, []byte(updated), 0o644); writeErr != nil {
+		t.Fatalf("rewrite config failed: %v", writeErr)
 	}
 
 	second, err := Reload(path)
@@ -700,7 +700,7 @@ func TestLoadRateLimitBudgetOptional(t *testing.T) {
 		t.Fatalf("expected config without budget to load: %v", err)
 	}
 
-	if config.RateLimits.Budget != nil && len(config.RateLimits.Budget) > 0 {
+	if len(config.RateLimits.Budget) > 0 {
 		t.Error("expected budget to be nil or empty when not configured")
 	}
 }

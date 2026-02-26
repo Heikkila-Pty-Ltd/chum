@@ -31,7 +31,8 @@ func cloneProjects(in map[string]Project) map[string]Project {
 		return nil
 	}
 	out := make(map[string]Project, len(in))
-	for key, project := range in {
+	for key := range in {
+		project := in[key]
 		project.DoD.Checks = cloneStringSlice(project.DoD.Checks)
 		project.PostMergeChecks = cloneStringSlice(project.PostMergeChecks)
 		project.RetryPolicy = cloneRetryPolicy(project.RetryPolicy)

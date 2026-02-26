@@ -90,8 +90,8 @@ func TestCreateFeatureBranch(t *testing.T) {
 	}
 
 	morselID := "test-123"
-	if err := CreateFeatureBranch(repo, morselID, baseBranch); err != nil {
-		t.Fatalf("CreateFeatureBranch failed: %v", err)
+	if createErr := CreateFeatureBranch(repo, morselID, baseBranch); createErr != nil {
+		t.Fatalf("CreateFeatureBranch failed: %v", createErr)
 	}
 
 	// Verify we're on the new branch

@@ -1,0 +1,10 @@
+rules:
+  - id: chum-parent-done-missing-child-reference
+    patterns:
+      - pattern-either:
+          - pattern-regex: '(?mi)status:\s*done(?!\s*#\s*decomposed\s+into\s+[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*)'
+    message: |
+      Decomposed parent items must include explicit child references.
+      Replace bare `status: done` with `status: done # decomposed into <child-id>/<child-id>` so the parent stays non-dispatchable and points to active children.
+    languages: [go]
+    severity: WARNING

@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	// Register modernc sqlite driver for database/sql usage.
 	_ "modernc.org/sqlite"
 )
 

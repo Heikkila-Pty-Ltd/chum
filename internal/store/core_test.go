@@ -1,6 +1,7 @@
 package store
 
 import (
+	"database/sql"
 	"path/filepath"
 	"testing"
 )
@@ -142,5 +143,71 @@ func TestCoreStoreDispatchLifecycle(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("StoreTokenUsage failed: %v", err)
+	}
+}
+
+// TestNewCoreStoreUpgradesLegacyDB verifies that NewCoreStore can open a
+// database created with an older schema (bead_id columns, missing log_path
+// etc.) and successfully migrate it so RecordDispatch works.
+func TestNewCoreStoreUpgradesLegacyDB(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "legacy-upgrade.db")
+
+	// Simulate a legacy DB: create the dispatches table with bead_id
+	// and WITHOUT newer columns like log_path, branch, backend.
+	db, err := sql.Open("sqlite", dbPath+"?_pragma=journal_mode(WAL)")
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS dispatches (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		bead_id TEXT NOT NULL,
+		project TEXT NOT NULL,
+		agent TEXT NOT NULL DEFAULT '',
+		provider TEXT NOT NULL DEFAULT '',
+		mode TEXT NOT NULL DEFAULT '',
+		timeout_seconds INTEGER NOT NULL DEFAULT 300,
+		prompt TEXT NOT NULL DEFAULT '',
+		status TEXT NOT NULL DEFAULT 'running',
+		exit_code INTEGER NOT NULL DEFAULT -1,
+		duration REAL NOT NULL DEFAULT 0,
+		dispatched_at DATETIME NOT NULL DEFAULT (datetime('now')),
+		completed_at DATETIME
+	)`)
+	if err != nil {
+		t.Fatalf("create legacy dispatches: %v", err)
+	}
+	// Insert a legacy row so we can verify the rename worked.
+	_, err = db.Exec(`INSERT INTO dispatches (bead_id, project, agent) VALUES ('legacy-1', 'proj', 'agent-1')`)
+	if err != nil {
+		t.Fatalf("insert legacy dispatch: %v", err)
+	}
+	db.Close()
+
+	// Re-open with NewCoreStore — this should apply bead→morsel rename
+	// and backfill missing columns.
+	s, err := NewCoreStore(dbPath)
+	if err != nil {
+		t.Fatalf("NewCoreStore on legacy DB failed: %v", err)
+	}
+	defer s.Close()
+
+	// Verify the bead_id column was renamed to morsel_id.
+	var morselID string
+	err = s.db.QueryRow(`SELECT morsel_id FROM dispatches WHERE id = 1`).Scan(&morselID)
+	if err != nil {
+		t.Fatalf("query morsel_id: %v (bead→morsel rename likely failed)", err)
+	}
+	if morselID != "legacy-1" {
+		t.Errorf("morsel_id = %q, want legacy-1", morselID)
+	}
+
+	// RecordDispatch should succeed now — it uses log_path, branch, backend
+	// which were missing from the legacy schema.
+	id, err := s.RecordDispatch("morsel-2", "proj", "agent-2", "openai", "fast", 100, "", "test", "", "", "")
+	if err != nil {
+		t.Fatalf("RecordDispatch on upgraded DB failed: %v", err)
+	}
+	if id == 0 {
+		t.Fatal("expected non-zero dispatch ID")
 	}
 }

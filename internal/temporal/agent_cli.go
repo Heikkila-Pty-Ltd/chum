@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"go.temporal.io/sdk/activity"
@@ -96,7 +97,14 @@ func (t *agentFailureTracker) consecutiveFailures(agent string) int {
 	return t.failures[agent]
 }
 
-// ResolveTierAgent returns the first agent in the given tier's agent list.
+// tierRoundRobin stores per-tier atomic counters for round-robin agent selection.
+// Each tier (fast, balanced, premium) gets its own counter that monotonically
+// increases and wraps around the agent list length.
+var tierRoundRobin sync.Map // map[string]*atomic.Uint64
+
+// ResolveTierAgent returns the next agent in the given tier's agent list using
+// round-robin selection. Each call advances the counter so consecutive calls
+// distribute load evenly across all configured providers in the tier.
 // Falls back to "codex" when the tier is unknown or has no agents configured.
 func ResolveTierAgent(tiers config.Tiers, tier string) string {
 	tier = strings.TrimSpace(strings.ToLower(tier))
@@ -110,10 +118,24 @@ func ResolveTierAgent(tiers config.Tiers, tier string) string {
 	case "premium":
 		agents = tiers.Premium
 	}
-	if len(agents) > 0 {
+	if len(agents) == 0 {
+		return "codex"
+	}
+	if len(agents) == 1 {
 		return agents[0]
 	}
-	return "codex"
+	counter, _ := tierRoundRobin.LoadOrStore(tier, &atomic.Uint64{})
+	idx := counter.(*atomic.Uint64).Add(1) - 1 // 0-indexed
+	return agents[idx%uint64(len(agents))]
+}
+
+// ResetTierRoundRobin clears all round-robin counters. Used in tests to ensure
+// deterministic ordering.
+func ResetTierRoundRobin() {
+	tierRoundRobin.Range(func(key, _ any) bool {
+		tierRoundRobin.Delete(key)
+		return true
+	})
 }
 
 // EscalationChain returns the ordered list of provider names to try for a

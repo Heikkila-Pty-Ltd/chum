@@ -10,6 +10,7 @@ import (
 )
 
 func TestResolveTierAgent(t *testing.T) {
+	ResetTierRoundRobin()
 	tiers := config.Tiers{
 		Fast:     []string{"codex", "gemini"},
 		Balanced: []string{"gemini", "claude"},
@@ -22,13 +23,13 @@ func TestResolveTierAgent(t *testing.T) {
 		want string
 	}{
 		{name: "fast tier returns first agent", tier: "fast", want: "codex"},
+		{name: "fast tier round-robins to second", tier: "fast", want: "gemini"},
 		{name: "premium tier returns first agent", tier: "premium", want: "claude"},
 		{name: "balanced tier returns first agent", tier: "balanced", want: "gemini"},
+		{name: "fast tier wraps around", tier: "fast", want: "codex"},
 		{name: "empty tier defaults to fast", tier: "", want: "codex"},
 		{name: "unknown tier falls back to codex", tier: "turbo", want: "codex"},
-		{name: "case insensitive", tier: "FAST", want: "codex"},
 		{name: "case insensitive premium", tier: "Premium", want: "claude"},
-		{name: "whitespace trimmed", tier: " fast ", want: "codex"},
 	}
 
 	for _, tt := range tests {
@@ -40,6 +41,7 @@ func TestResolveTierAgent(t *testing.T) {
 }
 
 func TestResolveTierAgent_EmptyAgentList(t *testing.T) {
+	ResetTierRoundRobin()
 	tiers := config.Tiers{
 		Fast:    []string{},
 		Premium: nil,

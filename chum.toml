@@ -62,6 +62,20 @@ model = "gemini-2.5-flash"
 cli = "gemini"
 enabled = true
 
+[providers.gemini-flash-lite]
+tier = "fast"
+authed = true
+model = "gemini-2.5-flash-lite"
+cli = "gemini"
+enabled = true
+
+[providers.gemini-3-flash]
+tier = "fast"
+authed = true
+model = "gemini-3-flash-preview"
+cli = "gemini"
+enabled = true
+
 [providers.codex-medium]
 tier = "balanced"
 authed = true
@@ -74,6 +88,13 @@ tier = "balanced"
 authed = true
 model = "gemini-2.5-pro"
 cli = "gemini-high"
+enabled = true
+
+[providers.gemini-3-pro]
+tier = "balanced"
+authed = true
+model = "gemini-3-pro-preview"
+cli = "gemini"
 enabled = true
 
 [providers.codex-high]
@@ -91,8 +112,8 @@ cli = "claude"
 enabled = true
 
 [tiers]
-fast = ["gemini", "codex"]
-balanced = ["codex-medium", "gemini-high"]
+fast = ["gemini", "gemini-flash-lite", "gemini-3-flash", "codex"]
+balanced = ["codex-medium", "gemini-high", "gemini-3-pro"]
 premium = ["codex-high", "claude"]
 
 [health]
@@ -143,10 +164,31 @@ args = ["-p", "", "--yolo"]
 model_flag = "--model"
 approval_flags = []
 
+[dispatch.cli.gemini-flash-lite]
+cmd = "gemini"
+prompt_mode = "stdin"
+args = ["-p", "", "--yolo", "--model", "gemini-2.5-flash-lite"]
+model_flag = "--model"
+approval_flags = []
+
+[dispatch.cli.gemini-3-flash]
+cmd = "gemini"
+prompt_mode = "stdin"
+args = ["-p", "", "--yolo", "--model", "gemini-3-flash-preview"]
+model_flag = "--model"
+approval_flags = []
+
 [dispatch.cli.gemini-high]
 cmd = "gemini"
 prompt_mode = "stdin"
 args = ["-p", "", "--yolo", "--model", "gemini-2.5-pro"]
+model_flag = "--model"
+approval_flags = []
+
+[dispatch.cli.gemini-3-pro]
+cmd = "gemini"
+prompt_mode = "stdin"
+args = ["-p", "", "--yolo", "--model", "gemini-3-pro-preview"]
 model_flag = "--model"
 approval_flags = []
 

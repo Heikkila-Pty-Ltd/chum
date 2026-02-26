@@ -224,6 +224,7 @@ func TestCodingVsReviewMode_Claude(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestResolveTierAgent_SingleAgentTiers(t *testing.T) {
+	ResetTierRoundRobin()
 	tiers := config.Tiers{
 		Fast:     []string{"gemini"},
 		Balanced: []string{"claude"},
@@ -233,18 +234,27 @@ func TestResolveTierAgent_SingleAgentTiers(t *testing.T) {
 	require.Equal(t, "gemini", ResolveTierAgent(tiers, "fast"))
 	require.Equal(t, "claude", ResolveTierAgent(tiers, "balanced"))
 	require.Equal(t, "codex", ResolveTierAgent(tiers, "premium"))
+	// Single-agent tiers always return the same agent (no rotation needed)
+	require.Equal(t, "gemini", ResolveTierAgent(tiers, "fast"))
 }
 
-func TestResolveTierAgent_OnlyFirstAgentReturned(t *testing.T) {
+func TestResolveTierAgent_RoundRobin(t *testing.T) {
+	ResetTierRoundRobin()
 	tiers := config.Tiers{
 		Fast: []string{"first", "second", "third"},
 	}
 
-	// Only the first agent in the list should be returned
+	// Round-robin cycles through the list
 	require.Equal(t, "first", ResolveTierAgent(tiers, "fast"))
+	require.Equal(t, "second", ResolveTierAgent(tiers, "fast"))
+	require.Equal(t, "third", ResolveTierAgent(tiers, "fast"))
+	// Wraps around
+	require.Equal(t, "first", ResolveTierAgent(tiers, "fast"))
+	require.Equal(t, "second", ResolveTierAgent(tiers, "fast"))
 }
 
 func TestResolveTierAgent_AllTiersEmpty(t *testing.T) {
+	ResetTierRoundRobin()
 	tiers := config.Tiers{}
 	require.Equal(t, "codex", ResolveTierAgent(tiers, "fast"))
 	require.Equal(t, "codex", ResolveTierAgent(tiers, "balanced"))

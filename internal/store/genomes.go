@@ -22,10 +22,10 @@ type GenomeEntry struct {
 // ProviderGene tracks which provider/model works best for this species.
 // The selfish gene: provider preferences persist across generations of mortal organisms.
 type ProviderGene struct {
-	Provider   string  `json:"provider"`    // e.g. "claude", "codex-spark", "gemini"
+	Provider   string  `json:"provider"` // e.g. "claude", "codex-spark", "gemini"
 	Successes  int     `json:"successes"`
 	Failures   int     `json:"failures"`
-	TotalCost  float64 `json:"total_cost"`  // USD spent through this provider
+	TotalCost  float64 `json:"total_cost"` // USD spent through this provider
 	Generation int     `json:"generation"` // when first observed
 }
 
@@ -48,19 +48,19 @@ func (pg ProviderGene) Fitness() float64 {
 // Species are global and phylogenetic — "go-test-fix" crosses project boundaries.
 // Every organism is mortal. The genome is what persists.
 type Genome struct {
-	Species        string         `json:"species"`
-	ParentSpecies  string         `json:"parent_species"`
-	Patterns       []GenomeEntry  `json:"patterns"`        // DNA: approaches that passed DoD
-	Antibodies     []GenomeEntry  `json:"antibodies"`      // Defensive knowledge from failures
-	Fossils        []GenomeEntry  `json:"fossils"`         // Extinct approaches (failed 3+ times)
-	ProviderGenes  []ProviderGene `json:"provider_genes"` // Selfish genes: which models survive
-	Generation     int            `json:"generation"`
-	Successes      int            `json:"successes"`
-	Failures       int            `json:"failures"`
-	TotalCostUSD   float64        `json:"total_cost_usd"` // Total energy consumed by this species
-	Hibernating    bool           `json:"hibernating"`
-	LastEvolved    *time.Time     `json:"last_evolved,omitempty"`
-	CreatedAt      time.Time      `json:"created_at"`
+	Species       string         `json:"species"`
+	ParentSpecies string         `json:"parent_species"`
+	Patterns      []GenomeEntry  `json:"patterns"`       // DNA: approaches that passed DoD
+	Antibodies    []GenomeEntry  `json:"antibodies"`     // Defensive knowledge from failures
+	Fossils       []GenomeEntry  `json:"fossils"`        // Extinct approaches (failed 3+ times)
+	ProviderGenes []ProviderGene `json:"provider_genes"` // Selfish genes: which models survive
+	Generation    int            `json:"generation"`
+	Successes     int            `json:"successes"`
+	Failures      int            `json:"failures"`
+	TotalCostUSD  float64        `json:"total_cost_usd"` // Total energy consumed by this species
+	Hibernating   bool           `json:"hibernating"`
+	LastEvolved   *time.Time     `json:"last_evolved,omitempty"`
+	CreatedAt     time.Time      `json:"created_at"`
 }
 
 // FossilThreshold is the number of times an antibody must appear before

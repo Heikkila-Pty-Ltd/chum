@@ -609,8 +609,8 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 				closeCtx := workflow.WithActivityOptions(ctx, recordOpts)
 				_ = workflow.ExecuteActivity(closeCtx, a.CloseTaskActivity, req.TaskID, "completed").Get(ctx, nil)
 
-					recordOutcome(ctx, recordOpts, a, req, "completed", 0,
-						true, "", startTime, totalTokens, activityTokens, stepMetrics)
+				recordOutcome(ctx, recordOpts, a, req, "completed", 0,
+					true, "", startTime, totalTokens, activityTokens, stepMetrics)
 
 				// ===== CHUM LOOP — spawn async learner + groomer =====
 				spawnCHUMWorkflows(ctx, logger, req, plan, baseWorkDir)
@@ -814,8 +814,8 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 			}
 		}
 
-			// If triage said rescope, skip remaining tiers entirely
-			if rescopeTriggered {
+		// If triage said rescope, skip remaining tiers entirely
+		if rescopeTriggered {
 			logger.Info(SharkPrefix+" Triage rescope — skipping remaining tiers",
 				"Reason", rescopeReason)
 			break
@@ -891,16 +891,16 @@ func recordOutcome(ctx workflow.Context, opts workflow.ActivityOptions, a *Activ
 		Provider:       req.Provider,
 		Status:         status,
 		ExitCode:       exitCode,
-			DurationS:      duration,
-			DoDPassed:      dodPassed,
-			DoDFailures:    dodFailures,
-			Handoffs:       0,
-			TotalTokens:    tokens,
-			ActivityTokens: activityTokens,
-			StepMetrics:    steps,
-		}).Get(ctx, nil); err != nil {
-			logger.Warn(SharkPrefix+" RecordOutcome activity failed (best-effort)", "error", err)
-		}
+		DurationS:      duration,
+		DoDPassed:      dodPassed,
+		DoDFailures:    dodFailures,
+		Handoffs:       0,
+		TotalTokens:    tokens,
+		ActivityTokens: activityTokens,
+		StepMetrics:    steps,
+	}).Get(ctx, nil); err != nil {
+		logger.Warn(SharkPrefix+" RecordOutcome activity failed (best-effort)", "error", err)
+	}
 }
 
 // recordOrganismLog is a fire-and-forget helper to persist organism logs from

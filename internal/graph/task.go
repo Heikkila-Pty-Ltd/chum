@@ -30,4 +30,4 @@ type CrossDep struct {
 }
 
 const taskTypeEpic = "epic"
-const taskTypeWhale = "whale"   // epic-level grouping from crab decomposition
+const taskTypeWhale = "whale" // epic-level grouping from crab decomposition

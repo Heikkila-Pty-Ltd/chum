@@ -135,17 +135,17 @@ func CambrianExplosionWorkflow(ctx workflow.Context, req TaskRequest, providers 
 				allFailures = append(allFailures, fmt.Sprintf("%s: %s", res.Provider, res.Error))
 			}
 		}
-			if err := workflow.ExecuteActivity(recordCtx, a.EscalateActivity, req.TaskID, allFailures).Get(ctx, nil); err != nil {
-				logger.Warn(SharkPrefix+" Failed to record escalation in explosion workflow", "error", err)
-			}
+		if err := workflow.ExecuteActivity(recordCtx, a.EscalateActivity, req.TaskID, allFailures).Get(ctx, nil); err != nil {
+			logger.Warn(SharkPrefix+" Failed to record escalation in explosion workflow", "error", err)
+		}
 
 		// Clean up all worktrees
 		for _, res := range results {
 			resDir := WorktreeDir(req.TaskID, res.ExplosionID)
-				if err := workflow.ExecuteActivity(recordCtx, a.CleanupWorktreeActivity, req.WorkDir, resDir).Get(ctx, nil); err != nil {
-					logger.Warn(SharkPrefix+" Failed cleanup worktree after explosion extinction", "error", err, "workdir", resDir)
-				}
+			if err := workflow.ExecuteActivity(recordCtx, a.CleanupWorktreeActivity, req.WorkDir, resDir).Get(ctx, nil); err != nil {
+				logger.Warn(SharkPrefix+" Failed cleanup worktree after explosion extinction", "error", err, "workdir", resDir)
 			}
+		}
 		recordOrganismLog(ctx, "explosion", req.TaskID, req.Project, "failed",
 			fmt.Sprintf("all %d providers extinct", len(results)),
 			startTime, len(results), "all providers failed")

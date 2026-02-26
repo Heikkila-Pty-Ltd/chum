@@ -375,7 +375,7 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 	var lastFailedProvider string
 	var lastFailedTier string
 	_ = lastFailedProvider // used in escalation path
-	_ = lastFailedTier    // used in escalation path
+	_ = lastFailedTier     // used in escalation path
 
 	// Build execution chain — either from TaskRequest or fallback to single provider.
 	chain := req.EscalationChain
@@ -409,7 +409,6 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 		if req.Reviewer == "" {
 			req.Reviewer = DefaultReviewer(tier.CLI)
 		}
-
 
 		logger.Info(SharkPrefix+" Tier escalation",
 			"Tier", tier.Tier, "Provider", tier.ProviderKey, "CLI", tier.CLI, "Model", tier.Model,

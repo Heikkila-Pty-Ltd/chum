@@ -21,13 +21,13 @@ func ScoreTaskComplexity(title, prompt, acceptance string, estimateMinutes int) 
 
 	// 2. Keyword-based scoring (up to 40 points)
 	combined := strings.ToLower(title + " " + prompt + " " + acceptance)
-	
+
 	highComplexityKeywords := []string{
-		"architect", "design", "refactor", "rewrite", "migration", 
+		"architect", "design", "refactor", "rewrite", "migration",
 		"security", "concurrency", "race condition", "protocol",
 		"consensus", "authentication", "authorization", "distributed",
 	}
-	
+
 	keywordScore := 0
 	for _, kw := range highComplexityKeywords {
 		if strings.Contains(combined, kw) {
@@ -38,7 +38,7 @@ func ScoreTaskComplexity(title, prompt, acceptance string, estimateMinutes int) 
 		keywordScore = 40
 	}
 	score += keywordScore
-	
+
 	// 3. Length-based scoring (up to 20 points)
 	// Very long prompts usually imply complex requirements.
 	promptLen := len(prompt)

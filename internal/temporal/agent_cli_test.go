@@ -1,7 +1,12 @@
 package temporal
 
 import (
+	"context"
+	"errors"
+	"fmt"
+	"os/exec"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -395,12 +400,25 @@ func TestStructuredPlan_Validate_MultipleStepsAndCriteria(t *testing.T) {
 
 // mockConfigManager implements config.ConfigManager for tests.
 type mockConfigManager struct {
-	cfg *config.Config
+	cfg       *config.Config
+	earlyKill map[string]earlyKillPolicy
 }
 
-func (m *mockConfigManager) Get() *config.Config  { return m.cfg }
-func (m *mockConfigManager) Set(*config.Config)    {}
-func (m *mockConfigManager) Reload(string) error   { return nil }
+func (m *mockConfigManager) Get() *config.Config { return m.cfg }
+func (m *mockConfigManager) Set(*config.Config)  {}
+func (m *mockConfigManager) Reload(string) error { return nil }
+func (m *mockConfigManager) EarlyKillPolicy(agent string) (enabled bool, minBytes3m, minBytes8m int64) {
+	if m == nil {
+		return false, 0, 0
+	}
+	if policy, ok := m.earlyKill[agent]; ok {
+		return policy.enabled, policy.minBytes3m, policy.minBytes8m
+	}
+	if policy, ok := m.earlyKill["*"]; ok {
+		return policy.enabled, policy.minBytes3m, policy.minBytes8m
+	}
+	return false, 0, 0
+}
 
 func TestCLICommandWithModel_ConfigDriven_CodexHigh(t *testing.T) {
 	acts := &Activities{
@@ -549,3 +567,92 @@ func TestCLICommandWithModel_ConfigDriven_DoesNotMutateConfigArgs(t *testing.T) 
 	require.Equal(t, []string{"exec", "--full-auto"}, cliCfg.Args)
 }
 
+func TestEarlyKillRunCLI_TableDriven(t *testing.T) {
+	oldHeartbeat := cliHeartbeatInterval
+	oldNow := cliNow
+	oldGate3m := cliEarlyKillGate3m
+	oldGate8m := cliEarlyKillGate8m
+	oldRecordHeartbeat := cliRecordHeartbeat
+	t.Cleanup(func() {
+		cliHeartbeatInterval = oldHeartbeat
+		cliNow = oldNow
+		cliEarlyKillGate3m = oldGate3m
+		cliEarlyKillGate8m = oldGate8m
+		cliRecordHeartbeat = oldRecordHeartbeat
+	})
+
+	cliHeartbeatInterval = 100 * time.Millisecond
+	cliNow = time.Now
+	cliEarlyKillGate3m = 180 * time.Millisecond
+	cliEarlyKillGate8m = 360 * time.Millisecond
+	cliRecordHeartbeat = func(context.Context, ...interface{}) {}
+
+	tests := []struct {
+		name            string
+		earlyKillPolicy earlyKillPolicy
+		outputBytes     int
+		sleep           time.Duration
+		wantInfraDead   bool
+	}{
+		{
+			name: "EarlyKillLowOutputAfterThreshold_KillsWithInfrastructureDead",
+			earlyKillPolicy: earlyKillPolicy{
+				enabled:    true,
+				minBytes3m: 10,
+				minBytes8m: 20,
+			},
+			outputBytes:   3,
+			sleep:         2 * time.Second,
+			wantInfraDead: true,
+		},
+		{
+			name: "EarlyKillSufficientOutput_NoKill",
+			earlyKillPolicy: earlyKillPolicy{
+				enabled:    true,
+				minBytes3m: 10,
+				minBytes8m: 20,
+			},
+			outputBytes:   32,
+			sleep:         450 * time.Millisecond,
+			wantInfraDead: false,
+		},
+		{
+			name: "EarlyKillDisabled_NoKill",
+			earlyKillPolicy: earlyKillPolicy{
+				enabled:    false,
+				minBytes3m: 10,
+				minBytes8m: 20,
+			},
+			outputBytes:   3,
+			sleep:         450 * time.Millisecond,
+			wantInfraDead: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			acts := &Activities{
+				CfgMgr: &mockConfigManager{
+					cfg:       &config.Config{},
+					earlyKill: map[string]earlyKillPolicy{"test-agent": tt.earlyKillPolicy},
+				},
+			}
+
+			workDir := t.TempDir()
+			script := fmt.Sprintf("head -c %d /dev/zero | tr '\\\\0' 'x'; sleep %.3f", tt.outputBytes, tt.sleep.Seconds())
+			cmd := exec.Command("sh", "-c", script)
+			cmd.Dir = workDir
+
+			result, err := acts.runCLI(t.Context(), "test-agent", "prompt", cmd)
+
+			if tt.wantInfraDead {
+				require.Error(t, err)
+				require.True(t, errors.Is(err, ErrInfrastructureDead), "expected ErrInfrastructureDead, got: %v", err)
+				return
+			}
+
+			require.NoError(t, err)
+			require.Len(t, result.Output, tt.outputBytes)
+		})
+	}
+}

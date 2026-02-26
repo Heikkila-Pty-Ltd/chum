@@ -5,10 +5,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"go.temporal.io/sdk/activity"
@@ -19,6 +21,10 @@ import (
 // ErrModelExhausted is returned when a model hits its usage/rate limit.
 var ErrModelExhausted = errors.New("model exhausted (rate/usage limit)")
 
+// ErrInfrastructureDead is returned when process-level behavior indicates
+// non-productive infrastructure/runtime failure and the process is killed early.
+var ErrInfrastructureDead = errors.New("infrastructure dead (early kill)")
+
 // modelExhaustedPatterns are substrings that indicate rate/usage limits in CLI output.
 var modelExhaustedPatterns = []string{
 	"usage limit",
@@ -28,6 +34,46 @@ var modelExhaustedPatterns = []string{
 	"rate_limit_exceeded",
 	"too many requests",
 	"capacity",
+}
+
+const (
+	defaultCLIHeartbeatInterval = 5 * time.Second
+	defaultEarlyKillGate3m      = 3 * time.Minute
+	defaultEarlyKillGate8m      = 8 * time.Minute
+)
+
+var (
+	// Test seams for deterministic, fast timing in runCLI tests.
+	cliHeartbeatInterval = defaultCLIHeartbeatInterval
+	cliNow               = time.Now
+	cliEarlyKillGate3m   = defaultEarlyKillGate3m
+	cliEarlyKillGate8m   = defaultEarlyKillGate8m
+	cliRecordHeartbeat   = activity.RecordHeartbeat
+)
+
+type earlyKillPolicy struct {
+	enabled    bool
+	minBytes3m int64
+	minBytes8m int64
+}
+
+// earlyKillConfigProvider is an optional extension interface for config managers.
+// Production config managers may ignore this (EarlyKill remains disabled).
+type earlyKillConfigProvider interface {
+	EarlyKillPolicy(agent string) (enabled bool, minBytes3m, minBytes8m int64)
+}
+
+type atomicByteCounter struct {
+	n atomic.Int64
+}
+
+func (c *atomicByteCounter) Write(p []byte) (int, error) {
+	c.n.Add(int64(len(p)))
+	return len(p), nil
+}
+
+func (c *atomicByteCounter) Bytes() int64 {
+	return c.n.Load()
 }
 
 // IsModelExhausted checks whether CLI output indicates a rate/usage limit.
@@ -326,6 +372,44 @@ func (a *Activities) cliReviewCommand(agent, workDir string) *exec.Cmd {
 	return cmd
 }
 
+func (a *Activities) resolveEarlyKillPolicy(agent string) earlyKillPolicy {
+	if a == nil || a.CfgMgr == nil {
+		return earlyKillPolicy{}
+	}
+	cfgMgr, ok := a.CfgMgr.(earlyKillConfigProvider)
+	if !ok {
+		return earlyKillPolicy{}
+	}
+	enabled, minBytes3m, minBytes8m := cfgMgr.EarlyKillPolicy(agent)
+	if minBytes3m < 0 {
+		minBytes3m = 0
+	}
+	if minBytes8m < 0 {
+		minBytes8m = 0
+	}
+	return earlyKillPolicy{
+		enabled:    enabled,
+		minBytes3m: minBytes3m,
+		minBytes8m: minBytes8m,
+	}
+}
+
+func shouldEarlyKill(elapsed time.Duration, outputBytes int64, policy earlyKillPolicy) (shouldKill bool, gate string, minBytes int64) {
+	if !policy.enabled || elapsed < cliEarlyKillGate3m {
+		return false, "", 0
+	}
+	gate = "3m"
+	minBytes = policy.minBytes3m
+	if elapsed >= cliEarlyKillGate8m {
+		gate = "8m"
+		minBytes = policy.minBytes8m
+	}
+	if minBytes <= 0 || outputBytes >= minBytes {
+		return false, "", 0
+	}
+	return true, gate, minBytes
+}
+
 // runCLI executes a CLI command, piping the prompt via stdin, and returns a
 // CLIResult with stdout and token usage.
 //
@@ -339,19 +423,19 @@ func (a *Activities) runCLI(ctx context.Context, agent, prompt string, cmd *exec
 		return CLIResult{}, fmt.Errorf("create prompt temp file: %w", err)
 	}
 	defer os.Remove(promptFile.Name())
+	defer promptFile.Close()
 
 	if _, err := promptFile.WriteString(prompt); err != nil {
-		promptFile.Close()
 		return CLIResult{}, fmt.Errorf("write prompt temp file: %w", err)
 	}
 	if _, err := promptFile.Seek(0, 0); err != nil {
-		promptFile.Close()
 		return CLIResult{}, fmt.Errorf("seek prompt temp file: %w", err)
 	}
 
 	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	var outputBytes atomicByteCounter
+	cmd.Stdout = io.MultiWriter(&stdout, &outputBytes)
+	cmd.Stderr = io.MultiWriter(&stderr, &outputBytes)
 	cmd.Stdin = promptFile
 
 	// Defensive: ensure the working directory exists before exec.
@@ -362,16 +446,31 @@ func (a *Activities) runCLI(ctx context.Context, agent, prompt string, cmd *exec
 			activity.GetLogger(ctx).Warn("⚠️ CLI workdir missing — creating it defensively (investigate root cause)",
 				"WorkDir", cmd.Dir, "Agent", agent)
 			if mkErr := os.MkdirAll(cmd.Dir, 0o755); mkErr != nil {
-				promptFile.Close()
 				return CLIResult{}, fmt.Errorf("failed to create workdir %s: %w", cmd.Dir, mkErr)
 			}
 		}
 	}
 
 	if err := cmd.Start(); err != nil {
-		promptFile.Close()
 		return CLIResult{}, fmt.Errorf("failed to start %s: %w", agent, err)
 	}
+
+	mergeOutputs := func() string {
+		out := strings.TrimSpace(stdout.String())
+		errOut := strings.TrimSpace(stderr.String())
+		if errOut == "" {
+			return out
+		}
+		if out == "" {
+			return errOut
+		}
+		return out + "\n" + errOut
+	}
+
+	earlyKillPolicy := a.resolveEarlyKillPolicy(agent)
+	startedAt := cliNow()
+	ticker := time.NewTicker(cliHeartbeatInterval)
+	defer ticker.Stop()
 
 	done := make(chan error, 1)
 	go func() { done <- cmd.Wait() }()
@@ -379,13 +478,8 @@ func (a *Activities) runCLI(ctx context.Context, agent, prompt string, cmd *exec
 	for {
 		select {
 		case err := <-done:
-			promptFile.Close()
-			raw := strings.TrimSpace(stdout.String())
+			raw := mergeOutputs()
 			if err != nil {
-				errOut := strings.TrimSpace(stderr.String())
-				if errOut != "" {
-					raw += "\n" + errOut
-				}
 				result := parseAgentOutput(agent, raw)
 				// Wrap with ErrModelExhausted if rate limit detected
 				if IsModelExhausted(raw) {
@@ -394,8 +488,26 @@ func (a *Activities) runCLI(ctx context.Context, agent, prompt string, cmd *exec
 				return result, fmt.Errorf("%s exited with error: %w", agent, err)
 			}
 			return parseAgentOutput(agent, raw), nil
-		case <-time.After(5 * time.Second):
-			activity.RecordHeartbeat(ctx)
+		case <-ticker.C:
+			cliRecordHeartbeat(ctx)
+			elapsed := cliNow().Sub(startedAt)
+			if shouldKill, gate, minBytes := shouldEarlyKill(elapsed, outputBytes.Bytes(), earlyKillPolicy); shouldKill {
+				if killErr := cmd.Process.Kill(); killErr != nil && !errors.Is(killErr, os.ErrProcessDone) {
+					activity.GetLogger(ctx).Warn("⚠️ EarlyKill failed to kill process",
+						"Agent", agent, "error", killErr)
+				}
+				<-done
+				raw := mergeOutputs()
+				return parseAgentOutput(agent, raw), fmt.Errorf(
+					"%s: %w: low output at %s gate (%d < %d bytes, elapsed=%s)",
+					agent,
+					ErrInfrastructureDead,
+					gate,
+					outputBytes.Bytes(),
+					minBytes,
+					elapsed.Round(time.Millisecond),
+				)
+			}
 		}
 	}
 }

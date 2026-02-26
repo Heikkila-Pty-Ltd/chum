@@ -246,7 +246,7 @@ max_concurrent_per_project = 3
 enabled = false
 
 [crab]
-enabled = false
+enabled = true
 
 [calcifier]
 enabled = false

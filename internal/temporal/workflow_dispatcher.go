@@ -984,9 +984,14 @@ func extractTaskIDFromWorkflowID(wfID string) string {
 func buildEscalationTiers(cfg *config.Config, st *store.Store, logger interface{ Warn(string, ...any) }) []EscalationTier {
 	// Start escalation at balanced tier — coding sharks should use Pro models,
 	// not Flash. Flash is reserved for Crab decomposition and small tasks.
-	chain := EscalationChain(cfg.Tiers, "balanced")
+	// Fall back to fast-start if no balanced providers are configured (single-tier setups).
+	startTier := "balanced"
+	if len(cfg.Tiers.Balanced) == 0 {
+		startTier = "fast"
+	}
+	chain := EscalationChain(cfg.Tiers, startTier)
 	tiers := make([]EscalationTier, 0, len(chain))
-	for i, providerKey := range chain {
+	for _, providerKey := range chain {
 		cli, model := ResolveProviderCLI(cfg.Providers, providerKey)
 		prov, exists := cfg.Providers[providerKey]
 		enabled := true
@@ -1012,11 +1017,18 @@ func buildEscalationTiers(cfg *config.Config, st *store.Store, logger interface{
 			}
 		}
 
+		// Use the provider's actual tier from config, not a chain-index guess.
+		// This ensures retry counts match the real tier semantics.
+		provTier := prov.Tier
+		if provTier == "" {
+			provTier = "fast"
+		}
+
 		tiers = append(tiers, EscalationTier{
 			ProviderKey: providerKey,
 			CLI:         cli,
 			Model:       model,
-			Tier:        tierForIndex(i),
+			Tier:        provTier,
 			Reviewer:    prov.Reviewer,
 			Enabled:     enabled,
 		})

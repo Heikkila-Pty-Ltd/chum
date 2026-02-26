@@ -432,7 +432,12 @@ func (a *Activities) runCLI(ctx context.Context, agent, prompt string, cmd *exec
 	// Strip CLAUDECODE env var so child CLI processes (especially `claude`)
 	// don't reject themselves as nested sessions. The chum worker may have
 	// inherited this variable from the shell that launched it.
-	cmd.Env = filterEnv(os.Environ(), "CLAUDECODE")
+	// Preserve any env overrides already set by cliCommandWithModel (e.g. API key isolation).
+	if cmd.Env == nil {
+		cmd.Env = filterEnv(os.Environ(), "CLAUDECODE")
+	} else {
+		cmd.Env = filterEnv(cmd.Env, "CLAUDECODE")
+	}
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

@@ -29,6 +29,46 @@ func filterEnv(env []string, key string) []string {
 	return out
 }
 
+// applyEnvOverrides returns a copy of the base environment with the given
+// key=value overrides applied. Existing keys are replaced; new keys are appended.
+// Values starting with "$" are expanded from the current process environment,
+// allowing indirection like GEMINI_API_KEY = "$GEMINI_API_KEY_FREE".
+func applyEnvOverrides(base []string, overrides map[string]string) []string {
+	result := make([]string, 0, len(base)+len(overrides))
+	replaced := make(map[string]bool, len(overrides))
+	for _, e := range base {
+		key := e
+		if idx := strings.IndexByte(e, '='); idx >= 0 {
+			key = e[:idx]
+		}
+		if val, ok := overrides[key]; ok {
+			val = expandEnvValue(val)
+			result = append(result, key+"="+val)
+			replaced[key] = true
+		} else {
+			result = append(result, e)
+		}
+	}
+	// Append any overrides not already in base.
+	for k, v := range overrides {
+		if !replaced[k] {
+			result = append(result, k+"="+expandEnvValue(v))
+		}
+	}
+	return result
+}
+
+// expandEnvValue expands "$VAR_NAME" references to their current value.
+func expandEnvValue(val string) string {
+	if strings.HasPrefix(val, "$") {
+		envKey := val[1:]
+		if resolved := os.Getenv(envKey); resolved != "" {
+			return resolved
+		}
+	}
+	return val
+}
+
 // ErrModelExhausted is returned when a model hits its usage/rate limit.
 var ErrModelExhausted = errors.New("model exhausted (rate/usage limit)")
 
@@ -287,6 +327,10 @@ func (a *Activities) cliCommandWithModel(agent, workDir, model string) *exec.Cmd
 				}
 				cmd := exec.Command(cliCfg.Cmd, args...)
 				cmd.Dir = workDir
+				// Apply per-provider env overrides (e.g. GEMINI_API_KEY for free-tier).
+				if len(cliCfg.Env) > 0 {
+					cmd.Env = applyEnvOverrides(os.Environ(), cliCfg.Env)
+				}
 				return cmd
 			}
 		}

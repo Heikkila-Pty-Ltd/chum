@@ -231,11 +231,12 @@ type Dispatch struct {
 
 // CLIConfig defines a headless CLI backend (command, args, prompt delivery mode).
 type CLIConfig struct {
-	Cmd           string   `toml:"cmd"`
-	PromptMode    string   `toml:"prompt_mode"` // "stdin", "file", "arg"
-	Args          []string `toml:"args"`
-	ModelFlag     string   `toml:"model_flag"`     // e.g. "--model"
-	ApprovalFlags []string `toml:"approval_flags"` // e.g. ["--dangerously-skip-permissions"]
+	Cmd           string            `toml:"cmd"`
+	PromptMode    string            `toml:"prompt_mode"` // "stdin", "file", "arg"
+	Args          []string          `toml:"args"`
+	ModelFlag     string            `toml:"model_flag"`     // e.g. "--model"
+	ApprovalFlags []string          `toml:"approval_flags"` // e.g. ["--dangerously-skip-permissions"]
+	Env           map[string]string `toml:"env"`            // environment variable overrides for child process
 }
 
 // DispatchRouting maps provider tiers to dispatch backends.

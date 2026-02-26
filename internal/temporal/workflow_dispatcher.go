@@ -377,34 +377,11 @@ func (da *DispatchActivities) ScanCandidatesActivity(ctx context.Context) (*Scan
 		}
 	}
 
-	// Exclude beached sharks: tasks that were escalated (failed all retries)
-	// within the configured window. Without this, the DAG keeps serving them as
-	// "ready" candidates and we burn tokens re-dispatching doomed tasks.
-	beachedWindow := cfg.Dispatch.CostControl.BeachedSharkWindow.Duration
-	if beachedWindow > 0 && da.Store != nil {
-		cutoff := time.Now().Add(-beachedWindow).Format("2006-01-02 15:04:05")
-		rows, err := da.Store.DB().QueryContext(ctx,
-			`SELECT DISTINCT morsel_id FROM dispatches
-			 WHERE status = 'escalated' AND dispatched_at > ?`, cutoff)
-		if err != nil {
-			logger.Warn(SharkPrefix+" Dispatcher: failed to query beached tasks", "error", err)
-		} else {
-			beached := 0
-			var beachedIDs []string
-			for rows.Next() {
-				var morselID string
-				if rows.Scan(&morselID) == nil {
-					runningSet[morselID] = struct{}{}
-					beachedIDs = append(beachedIDs, morselID)
-					beached++
-				}
-			}
-			rows.Close()
-			if beached > 0 {
-				logger.Info(SharkPrefix+" Dispatcher: excluding beached sharks", "count", beached, "window", beachedWindow, "ids", strings.Join(beachedIDs, ","))
-			}
-		}
-	}
+	// NOTE: Beached shark blocking was removed. Previously, tasks with
+	// escalated dispatches within a configured window were excluded from
+	// dispatch. This silently blocked work without user visibility.
+	// Escalated tasks now flow back through the pipeline normally —
+	// the escalation status itself drives re-planning/decomposition.
 
 	maxPerProject := cfg.Dispatch.Git.MaxConcurrentPerProject
 	if maxPerProject <= 0 {
@@ -608,7 +585,7 @@ func (da *DispatchActivities) ScanCandidatesActivity(ctx context.Context) (*Scan
 		projectRunning[c.project]++
 	}
 
-	return &ScanCandidatesResult{
+	scanResult := &ScanCandidatesResult{
 		Candidates:             result,
 		Running:                running,
 		MaxTotal:               maxTotal,
@@ -620,7 +597,9 @@ func (da *DispatchActivities) ScanCandidatesActivity(ctx context.Context) (*Scan
 		EnablePlannerV2:        enablePlannerV2,
 		MaxRetriesOverride:     higherLearningMaxRetries(cfg),
 		MaxHandoffsOverride:    higherLearningMaxHandoffs(cfg),
-	}, nil
+	}
+
+	return scanResult, nil
 }
 
 // listOpenAgentWorkflows returns all currently running ChumAgentWorkflow

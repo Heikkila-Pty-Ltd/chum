@@ -105,7 +105,7 @@ cli = "codex-high"
 enabled = true
 
 [providers.claude]
-tier = "premium"
+tier = "balanced"
 authed = true
 model = "claude-sonnet-4-5"
 cli = "claude"
@@ -113,7 +113,7 @@ enabled = true
 
 [tiers]
 fast = ["gemini", "gemini-flash-lite", "gemini-3-flash", "codex"]
-balanced = ["codex-medium", "gemini-high", "gemini-3-pro"]
+balanced = ["codex-medium", "gemini-high", "gemini-3-pro", "claude"]
 premium = ["codex-high", "claude"]
 
 [health]

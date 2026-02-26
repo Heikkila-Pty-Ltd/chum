@@ -14,7 +14,7 @@ slow_step_threshold = "2m"
 state_db = "~/.local/share/chum/chum.db"
 
 [projects.chum]
-enabled = true
+enabled = false  # DISABLED: self-referential editing is too risky
 morsels_dir = "~/projects/cortex/.morsels"
 workspace = "~/projects/cortex"
 priority = 0
@@ -57,21 +57,21 @@ enabled = true
 
 [providers.gemini]
 tier = "fast"
-authed = true
+authed = false  # Use AI Studio free key — preserve auth key for Pro
 model = "gemini-2.5-flash"
 cli = "gemini"
 enabled = true
 
 [providers.gemini-flash-lite]
 tier = "fast"
-authed = true
+authed = false  # Use AI Studio free key — preserve auth key for Pro
 model = "gemini-2.5-flash-lite"
 cli = "gemini"
 enabled = true
 
 [providers.gemini-3-flash]
 tier = "fast"
-authed = true
+authed = false  # Use AI Studio free key — preserve auth key for Pro
 model = "gemini-3-flash-preview"
 cli = "gemini"
 enabled = true
@@ -163,6 +163,8 @@ prompt_mode = "stdin"
 args = ["-p", "", "--yolo"]
 model_flag = "--model"
 approval_flags = []
+[dispatch.cli.gemini.env]
+GEMINI_API_KEY = "$GEMINI_API_KEY_FREE"
 
 [dispatch.cli.gemini-flash-lite]
 cmd = "gemini"
@@ -170,6 +172,8 @@ prompt_mode = "stdin"
 args = ["-p", "", "--yolo", "--model", "gemini-2.5-flash-lite"]
 model_flag = "--model"
 approval_flags = []
+[dispatch.cli.gemini-flash-lite.env]
+GEMINI_API_KEY = "$GEMINI_API_KEY_FREE"
 
 [dispatch.cli.gemini-3-flash]
 cmd = "gemini"
@@ -177,6 +181,8 @@ prompt_mode = "stdin"
 args = ["-p", "", "--yolo", "--model", "gemini-3-flash-preview"]
 model_flag = "--model"
 approval_flags = []
+[dispatch.cli.gemini-3-flash.env]
+GEMINI_API_KEY = "$GEMINI_API_KEY_FREE"
 
 [dispatch.cli.gemini-high]
 cmd = "gemini"
@@ -184,6 +190,8 @@ prompt_mode = "stdin"
 args = ["-p", "", "--yolo", "--model", "gemini-2.5-pro"]
 model_flag = "--model"
 approval_flags = []
+[dispatch.cli.gemini-high.env]
+GEMINI_API_KEY = ""  # Clear API key — force OAuth for Pro (free quota, no billing)
 
 [dispatch.cli.gemini-3-pro]
 cmd = "gemini"
@@ -191,6 +199,8 @@ prompt_mode = "stdin"
 args = ["-p", "", "--yolo", "--model", "gemini-3-pro-preview"]
 model_flag = "--model"
 approval_flags = []
+[dispatch.cli.gemini-3-pro.env]
+GEMINI_API_KEY = ""  # Clear API key — force OAuth for Pro (free quota, no billing)
 
 [dispatch.cli.claude]
 cmd = "claude"

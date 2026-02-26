@@ -29,6 +29,53 @@ func filterEnv(env []string, key string) []string {
 	return out
 }
 
+// applyEnvOverrides returns a copy of the base environment with the given
+// key=value overrides applied. Existing keys are replaced; new keys are appended.
+// Values starting with "$" are expanded from the current process environment,
+// allowing indirection like GEMINI_API_KEY = "$GEMINI_API_KEY_FREE".
+// An empty value (or "" after expansion) REMOVES the variable entirely,
+// forcing the child process to fall back to other auth mechanisms (e.g. OAuth).
+func applyEnvOverrides(base []string, overrides map[string]string) []string {
+	result := make([]string, 0, len(base)+len(overrides))
+	replaced := make(map[string]bool, len(overrides))
+	for _, e := range base {
+		key := e
+		if idx := strings.IndexByte(e, '='); idx >= 0 {
+			key = e[:idx]
+		}
+		if val, ok := overrides[key]; ok {
+			replaced[key] = true
+			val = expandEnvValue(val)
+			if val == "" {
+				continue // empty = remove the variable entirely
+			}
+			result = append(result, key+"="+val)
+		} else {
+			result = append(result, e)
+		}
+	}
+	// Append any overrides not already in base (skip empty values).
+	for k, v := range overrides {
+		if !replaced[k] {
+			v = expandEnvValue(v)
+			if v != "" {
+				result = append(result, k+"="+v)
+			}
+		}
+	}
+	return result
+}
+
+// expandEnvValue expands "$VAR_NAME" references to their current value.
+// Returns empty string when the referenced variable is unset — this triggers
+// removal in applyEnvOverrides rather than passing a literal "$VAR" to the CLI.
+func expandEnvValue(val string) string {
+	if strings.HasPrefix(val, "$") {
+		return os.Getenv(val[1:]) // empty if unset → triggers removal
+	}
+	return val
+}
+
 // ErrModelExhausted is returned when a model hits its usage/rate limit.
 var ErrModelExhausted = errors.New("model exhausted (rate/usage limit)")
 
@@ -287,6 +334,10 @@ func (a *Activities) cliCommandWithModel(agent, workDir, model string) *exec.Cmd
 				}
 				cmd := exec.Command(cliCfg.Cmd, args...)
 				cmd.Dir = workDir
+				// Apply per-provider env overrides (e.g. GEMINI_API_KEY for free-tier).
+				if len(cliCfg.Env) > 0 {
+					cmd.Env = applyEnvOverrides(os.Environ(), cliCfg.Env)
+				}
 				return cmd
 			}
 		}
@@ -380,7 +431,12 @@ func (a *Activities) runCLI(ctx context.Context, agent, prompt string, cmd *exec
 	// Strip CLAUDECODE env var so child CLI processes (especially `claude`)
 	// don't reject themselves as nested sessions. The chum worker may have
 	// inherited this variable from the shell that launched it.
-	cmd.Env = filterEnv(os.Environ(), "CLAUDECODE")
+	// Preserve any env overrides already set by cliCommandWithModel (e.g. API key isolation).
+	if cmd.Env == nil {
+		cmd.Env = filterEnv(os.Environ(), "CLAUDECODE")
+	} else {
+		cmd.Env = filterEnv(cmd.Env, "CLAUDECODE")
+	}
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

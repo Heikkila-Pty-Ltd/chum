@@ -390,16 +390,18 @@ func (da *DispatchActivities) ScanCandidatesActivity(ctx context.Context) (*Scan
 			logger.Warn(SharkPrefix+" Dispatcher: failed to query beached tasks", "error", err)
 		} else {
 			beached := 0
+			var beachedIDs []string
 			for rows.Next() {
 				var morselID string
 				if rows.Scan(&morselID) == nil {
 					runningSet[morselID] = struct{}{}
+					beachedIDs = append(beachedIDs, morselID)
 					beached++
 				}
 			}
 			rows.Close()
 			if beached > 0 {
-				logger.Info(SharkPrefix+" Dispatcher: excluding beached sharks", "count", beached, "window", beachedWindow)
+				logger.Info(SharkPrefix+" Dispatcher: excluding beached sharks", "count", beached, "window", beachedWindow, "ids", strings.Join(beachedIDs, ","))
 			}
 		}
 	}
@@ -468,6 +470,13 @@ func (da *DispatchActivities) ScanCandidatesActivity(ctx context.Context) (*Scan
 		depGraph := graph.BuildDepGraph(all)
 		ready := graph.FilterUnblockedOpen(all, depGraph)
 
+		logger.Info(SharkPrefix+" Dispatcher: project scan",
+			"project", name,
+			"total_tasks", len(all),
+			"unblocked_ready", len(ready),
+			"project_running", projectRunning[name],
+		)
+
 		workDir := config.ExpandHome(strings.TrimSpace(proj.Workspace))
 		for j := range ready {
 			candidates = append(candidates, candidate{
@@ -496,6 +505,13 @@ func (da *DispatchActivities) ScanCandidatesActivity(ctx context.Context) (*Scan
 		}
 		candidates = filtered
 	}
+
+	logger.Info(SharkPrefix+" Dispatcher: pre-filter candidates",
+		"total_candidates", len(candidates),
+		"slots", slots,
+		"running", running,
+		"running_set_size", len(runningSet),
+	)
 
 	// --- Sort: priority → DAG (parent tasks first) → estimate ---
 	sort.Slice(candidates, func(i, j int) bool {
@@ -578,7 +594,7 @@ func (da *DispatchActivities) ScanCandidatesActivity(ctx context.Context) (*Scan
 			Prompt:            prompt,
 			Species:           species,
 			Labels:            append([]string(nil), c.task.Labels...),
-			Provider:          resolveProvider(cfg),
+			Provider:          resolveProviderForCoding(cfg),
 			DoDChecks:         dodChecks,
 			SlowStepThreshold: slowStepThreshold,
 			Priority:          clampTaskPriority(c.task.Priority),
@@ -966,9 +982,16 @@ func extractTaskIDFromWorkflowID(wfID string) string {
 }
 
 func buildEscalationTiers(cfg *config.Config, st *store.Store, logger interface{ Warn(string, ...any) }) []EscalationTier {
-	chain := EscalationChain(cfg.Tiers, "fast")
+	// Start escalation at balanced tier — coding sharks should use Pro models,
+	// not Flash. Flash is reserved for Crab decomposition and small tasks.
+	// Fall back to fast-start if no balanced providers are configured (single-tier setups).
+	startTier := "balanced"
+	if len(cfg.Tiers.Balanced) == 0 {
+		startTier = "fast"
+	}
+	chain := EscalationChain(cfg.Tiers, startTier)
 	tiers := make([]EscalationTier, 0, len(chain))
-	for i, providerKey := range chain {
+	for _, providerKey := range chain {
 		cli, model := ResolveProviderCLI(cfg.Providers, providerKey)
 		prov, exists := cfg.Providers[providerKey]
 		enabled := true
@@ -994,11 +1017,18 @@ func buildEscalationTiers(cfg *config.Config, st *store.Store, logger interface{
 			}
 		}
 
+		// Use the provider's actual tier from config, not a chain-index guess.
+		// This ensures retry counts match the real tier semantics.
+		provTier := prov.Tier
+		if provTier == "" {
+			provTier = "fast"
+		}
+
 		tiers = append(tiers, EscalationTier{
 			ProviderKey: providerKey,
 			CLI:         cli,
 			Model:       model,
-			Tier:        tierForIndex(i),
+			Tier:        provTier,
 			Reviewer:    prov.Reviewer,
 			Enabled:     enabled,
 		})
@@ -1092,6 +1122,7 @@ func buildPrompt(t graph.Task) string {
 }
 
 // resolveProvider picks the next fast-tier provider from config using round-robin.
+// Used by Crab decomposition and small internal tasks.
 func resolveProvider(cfg *config.Config) string {
 	if len(cfg.Tiers.Fast) > 0 {
 		return ResolveTierAgent(cfg.Tiers, "fast")
@@ -1100,6 +1131,17 @@ func resolveProvider(cfg *config.Config) string {
 		return name
 	}
 	return ""
+}
+
+// resolveProviderForCoding picks the next balanced-tier provider for shark
+// coding tasks. Uses Pro models to avoid consuming Flash quota that Gemini Pro
+// needs internally for tool calls. Falls back to fast tier if no balanced
+// providers are configured.
+func resolveProviderForCoding(cfg *config.Config) string {
+	if len(cfg.Tiers.Balanced) > 0 {
+		return ResolveTierAgent(cfg.Tiers, "balanced")
+	}
+	return resolveProvider(cfg)
 }
 
 // higherLearningMaxRetries returns the per-tier retry override when

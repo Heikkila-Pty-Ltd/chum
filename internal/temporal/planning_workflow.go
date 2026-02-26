@@ -61,7 +61,7 @@ func PlanningCeremonyWorkflow(ctx workflow.Context, req PlanningRequest) (*TaskR
 		req.Agent = "claude"
 	}
 	if req.Tier == "" {
-		req.Tier = "fast"
+		req.Tier = "balanced"
 	}
 	if req.SlowStepThreshold <= 0 {
 		req.SlowStepThreshold = defaultSlowStepThreshold

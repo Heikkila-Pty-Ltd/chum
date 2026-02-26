@@ -33,6 +33,8 @@ func filterEnv(env []string, key string) []string {
 // key=value overrides applied. Existing keys are replaced; new keys are appended.
 // Values starting with "$" are expanded from the current process environment,
 // allowing indirection like GEMINI_API_KEY = "$GEMINI_API_KEY_FREE".
+// An empty value (or "" after expansion) REMOVES the variable entirely,
+// forcing the child process to fall back to other auth mechanisms (e.g. OAuth).
 func applyEnvOverrides(base []string, overrides map[string]string) []string {
 	result := make([]string, 0, len(base)+len(overrides))
 	replaced := make(map[string]bool, len(overrides))
@@ -42,17 +44,23 @@ func applyEnvOverrides(base []string, overrides map[string]string) []string {
 			key = e[:idx]
 		}
 		if val, ok := overrides[key]; ok {
-			val = expandEnvValue(val)
-			result = append(result, key+"="+val)
 			replaced[key] = true
+			val = expandEnvValue(val)
+			if val == "" {
+				continue // empty = remove the variable entirely
+			}
+			result = append(result, key+"="+val)
 		} else {
 			result = append(result, e)
 		}
 	}
-	// Append any overrides not already in base.
+	// Append any overrides not already in base (skip empty values).
 	for k, v := range overrides {
 		if !replaced[k] {
-			result = append(result, k+"="+expandEnvValue(v))
+			v = expandEnvValue(v)
+			if v != "" {
+				result = append(result, k+"="+v)
+			}
 		}
 	}
 	return result

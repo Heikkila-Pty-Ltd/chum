@@ -190,6 +190,8 @@ prompt_mode = "stdin"
 args = ["-p", "", "--yolo", "--model", "gemini-2.5-pro"]
 model_flag = "--model"
 approval_flags = []
+[dispatch.cli.gemini-high.env]
+GEMINI_API_KEY = ""  # Clear API key — force OAuth for Pro (free quota, no billing)
 
 [dispatch.cli.gemini-3-pro]
 cmd = "gemini"
@@ -197,6 +199,8 @@ prompt_mode = "stdin"
 args = ["-p", "", "--yolo", "--model", "gemini-3-pro-preview"]
 model_flag = "--model"
 approval_flags = []
+[dispatch.cli.gemini-3-pro.env]
+GEMINI_API_KEY = ""  # Clear API key — force OAuth for Pro (free quota, no billing)
 
 [dispatch.cli.claude]
 cmd = "claude"

@@ -1,6 +1,7 @@
 package git
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -67,7 +68,7 @@ func MergePR(workspace string, prNumber int, method string) error {
 }
 
 // RevertMerge reverts the given merge commit and pushes the change.
-func RevertMerge(workspace string, commitSHA string) error {
+func RevertMerge(workspace, commitSHA string) error {
 	workspace = strings.TrimSpace(workspace)
 	if workspace == "" {
 		return fmt.Errorf("workspace is required")
@@ -168,7 +169,8 @@ func runSinglePostMergeCheck(workspace, command string) *CheckResult {
 	if err != nil {
 		exitCode = 1
 		passed = false
-		if exitErr, ok := err.(*exec.ExitError); ok {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
 			exitCode = exitErr.ExitCode()
 		}
 	}

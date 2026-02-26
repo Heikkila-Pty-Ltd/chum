@@ -23,19 +23,27 @@ var (
 
 // ExtractTokenUsage attempts to parse token counts from agent output.
 // Fallback: estimate from prompt and output length if parsing fails.
-func ExtractTokenUsage(output string, prompt string) TokenUsage {
+func ExtractTokenUsage(output, prompt string) TokenUsage {
 	usage := TokenUsage{}
 
 	// Try parsing from output
 	if m := tokenRe.FindStringSubmatch(output); len(m) == 3 {
-		usage.Input, _ = strconv.Atoi(m[1])
-		usage.Output, _ = strconv.Atoi(m[2])
+		if parsed, err := strconv.Atoi(m[1]); err == nil {
+			usage.Input = parsed
+		}
+		if parsed, err := strconv.Atoi(m[2]); err == nil {
+			usage.Output = parsed
+		}
 	} else {
 		if m := inputRe.FindStringSubmatch(output); len(m) == 2 {
-			usage.Input, _ = strconv.Atoi(m[1])
+			if parsed, err := strconv.Atoi(m[1]); err == nil {
+				usage.Input = parsed
+			}
 		}
 		if m := outputRe.FindStringSubmatch(output); len(m) == 2 {
-			usage.Output, _ = strconv.Atoi(m[1])
+			if parsed, err := strconv.Atoi(m[1]); err == nil {
+				usage.Output = parsed
+			}
 		}
 	}
 
@@ -57,7 +65,7 @@ func estimateTokens(text string) int {
 	}
 	// Rough heuristic for English/Code: 1 token per 4 characters
 	tokens := len(text) / 4
-	if tokens == 0 && len(text) > 0 {
+	if tokens == 0 && text != "" {
 		return 1
 	}
 	return tokens

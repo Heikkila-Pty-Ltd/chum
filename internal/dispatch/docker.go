@@ -47,7 +47,7 @@ func NewDockerDispatcher(logger *slog.Logger) *DockerDispatcher {
 }
 
 // Dispatch creates and starts a new Docker container for the given agent and prompt.
-func (d *DockerDispatcher) Dispatch(ctx context.Context, agent string, prompt string, provider string, thinkingLevel string, workDir string) (int, error) {
+func (d *DockerDispatcher) Dispatch(ctx context.Context, agent, prompt, provider, thinkingLevel, workDir string) (int, error) {
 	d.mu.Lock()
 	handle := d.nextHandle
 	d.nextHandle++
@@ -56,7 +56,7 @@ func (d *DockerDispatcher) Dispatch(ctx context.Context, agent string, prompt st
 	d.mu.Unlock()
 
 	hostCtxDir := filepath.Join(os.TempDir(), fmt.Sprintf("chum-ctx-%s", sessionName))
-	if err := os.MkdirAll(hostCtxDir, 0755); err != nil {
+	if err := os.MkdirAll(hostCtxDir, 0o755); err != nil {
 		return 0, fmt.Errorf("failed to create context dir: %w", err)
 	}
 
@@ -65,11 +65,11 @@ func (d *DockerDispatcher) Dispatch(ctx context.Context, agent string, prompt st
 		content string
 		perm    os.FileMode
 	}{
-		{"prompt.txt", prompt, 0644},
-		{"agent.txt", agent, 0644},
-		{"thinking.txt", thinkingLevel, 0644},
-		{"provider.txt", provider, 0644},
-		{"script.sh", openclawShellScript(), 0755},
+		{"prompt.txt", prompt, 0o644},
+		{"agent.txt", agent, 0o644},
+		{"thinking.txt", thinkingLevel, 0o644},
+		{"provider.txt", provider, 0o644},
+		{"script.sh", openclawShellScript(), 0o755},
 	} {
 		if err := os.WriteFile(filepath.Join(hostCtxDir, f.name), []byte(f.content), f.perm); err != nil {
 			return 0, fmt.Errorf("write %s: %w", f.name, err)
@@ -99,12 +99,18 @@ func (d *DockerDispatcher) Dispatch(ctx context.Context, agent string, prompt st
 		},
 	}
 
-	ctxPath, _ := filepath.Abs(hostCtxDir)
-	workDirPath, _ := filepath.Abs(workDir)
-	if err := os.MkdirAll(workDirPath, 0755); err != nil {
+	ctxPath, err := filepath.Abs(hostCtxDir)
+	if err != nil {
+		return 0, fmt.Errorf("resolve context directory: %w", err)
+	}
+	workDirPath, err := filepath.Abs(workDir)
+	if err != nil {
+		workDirPath = workDir
+	}
+	if mkdirErr := os.MkdirAll(workDirPath, 0o755); mkdirErr != nil {
 		// Fall back to a per-session temp workspace if the requested path is not writable
 		workDirPath = filepath.Join(os.TempDir(), fmt.Sprintf("chum-workspace-%s", sessionName))
-		if err2 := os.MkdirAll(workDirPath, 0755); err2 != nil {
+		if err2 := os.MkdirAll(workDirPath, 0o755); err2 != nil {
 			return 0, fmt.Errorf("failed to create workdir (original: %s, fallback: %w)", workDir, err2)
 		}
 	}
@@ -163,7 +169,9 @@ func (d *DockerDispatcher) Kill(handle int) error {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	d.cli.ContainerRemove(ctx, sessionName, container.RemoveOptions{Force: true, RemoveVolumes: true})
+	if err := d.cli.ContainerRemove(ctx, sessionName, container.RemoveOptions{Force: true, RemoveVolumes: true}); err != nil {
+		return fmt.Errorf("remove container %s: %w", sessionName, err)
+	}
 
 	d.mu.Lock()
 	delete(d.sessions, handle)
@@ -201,11 +209,12 @@ func (d *DockerDispatcher) GetProcessState(handle int) ProcessState {
 	}
 
 	state := ProcessState{ExitCode: inspect.State.ExitCode}
-	if inspect.State.Running {
+	switch {
+	case inspect.State.Running:
 		state.State = "running"
-	} else if inspect.State.Dead || inspect.State.OOMKilled {
+	case inspect.State.Dead || inspect.State.OOMKilled:
 		state.State = "failed"
-	} else {
+	default:
 		state.State = "exited"
 	}
 	return state
@@ -227,7 +236,9 @@ func CaptureOutput(sessionName string) (string, error) {
 	defer logs.Close()
 
 	var stdout, stderr bytes.Buffer
-	stdcopy.StdCopy(&stdout, &stderr, logs)
+	if _, err := stdcopy.StdCopy(&stdout, &stderr, logs); err != nil {
+		return "", err
+	}
 	return strings.TrimSpace(stdout.String() + "\n" + stderr.String()), nil
 }
 
@@ -240,9 +251,13 @@ func CleanDeadSessions() int {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	containers, _ := cli.ContainerList(ctx, container.ListOptions{All: true})
+	containers, err := cli.ContainerList(ctx, container.ListOptions{All: true})
+	if err != nil {
+		return 0
+	}
 	killed := 0
-	for _, c := range containers {
+	for i := range containers {
+		c := containers[i]
 		isChum := false
 		for _, name := range c.Names {
 			if strings.HasPrefix(name, "/chum-agent-") {
@@ -251,7 +266,9 @@ func CleanDeadSessions() int {
 			}
 		}
 		if isChum && c.State != "running" {
-			cli.ContainerRemove(ctx, c.ID, container.RemoveOptions{Force: true, RemoveVolumes: true})
+			if err := cli.ContainerRemove(ctx, c.ID, container.RemoveOptions{Force: true, RemoveVolumes: true}); err != nil {
+				continue
+			}
 			killed++
 			for _, name := range c.Names {
 				if strings.HasPrefix(name, "/") {

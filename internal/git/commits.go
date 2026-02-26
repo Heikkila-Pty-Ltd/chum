@@ -136,7 +136,7 @@ func isLikelyMorselID(candidate string) bool {
 
 	// All parts should be non-empty
 	for _, part := range parts {
-		if len(part) == 0 {
+		if part == "" {
 			return false
 		}
 	}

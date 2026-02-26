@@ -54,11 +54,14 @@ func (b *OpenClawBackend) Dispatch(ctx context.Context, opts DispatchOpts) (Hand
 	b.mu.Unlock()
 
 	if sourcePath != "" && logPath != "" {
-		if err := os.MkdirAll(filepath.Dir(logPath), 0755); err == nil {
+		if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err == nil {
 			_ = os.Remove(logPath)
 			if err := os.Symlink(sourcePath, logPath); err != nil {
 				if output, readErr := os.ReadFile(sourcePath); readErr == nil {
-					_ = os.WriteFile(logPath, output, 0644)
+					if writeErr := os.WriteFile(logPath, output, 0o644); writeErr != nil {
+						// Keep dispatch running even when optional mirror log write fails.
+						_ = writeErr
+					}
 				}
 			}
 		}

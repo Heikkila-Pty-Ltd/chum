@@ -1,7 +1,6 @@
 package dispatch
 
 import (
-	"context"
 	"os"
 	"os/exec"
 	"strconv"
@@ -12,7 +11,7 @@ import (
 
 func TestDispatch_ArgumentLimits(t *testing.T) {
 	d := NewDispatcher()
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// Create a prompt larger than the CLI arg-safe threshold.
 	limit := maxArgSizeFromSystem(t)

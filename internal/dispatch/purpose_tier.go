@@ -28,7 +28,7 @@ func PreferredTiersForPurpose(purpose string) []string {
 
 // SelectProviderForPurpose picks the first configured provider model by purpose tier intent.
 // Returns ("","") when no provider can be resolved from configured tier lists.
-func SelectProviderForPurpose(cfg *config.Config, purpose string) (model string, tier string) {
+func SelectProviderForPurpose(cfg *config.Config, purpose string) (model, tier string) {
 	if cfg == nil {
 		return "", ""
 	}

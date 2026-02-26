@@ -6,6 +6,8 @@ import (
 )
 
 // ConfigManager provides thread-safe access to live configuration.
+//
+//nolint:revive // Retained exported name for compatibility with existing callers.
 type ConfigManager interface {
 	Get() *Config
 	Set(cfg *Config)

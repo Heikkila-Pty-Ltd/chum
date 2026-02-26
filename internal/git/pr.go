@@ -16,7 +16,7 @@ type PRStatus struct {
 }
 
 // CreatePR creates a pull request for a feature branch using gh CLI
-func CreatePR(workspace, branch, baseBranch, title, body string) (string, int, error) {
+func CreatePR(workspace, branch, baseBranch, title, body string) (prURL string, prNumber int, err error) {
 	cmd := exec.Command("gh", "pr", "create",
 		"--head", branch,
 		"--base", baseBranch,
@@ -29,13 +29,14 @@ func CreatePR(workspace, branch, baseBranch, title, body string) (string, int, e
 		return "", 0, fmt.Errorf("failed to create PR: %w (%s)", err, strings.TrimSpace(string(out)))
 	}
 
-	prURL := strings.TrimSpace(string(out))
+	prURL = strings.TrimSpace(string(out))
 
 	// Extract number from URL (https://github.com/org/repo/pull/123)
 	parts := strings.Split(prURL, "/")
 	if len(parts) > 0 {
-		num, _ := strconv.Atoi(parts[len(parts)-1])
-		return prURL, num, nil
+		if num, convErr := strconv.Atoi(parts[len(parts)-1]); convErr == nil {
+			return prURL, num, nil
+		}
 	}
 
 	return prURL, 0, nil

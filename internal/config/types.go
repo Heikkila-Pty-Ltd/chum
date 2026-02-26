@@ -337,7 +337,7 @@ type Calcifier struct {
 // EffectiveThreshold returns the compile threshold adjusted for risk.
 // Morsels carrying risky labels (security, migration, etc.) require
 // CompileThreshold × RiskMultiplier consecutive successes.
-func (c Calcifier) EffectiveThreshold(labels []string, riskyLabels []string) int {
+func (c Calcifier) EffectiveThreshold(labels, riskyLabels []string) int {
 	threshold := c.CompileThreshold
 	if threshold == 0 {
 		threshold = 10

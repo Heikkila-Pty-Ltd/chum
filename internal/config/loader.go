@@ -63,7 +63,8 @@ func normalizePaths(cfg *Config) {
 	cfg.Dispatch.LogDir = ExpandHome(strings.TrimSpace(cfg.Dispatch.LogDir))
 	cfg.API.Security.AuditLog = ExpandHome(strings.TrimSpace(cfg.API.Security.AuditLog))
 
-	for name, project := range cfg.Projects {
+	for name := range cfg.Projects {
+		project := cfg.Projects[name]
 		project.MorselsDir = ExpandHome(strings.TrimSpace(project.MorselsDir))
 		project.Workspace = ExpandHome(strings.TrimSpace(project.Workspace))
 		cfg.Projects[name] = project
@@ -72,7 +73,7 @@ func normalizePaths(cfg *Config) {
 
 // ExpandHome replaces a leading ~ with the user's home directory.
 func ExpandHome(path string) string {
-	if len(path) == 0 {
+	if path == "" {
 		return path
 	}
 	if path[0] == '~' {

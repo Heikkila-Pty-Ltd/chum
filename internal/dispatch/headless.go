@@ -2,6 +2,7 @@ package dispatch
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -68,11 +69,11 @@ func (b *HeadlessBackend) Dispatch(ctx context.Context, opts DispatchOpts) (Hand
 	if err != nil {
 		return Handle{}, err
 	}
-	if err := os.MkdirAll(filepath.Dir(logPath), 0755); err != nil {
-		return Handle{}, fmt.Errorf("headless backend: create log directory: %w", err)
+	if mkdirErr := os.MkdirAll(filepath.Dir(logPath), 0o755); mkdirErr != nil {
+		return Handle{}, fmt.Errorf("headless backend: create log directory: %w", mkdirErr)
 	}
 
-	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
 	if err != nil {
 		return Handle{}, fmt.Errorf("headless backend: create log file: %w", err)
 	}
@@ -146,12 +147,15 @@ func (b *HeadlessBackend) waitForProcess(pid int) {
 	if err == nil {
 		p.state = "completed"
 		p.exitCode = 0
-	} else if exitErr, ok := err.(*exec.ExitError); ok {
-		p.state = "failed"
-		p.exitCode = exitErr.ExitCode()
 	} else {
-		p.state = "failed"
-		p.exitCode = -1
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			p.state = "failed"
+			p.exitCode = exitErr.ExitCode()
+		} else {
+			p.state = "failed"
+			p.exitCode = -1
+		}
 	}
 
 	if p.tempPromptPath != "" {
@@ -274,14 +278,14 @@ func (b *HeadlessBackend) resolveLogPath(opts DispatchOpts) (string, error) {
 		return path, nil
 	}
 
-	if err := os.MkdirAll(base, 0755); err != nil {
+	if err := os.MkdirAll(base, 0o755); err != nil {
 		return "", fmt.Errorf("headless backend: create log root: %w", err)
 	}
 	name := fmt.Sprintf("dispatch-%d-%s.log", time.Now().UnixNano(), sanitizeForFilename(opts.Agent))
 	return filepath.Join(base, name), nil
 }
 
-func buildHeadlessArgs(cliCfg config.CLIConfig, opts DispatchOpts) ([]string, string, error) {
+func buildHeadlessArgs(cliCfg config.CLIConfig, opts DispatchOpts) (args []string, tempPromptPath string, err error) {
 	flags := append([]string{}, cliCfg.Args...)
 
 	mode := strings.TrimSpace(cliCfg.PromptMode)
@@ -289,25 +293,25 @@ func buildHeadlessArgs(cliCfg config.CLIConfig, opts DispatchOpts) ([]string, st
 		mode = "stdin"
 	}
 
-	tempPromptPath := ""
+	tempPromptPath = ""
 	promptValue := opts.Prompt
 	switch mode {
 	case "stdin":
 	case "arg":
 	case "file":
-		f, err := os.CreateTemp("", "chum-prompt-*.txt")
-		if err != nil {
-			return nil, "", fmt.Errorf("headless backend: create prompt file: %w", err)
+		f, createErr := os.CreateTemp("", "chum-prompt-*.txt")
+		if createErr != nil {
+			return nil, "", fmt.Errorf("headless backend: create prompt file: %w", createErr)
 		}
 		tempPromptPath = f.Name()
-		if _, err := f.WriteString(opts.Prompt); err != nil {
+		if _, writeErr := f.WriteString(opts.Prompt); writeErr != nil {
 			_ = f.Close()
 			_ = os.Remove(tempPromptPath)
-			return nil, "", fmt.Errorf("headless backend: write prompt file: %w", err)
+			return nil, "", fmt.Errorf("headless backend: write prompt file: %w", writeErr)
 		}
-		if err := f.Close(); err != nil {
+		if closeErr := f.Close(); closeErr != nil {
 			_ = os.Remove(tempPromptPath)
-			return nil, "", fmt.Errorf("headless backend: close prompt file: %w", err)
+			return nil, "", fmt.Errorf("headless backend: close prompt file: %w", closeErr)
 		}
 		promptValue = tempPromptPath
 	default:
@@ -328,7 +332,8 @@ func buildHeadlessArgs(cliCfg config.CLIConfig, opts DispatchOpts) ([]string, st
 		}
 		return nil, "", fmt.Errorf("headless backend: %w", err)
 	}
-	return argv[1:], tempPromptPath, nil
+	args = argv[1:]
+	return args, tempPromptPath, nil
 }
 
 func sanitizeForFilename(v string) string {

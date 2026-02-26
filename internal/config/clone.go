@@ -114,6 +114,7 @@ func cloneCLIConfigMap(in map[string]CLIConfig) map[string]CLIConfig {
 			Args:          cloneStringSlice(cfg.Args),
 			ModelFlag:     cfg.ModelFlag,
 			ApprovalFlags: cloneStringSlice(cfg.ApprovalFlags),
+			Env:           cloneStringStringMap(cfg.Env),
 		}
 	}
 	return out
@@ -125,5 +126,16 @@ func cloneStringSlice(in []string) []string {
 	}
 	out := make([]string, len(in))
 	copy(out, in)
+	return out
+}
+
+func cloneStringStringMap(in map[string]string) map[string]string {
+	if in == nil {
+		return nil
+	}
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
 	return out
 }

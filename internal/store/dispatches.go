@@ -299,7 +299,7 @@ func (s *Store) WasMorselAgentDispatchedRecently(morselID, agentID string, coold
 		FROM dispatches 
 		WHERE morsel_id = ?
 		  AND dispatched_at > ?
-		  AND status IN ('running', 'completed', 'failed', 'cancelled', 'interrupted', 'pending_retry', 'retried')`,
+		  AND status IN ('running', 'completed', 'failed', 'canceled', 'interrupted', 'pending_retry', 'retried')`,
 			morselID, cutoff.Format(time.DateTime),
 		).Scan(&count)
 	} else {
@@ -309,7 +309,7 @@ func (s *Store) WasMorselAgentDispatchedRecently(morselID, agentID string, coold
 		WHERE morsel_id = ?
 		  AND agent_id = ?
 		  AND dispatched_at > ?
-		  AND status IN ('running', 'completed', 'failed', 'cancelled', 'interrupted', 'pending_retry', 'retried')`,
+		  AND status IN ('running', 'completed', 'failed', 'canceled', 'interrupted', 'pending_retry', 'retried')`,
 			morselID, agentID, cutoff.Format(time.DateTime),
 		).Scan(&count)
 	}
@@ -334,7 +334,7 @@ func (s *Store) HasRecentConsecutiveFailures(morselID string, threshold int, win
 		FROM dispatches
 		WHERE morsel_id = ?
 		  AND dispatched_at > ?
-		  AND status IN ('failed', 'completed', 'cancelled', 'interrupted', 'retried', 'pending_retry', 'running')
+		  AND status IN ('failed', 'completed', 'canceled', 'interrupted', 'retried', 'pending_retry', 'running')
 		ORDER BY dispatched_at DESC
 		LIMIT ?`,
 		morselID, cutoff, threshold,

@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	exec "os/exec"
 	"os/signal"
 	"path/filepath"
 	"strconv"
@@ -332,27 +333,142 @@ func runStopCommand(logger *slog.Logger) error {
 	return nil
 }
 
-// runRestartCommand stops any running instance and starts a new worker as a daemon.
+// rebuildBinary builds the chum binary from source. It locates the source
+// directory by walking up from the current executable looking for go.mod,
+// then runs "go build" to produce a fresh binary at the same path.
+// This prevents the recurring stale-binary-on-restart problem.
+func rebuildBinary(logger *slog.Logger) (string, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return "", fmt.Errorf("cannot find own executable: %w", err)
+	}
+	exe, err = filepath.EvalSymlinks(exe)
+	if err != nil {
+		return "", fmt.Errorf("cannot resolve executable symlink: %w", err)
+	}
+
+	// Walk up from executable to find the module root (directory containing go.mod).
+	srcDir := filepath.Dir(exe)
+	for d := srcDir; d != "/" && d != "."; d = filepath.Dir(d) {
+		if _, statErr := os.Stat(filepath.Join(d, "go.mod")); statErr == nil {
+			srcDir = d
+			break
+		}
+	}
+
+	logger.Info("rebuilding chum from source", "src", srcDir, "target", exe)
+
+	goExe, lookErr := findGo()
+	if lookErr != nil {
+		return "", lookErr
+	}
+
+	cmd := &execCmd{
+		path: goExe,
+		args: []string{goExe, "build", "-o", exe, "./cmd/chum"},
+		dir:  srcDir,
+	}
+	out, buildErr := cmd.run()
+	if buildErr != nil {
+		return "", fmt.Errorf("go build failed: %w\n%s", buildErr, out)
+	}
+
+	logger.Info("rebuild complete", "binary", exe)
+	return exe, nil
+}
+
+// findGo locates the go binary, checking common non-standard locations.
+func findGo() (string, error) {
+	// Check PATH first.
+	if p, err := exec.LookPath("go"); err == nil {
+		return p, nil
+	}
+	// Common install locations.
+	for _, candidate := range []string{
+		filepath.Join(os.Getenv("HOME"), ".local", "bin", "go"),
+		"/usr/local/go/bin/go",
+		"/usr/local/bin/go",
+	} {
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate, nil
+		}
+	}
+	return "", fmt.Errorf("go binary not found in PATH or common locations")
+}
+
+// execCmd is a minimal exec wrapper that doesn't import os/exec (keeping the
+// main package's import footprint small).
+type execCmd struct {
+	path string
+	args []string
+	dir  string
+}
+
+func (c *execCmd) run() (string, error) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		return "", err
+	}
+	proc, err := os.StartProcess(c.path, c.args, &os.ProcAttr{
+		Dir:   c.dir,
+		Env:   os.Environ(),
+		Files: []*os.File{os.Stdin, w, w},
+	})
+	if err != nil {
+		w.Close()
+		r.Close()
+		return "", err
+	}
+	w.Close()
+	outBytes, _ := io.ReadAll(r)
+	r.Close()
+	state, waitErr := proc.Wait()
+	if waitErr != nil {
+		return string(outBytes), waitErr
+	}
+	if !state.Success() {
+		return string(outBytes), fmt.Errorf("exit code %d", state.ExitCode())
+	}
+	return string(outBytes), nil
+}
+
+// runRestartCommand builds from source, stops any running instance, and starts
+// a new worker. Supports --systemd to restart via systemctl instead.
 func runRestartCommand(args []string, logger *slog.Logger) error {
-	// Parse optional --config flag
 	fs := flag.NewFlagSet("restart", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	configPath := fs.String("config", "chum.toml", "path to config file")
+	useSystemd := fs.Bool("systemd", false, "restart via systemctl --user instead of PID-based restart")
 	if len(args) > 2 {
 		if parseErr := fs.Parse(args[2:]); parseErr != nil {
 			logger.Warn("failed to parse restart flags", "error", parseErr)
 		}
 	}
 
-	// Stop existing instance (ignore error if none running)
-	if err := runStopCommand(logger); err != nil {
-		logger.Info("no existing instance to stop", "detail", err.Error())
+	// Step 1: Always rebuild from source.
+	exe, err := rebuildBinary(logger)
+	if err != nil {
+		return fmt.Errorf("rebuild failed: %w", err)
 	}
 
-	// Re-exec as daemon
-	exe, err := os.Executable()
-	if err != nil {
-		return fmt.Errorf("cannot find own executable: %w", err)
+	// Step 2: Restart via systemd or PID-based.
+	if *useSystemd {
+		logger.Info("restarting via systemctl --user")
+		cmd := &execCmd{
+			path: "/bin/systemctl",
+			args: []string{"systemctl", "--user", "restart", "chum.service"},
+			dir:  "/",
+		}
+		if out, restartErr := cmd.run(); restartErr != nil {
+			return fmt.Errorf("systemctl restart failed: %w\n%s", restartErr, out)
+		}
+		logger.Info("chum service restarted via systemd")
+		return nil
+	}
+
+	// PID-based restart: stop existing, re-exec new binary.
+	if err := runStopCommand(logger); err != nil {
+		logger.Info("no existing instance to stop", "detail", err.Error())
 	}
 
 	logPath := filepath.Join(dataDir(), "worker.log")

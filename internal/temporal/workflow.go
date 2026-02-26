@@ -378,7 +378,7 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 			ProviderKey: req.Provider,
 			CLI:         req.Agent,
 			Model:       req.Model,
-			Tier:        "fast",
+			Tier:        "balanced",
 			Enabled:     true,
 		}}
 	}

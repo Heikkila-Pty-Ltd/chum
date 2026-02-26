@@ -1,6 +1,9 @@
 package temporal
 
 import (
+	"encoding/json"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/antigravity-dev/chum/internal/config"
@@ -684,7 +687,34 @@ type CandidateWhale struct {
 	Description        string            `json:"description"`
 	AcceptanceCriteria string            `json:"acceptance_criteria"`
 	Morsels            []CandidateMorsel `json:"morsels"`
-	ParentScopeItem    int               `json:"parent_scope_item"` // index into ParsedPlan.ScopeItems
+	ParentScopeItem    FlexInt           `json:"parent_scope_item"` // index into ParsedPlan.ScopeItems; LLMs may return string or int
+}
+
+// FlexInt accepts both int and string JSON values, coercing strings to 0.
+// This prevents LLM JSON output from crashing the pipeline when it returns
+// a string (e.g. a task ID) instead of the expected integer index.
+type FlexInt int
+
+func (f *FlexInt) UnmarshalJSON(b []byte) error {
+	// Try int first (the expected case).
+	var n int
+	if err := json.Unmarshal(b, &n); err == nil {
+		*f = FlexInt(n)
+		return nil
+	}
+	// LLM returned a string — attempt to parse as int, default to 0.
+	var s string
+	if err := json.Unmarshal(b, &s); err == nil {
+		if parsed, parseErr := strconv.Atoi(strings.TrimSpace(s)); parseErr == nil {
+			*f = FlexInt(parsed)
+		} else {
+			*f = 0 // non-numeric string (e.g. task ID) → default
+		}
+		return nil
+	}
+	// Fallback: ignore unparseable values.
+	*f = 0
+	return nil
 }
 
 // CandidateMorsel is a proposed morsel (bite-sized executable unit) before sizing.

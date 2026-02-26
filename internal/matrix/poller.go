@@ -426,13 +426,13 @@ func (p *Poller) runScrumCommand(ctx context.Context, msg InboundMessage, cmd sc
 	}
 }
 
-func (p *Poller) projectConfig(project string) (config.Project, bool) {
+func (p *Poller) projectConfig(project string) bool {
 	project = strings.TrimSpace(project)
 	if project == "" {
-		return config.Project{}, false
+		return false
 	}
-	cfg, ok := p.projects[project]
-	return cfg, ok
+	_, ok := p.projects[project]
+	return ok
 }
 
 func (p *Poller) handleStatusCommand(project string) (string, error) {
@@ -500,7 +500,7 @@ func (p *Poller) handlePriorityCommand(ctx context.Context, project, morselID st
 	if strings.TrimSpace(project) == "" {
 		return "", fmt.Errorf("missing project")
 	}
-	if _, ok := p.projectConfig(project); !ok {
+	if !p.projectConfig(project) {
 		return "", fmt.Errorf("unknown project %q", project)
 	}
 	if p.dag == nil {
@@ -524,7 +524,7 @@ func (p *Poller) handleCancelCommand(_ context.Context, dispatchID int64) (strin
 }
 
 func (p *Poller) handleCreateCommand(project, title, description string) (string, error) {
-	if _, ok := p.projectConfig(project); !ok {
+	if !p.projectConfig(project) {
 		return "", fmt.Errorf("unknown project %q", project)
 	}
 	if p.dag == nil {

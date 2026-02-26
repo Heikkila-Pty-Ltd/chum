@@ -23,14 +23,12 @@ type UBSFinding struct {
 
 // BugPattern is an aggregate view of recurring bug patterns.
 type BugPattern struct {
-	RuleID     string `json:"rule_id"`
-	Severity   string `json:"severity"`
-	Message    string `json:"message"`
-	Count      int    `json:"count"`
-	SelfFixed  int    `json:"self_fixed"`
+	RuleID    string `json:"rule_id"`
+	Severity  string `json:"severity"`
+	Message   string `json:"message"`
+	Count     int    `json:"count"`
+	SelfFixed int    `json:"self_fixed"`
 }
-
-
 
 // RecordUBSFindings batch-inserts multiple findings.
 func (s *Store) RecordUBSFindings(findings []UBSFinding) error {
@@ -38,7 +36,9 @@ func (s *Store) RecordUBSFindings(findings []UBSFinding) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() {
+		_ = tx.Rollback()
+	}()
 
 	stmt, err := tx.Prepare(`INSERT INTO ubs_findings
 		(dispatch_id, morsel_id, project, provider, species, rule_id, severity,

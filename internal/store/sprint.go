@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -121,7 +122,7 @@ func (s *Store) GetSprintContext(ctx context.Context, dag *graph.DAG, project st
 	}
 
 	// Build dependency graph
-	var allTasks []graph.Task
+	allTasks := make([]graph.Task, 0, len(backlogMorsels)+len(inProgressMorsels)+len(recentCompletions))
 	for _, bb := range backlogMorsels {
 		allTasks = append(allTasks, *bb.Task)
 	}
@@ -135,7 +136,10 @@ func (s *Store) GetSprintContext(ctx context.Context, dag *graph.DAG, project st
 	depGraph := graph.BuildDepGraph(allTasks)
 
 	// Get current sprint boundary
-	currentSprint, _ := s.GetCurrentSprintBoundary()
+	currentSprint, sprintErr := s.GetCurrentSprintBoundary()
+	if sprintErr != nil {
+		currentSprint = nil
+	}
 
 	// Calculate counts
 	readyCount, blockedCount := s.calculateReadinessStats(backlogMorsels, depGraph)
@@ -299,7 +303,7 @@ func (s *Store) GetCurrentSprintBoundary() (*SprintBoundary, error) {
 		&sb.ID, &sb.SprintNumber, &sb.SprintStart, &sb.SprintEnd, &sb.CreatedAt,
 	)
 
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
@@ -360,7 +364,7 @@ func (s *Store) GetLastSprintPlanning(project string) (*SprintPlanningRecord, er
 		&record.Details,
 		&triggeredAt,
 	)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {

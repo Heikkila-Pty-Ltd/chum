@@ -4,6 +4,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -108,7 +109,9 @@ func (s *Server) Start(ctx context.Context) error {
 		<-ctx.Done()
 		shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		s.httpServer.Shutdown(shutCtx)
+		if err := s.httpServer.Shutdown(shutCtx); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			s.logger.Warn("api server shutdown failed", "error", err)
+		}
 	}()
 
 	s.logger.Info("api server starting", "bind", s.cfg.API.Bind)

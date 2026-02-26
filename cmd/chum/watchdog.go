@@ -100,7 +100,7 @@ func runWatchdogCommand(args []string, logger *slog.Logger) error {
 
 	report := runHealthCheck(db, logPath, logger)
 
-	reportJSON, _ := json.MarshalIndent(report, "", "  ") //nolint:errcheck // marshal of known struct
+	reportJSON, _ := json.MarshalIndent(report, "", "  ")
 	logger.Info("watchdog health check",
 		"verdict", report.Verdict,
 		"summary", report.Summary,
@@ -327,7 +327,7 @@ func launchRescueAgent(report *SystemHealthReport, reportJSON []byte, workDir, l
 		return fmt.Errorf("start rescue agent: %w", err)
 	}
 
-	_ = os.WriteFile(pidFile, []byte(fmt.Sprintf("%d", cmd.Process.Pid)), 0o644) //nolint:errcheck // best-effort PID file
+	_ = os.WriteFile(pidFile, []byte(fmt.Sprintf("%d", cmd.Process.Pid)), 0o644)
 
 	logger.Warn("rescue agent launched", "pid", cmd.Process.Pid)
 	fmt.Fprintf(os.Stderr, "watchdog: CRITICAL — rescue agent launched (pid %d)\n", cmd.Process.Pid)

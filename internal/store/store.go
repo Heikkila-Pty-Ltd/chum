@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	// Register modernc sqlite driver for database/sql usage.
 	_ "modernc.org/sqlite"
 )
 
@@ -1060,7 +1061,9 @@ func migrateBeadToMorsel(db *sql.DB) error {
 		"idx_bead_stages_project_morsel",
 		"idx_bead_stages_project_stage",
 	} {
-		db.Exec(`DROP INDEX IF EXISTS ` + idx)
+		if _, err := db.Exec(`DROP INDEX IF EXISTS ` + idx); err != nil {
+			return fmt.Errorf("drop legacy index %s: %w", idx, err)
+		}
 	}
 
 	return nil

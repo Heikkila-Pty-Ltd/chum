@@ -346,7 +346,6 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 	// Pre-planned work (has acceptance criteria) skips the gate.
 	// "If CHUM is in the water, feed."
 
-	currentAgent := req.Agent
 	var totalTokens TokenUsage
 	var activityTokens []ActivityTokenUsage
 
@@ -370,12 +369,7 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 	// ===== PHASE 2: (gate removed — ready status IS the approval) =====
 
 	// ===== PHASE 3-5: EXECUTE → REVIEW → CHECK LOOP =====
-	handoffCount := 0
 	escalationAttempt := 0
-	var lastFailedProvider string
-	var lastFailedTier string
-	_ = lastFailedProvider // used in escalation path
-	_ = lastFailedTier     // used in escalation path
 
 	// Build execution chain — either from TaskRequest or fallback to single provider.
 	chain := req.EscalationChain
@@ -402,7 +396,7 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 		maxRetries := retriesForTier(tier.Tier, req.MaxRetriesOverride)
 
 		// Override agent to use this tier's CLI+model
-		currentAgent = tier.CLI
+		_ = tier.CLI // agent set via req.Agent below
 		req.Agent = tier.CLI
 		req.Model = tier.Model
 		req.Reviewer = tier.Reviewer
@@ -416,8 +410,8 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 
 		for attempt := 0; attempt < maxRetries; attempt++ {
 			escalationAttempt++
-			logger.Info(SharkPrefix+" Execution attempt", "Attempt", attempt+1, "Agent", currentAgent)
-			notify("execute", map[string]string{"agent": currentAgent, "attempt": fmt.Sprintf("%d", attempt+1)})
+			logger.Info(SharkPrefix+" Execution attempt", "Attempt", attempt+1, "Agent", req.Agent)
+			notify("execute", map[string]string{"agent": req.Agent, "attempt": fmt.Sprintf("%d", attempt+1)})
 
 			// Reset token tracking to plan baseline for each attempt.
 			// Only the last attempt's costs are reported in the outcome.
@@ -493,7 +487,7 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 
 			reviewReq := req
 			if strings.TrimSpace(reviewReq.Reviewer) == "" {
-				reviewReq.Reviewer = DefaultReviewer(currentAgent)
+				reviewReq.Reviewer = DefaultReviewer(req.Agent)
 			}
 
 			if err := workflow.ExecuteActivity(reviewCtx, a.CodeReviewActivity, plan, execResult, reviewReq).Get(ctx, &review); err != nil {
@@ -607,7 +601,7 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 					// Record outcome even in explosion mode — the parent needs
 					// this data for winner scoring and the learner needs patterns.
 					recordOutcome(ctx, recordOpts, a, req, "completed", 0,
-						handoffCount, true, "", startTime, totalTokens, activityTokens, stepMetrics)
+						true, "", startTime, totalTokens, activityTokens, stepMetrics)
 					return nil // CambrianExplosionWorkflow will handle task closing, pushing, and merging
 				}
 
@@ -615,8 +609,8 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 				closeCtx := workflow.WithActivityOptions(ctx, recordOpts)
 				_ = workflow.ExecuteActivity(closeCtx, a.CloseTaskActivity, req.TaskID, "completed").Get(ctx, nil)
 
-				recordOutcome(ctx, recordOpts, a, req, "completed", 0,
-					handoffCount, true, "", startTime, totalTokens, activityTokens, stepMetrics)
+					recordOutcome(ctx, recordOpts, a, req, "completed", 0,
+						true, "", startTime, totalTokens, activityTokens, stepMetrics)
 
 				// ===== CHUM LOOP — spawn async learner + groomer =====
 				spawnCHUMWorkflows(ctx, logger, req, plan, baseWorkDir)
@@ -766,7 +760,7 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 				TaskID:      req.TaskID,
 				Project:     req.Project,
 				WorkDir:     req.WorkDir,
-				Agent:       currentAgent,
+				Agent:       req.Agent,
 				FailureType: "dod",
 				Failures:    dodResult.Failures,
 				AgentOutput: execResult.Output,
@@ -820,12 +814,8 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 			}
 		}
 
-		// All retries exhausted for this tier — record failure and try next tier
-		lastFailedProvider = tier.ProviderKey
-		lastFailedTier = tier.Tier
-
-		// If triage said rescope, skip remaining tiers entirely
-		if rescopeTriggered {
+			// If triage said rescope, skip remaining tiers entirely
+			if rescopeTriggered {
 			logger.Info(SharkPrefix+" Triage rescope — skipping remaining tiers",
 				"Reason", rescopeReason)
 			break
@@ -856,7 +846,7 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 		PlanSummary:  plan.Summary,
 		Failures:     allFailures,
 		AttemptCount: escalationAttempt,
-		HandoffCount: handoffCount,
+		HandoffCount: 0,
 	}).Get(ctx, nil); err != nil {
 		logger.Warn(SharkPrefix+" Escalation activity failed (best-effort)", "error", err)
 	}
@@ -873,7 +863,7 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 	// Record outcome even on escalation — the store needs the failure record
 	// and tokens burned, and the learner extracts antibodies from failures.
 	recordOutcome(ctx, recordOpts, a, req, "escalated", 1,
-		handoffCount, false, strings.Join(allFailures, "; "),
+		false, strings.Join(allFailures, "; "),
 		startTime, totalTokens, activityTokens, stepMetrics)
 
 	// Spawn failure learner — extract antibodies from what went wrong.
@@ -885,7 +875,7 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 
 // recordOutcome is a helper to persist the workflow outcome via RecordOutcomeActivity.
 func recordOutcome(ctx workflow.Context, opts workflow.ActivityOptions, a *Activities,
-	req TaskRequest, status string, exitCode, handoffs int,
+	req TaskRequest, status string, exitCode int,
 	dodPassed bool, dodFailures string, startTime time.Time,
 	tokens TokenUsage, activityTokens []ActivityTokenUsage, steps []StepMetric) {
 
@@ -901,16 +891,16 @@ func recordOutcome(ctx workflow.Context, opts workflow.ActivityOptions, a *Activ
 		Provider:       req.Provider,
 		Status:         status,
 		ExitCode:       exitCode,
-		DurationS:      duration,
-		DoDPassed:      dodPassed,
-		DoDFailures:    dodFailures,
-		Handoffs:       handoffs,
-		TotalTokens:    tokens,
-		ActivityTokens: activityTokens,
-		StepMetrics:    steps,
-	}).Get(ctx, nil); err != nil {
-		logger.Warn(SharkPrefix+" RecordOutcome activity failed (best-effort)", "error", err)
-	}
+			DurationS:      duration,
+			DoDPassed:      dodPassed,
+			DoDFailures:    dodFailures,
+			Handoffs:       0,
+			TotalTokens:    tokens,
+			ActivityTokens: activityTokens,
+			StepMetrics:    steps,
+		}).Get(ctx, nil); err != nil {
+			logger.Warn(SharkPrefix+" RecordOutcome activity failed (best-effort)", "error", err)
+		}
 }
 
 // recordOrganismLog is a fire-and-forget helper to persist organism logs from
@@ -1025,36 +1015,4 @@ func spawnFailureLearner(ctx workflow.Context, logger log.Logger, req TaskReques
 	} else {
 		logger.Info(SharkPrefix+" CHUM: Failure learner started", "WorkflowID", learnerExec.ID)
 	}
-}
-
-// recordEscalation logs an escalation event to the store (best-effort).
-func recordEscalation(ctx workflow.Context, logger log.Logger, a *Activities,
-	taskID, project, failedProvider, failedTier, escalatedTo, escalatedTier string) {
-
-	// a is a Temporal typed nil — can't access fields on it.
-	// The Store check was panicking because a itself is nil.
-	if a == nil {
-		logger.Warn(SharkPrefix + " recordEscalation: activities pointer is nil, skipping")
-		return
-	}
-	if a.Store == nil {
-		return
-	}
-	logger.Info(SharkPrefix+" Recording escalation",
-		"From", failedProvider, "FromTier", failedTier,
-		"To", escalatedTo, "ToTier", escalatedTier)
-
-	ao := workflow.ActivityOptions{
-		StartToCloseTimeout: 5 * time.Second,
-		RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 1},
-	}
-	actCtx := workflow.WithActivityOptions(ctx, ao)
-	_ = workflow.ExecuteActivity(actCtx, a.RecordEscalationActivity, EscalationEvent{
-		MorselID:       taskID,
-		Project:        project,
-		FailedProvider: failedProvider,
-		FailedTier:     failedTier,
-		EscalatedTo:    escalatedTo,
-		EscalatedTier:  escalatedTier,
-	}).Get(ctx, nil)
 }

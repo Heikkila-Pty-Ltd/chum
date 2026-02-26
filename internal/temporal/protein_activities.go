@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -23,7 +24,7 @@ func (a *Activities) GetProteinInstructionsActivity(ctx context.Context, species
 
 	protein, err := a.Store.GetProteinForSpecies(species)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return "", nil // no protein found — normal for new species
 		}
 		logger.Warn(OctopusPrefix+" Protein lookup failed (non-fatal)", "species", species, "error", err)
@@ -31,7 +32,7 @@ func (a *Activities) GetProteinInstructionsActivity(ctx context.Context, species
 	}
 
 	// Format molecule instructions as a structured protocol
-	var lines []string
+	lines := make([]string, 0, len(protein.Molecules)*3+3)
 	lines = append(lines, fmt.Sprintf("🧬 PROTEIN PROTOCOL: %s (gen %d, %d successes)",
 		protein.Name, protein.Generation, protein.Successes))
 	lines = append(lines, "Follow these steps IN ORDER. Each step must complete before the next begins.")

@@ -398,7 +398,7 @@ func dataDir() string {
 		home = "/tmp"
 	}
 	dir := filepath.Join(home, ".local", "share", "chum")
-	_ = os.MkdirAll(dir, 0o755) //nolint:errcheck // best-effort
+	_ = os.MkdirAll(dir, 0o755)
 	return dir
 }
 
@@ -527,7 +527,6 @@ func main() {
 		logger.Error("failed to open store", "path", dbPath, "error", err)
 		os.Exit(1)
 	}
-	defer st.Close()
 
 	// Acquire PID file to prevent duplicate CHUM instances (e.g. from worktrees).
 	pidPath := filepath.Join(filepath.Dir(dbPath), "chum.pid")
@@ -535,7 +534,6 @@ func main() {
 		logger.Error("another chum instance is running", "error", err, "pidfile", pidPath)
 		os.Exit(1)
 	}
-	defer os.Remove(pidPath)
 
 	dag := graph.NewDAG(st.DB())
 	if schemaErr := dag.EnsureSchema(context.Background()); schemaErr != nil {
@@ -544,7 +542,6 @@ func main() {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	// SIGHUP config reload
 	applyReload := func() error {
@@ -633,7 +630,7 @@ func main() {
 		// --- Strategic Groom Cron (per-project, daily at 5 AM) ---
 		// Only start if chief is enabled — strategic groom depends on LLM analysis.
 		if cfg.Chief.Enabled {
-			for name, project := range cfg.Projects { //nolint:gocritic // rangeValCopy: config.Project is a small value type used briefly
+			for name, project := range cfg.Projects {
 				if !project.Enabled {
 					continue
 				}
@@ -666,7 +663,7 @@ func main() {
 		}
 
 		// --- Paleontologist Schedule (every 30 minutes, per-project) ---
-		for name, project := range cfg.Projects { //nolint:gocritic
+		for name, project := range cfg.Projects {
 			if !project.Enabled {
 				continue
 			}
@@ -753,7 +750,10 @@ func main() {
 		logger.Error("failed to create api server", "error", err)
 		os.Exit(1)
 	}
+	defer st.Close()
+	defer os.Remove(pidPath)
 	defer apiSrv.Close()
+	defer cancel()
 
 	go func() {
 		if err := apiSrv.Start(ctx); err != nil {

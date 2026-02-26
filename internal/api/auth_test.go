@@ -331,9 +331,6 @@ func TestConfigValidation(t *testing.T) {
 				AllowedTokens: []string{},
 			},
 		},
-		Projects: map[string]config.Project{
-			"test": {Enabled: true},
-		},
 	}
 
 	// Use reflection to call the internal validate function

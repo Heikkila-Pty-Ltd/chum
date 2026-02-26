@@ -252,5 +252,7 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(&b, "# TYPE chum_uptime_seconds gauge\n")
 	fmt.Fprintf(&b, "chum_uptime_seconds %.0f\n", time.Since(s.startTime).Seconds())
 
-	w.Write([]byte(b.String()))
+	if _, err := w.Write([]byte(b.String())); err != nil {
+		s.logger.Warn("failed to write metrics response", "error", err)
+	}
 }

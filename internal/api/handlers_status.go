@@ -26,7 +26,7 @@ func (s *Server) handleProjects(w http.ResponseWriter, r *http.Request) {
 		Enabled  bool   `json:"enabled"`
 		Priority int    `json:"priority"`
 	}
-	var projects []projectInfo
+	projects := make([]projectInfo, 0, len(s.cfg.Projects))
 	for name, proj := range s.cfg.Projects {
 		projects = append(projects, projectInfo{
 			Name:     name,

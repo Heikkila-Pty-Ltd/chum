@@ -239,12 +239,6 @@ func cliCommand(agent, workDir string) *exec.Cmd {
 	return (&Activities{}).cliCommandWithModel(agent, workDir, "")
 }
 
-// cliCommandWithModel returns an exec.Cmd for a given agent with an optional model override.
-// Package-level wrapper — delegates to the Activities method.
-func cliCommandWithModel(agent, workDir, model string) *exec.Cmd {
-	return (&Activities{}).cliCommandWithModel(agent, workDir, model)
-}
-
 // cliReviewCommand returns an exec.Cmd for a given agent in code review mode.
 // Package-level wrapper — delegates to the Activities method.
 func cliReviewCommand(agent, workDir string) *exec.Cmd {

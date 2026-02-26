@@ -133,7 +133,7 @@ func parseGolangCILintOutput(raw string) (count int, linters []string, issues []
 	if strings.TrimSpace(raw) == "" {
 		return 0, nil, nil, nil
 	}
-	if err = json.Unmarshal([]byte(raw), &payload); err != nil {
+	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
 		return 0, nil, nil, err
 	}
 
@@ -177,7 +177,7 @@ func parseCoverageTotal(raw string) (percent float64, line string, err error) {
 		}
 		return percent, line, nil
 	}
-	if err = sc.Err(); err != nil {
+	if err := sc.Err(); err != nil {
 		return 0, "", err
 	}
 	return 0, "", fmt.Errorf("coverage total line not found")

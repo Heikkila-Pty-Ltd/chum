@@ -88,9 +88,13 @@ func (s *Store) RecordProteinFold(f ProteinFold) error {
 	// Update protein stats
 	if err == nil {
 		if f.Success {
-			s.db.Exec(`UPDATE proteins SET successes = successes + 1 WHERE id = ?`, f.ProteinID)
+			if _, updateErr := s.db.Exec(`UPDATE proteins SET successes = successes + 1 WHERE id = ?`, f.ProteinID); updateErr != nil {
+				return updateErr
+			}
 		} else {
-			s.db.Exec(`UPDATE proteins SET failures = failures + 1 WHERE id = ?`, f.ProteinID)
+			if _, updateErr := s.db.Exec(`UPDATE proteins SET failures = failures + 1 WHERE id = ?`, f.ProteinID); updateErr != nil {
+				return updateErr
+			}
 		}
 	}
 	return err

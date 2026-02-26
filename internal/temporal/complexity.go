@@ -42,11 +42,12 @@ func ScoreTaskComplexity(title, prompt, acceptance string, estimateMinutes int) 
 	// 3. Length-based scoring (up to 20 points)
 	// Very long prompts usually imply complex requirements.
 	promptLen := len(prompt)
-	if promptLen > 2000 {
+	switch {
+	case promptLen > 2000:
 		score += 20
-	} else if promptLen > 1000 {
+	case promptLen > 1000:
 		score += 10
-	} else if promptLen > 500 {
+	case promptLen > 500:
 		score += 5
 	}
 

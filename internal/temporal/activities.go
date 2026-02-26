@@ -382,7 +382,9 @@ func (a *Activities) DoDVerifyActivity(ctx context.Context, req TaskRequest) (*D
 
 	// --- Preflight: validate worktree integrity before running checks ---
 	// Catch corrupted/cleaned worktrees early instead of wasting retries.
-	if _, err := os.Stat(filepath.Join(req.WorkDir, ".git")); err != nil {
+	if _, statErr := os.Stat(filepath.Join(req.WorkDir, ".git")); statErr == nil {
+		// Worktree git metadata exists; continue.
+	} else {
 		return &DoDResult{
 			Passed: false,
 			Failures: []string{fmt.Sprintf(
@@ -397,18 +399,18 @@ func (a *Activities) DoDVerifyActivity(ctx context.Context, req TaskRequest) (*D
 	// For npm-based checks, verify package.json exists before attempting build.
 	for _, check := range checks {
 		if strings.Contains(check, "npm ") {
-			if _, err := os.Stat(filepath.Join(req.WorkDir, "package.json")); err != nil {
-				return &DoDResult{
-					Passed: false,
-					Failures: []string{fmt.Sprintf(
-						"WORKTREE BROKEN: package.json missing in %s (required for DoD check: %s). "+
-							"The worktree source files are gone — only build artifacts may remain. "+
-							"This is an infrastructure failure, not a code issue. "+
-							"Do NOT retry in this worktree — it must be recreated.",
-						req.WorkDir, check)},
-				}, nil
+			if _, statErr := os.Stat(filepath.Join(req.WorkDir, "package.json")); statErr == nil {
+				break // only need to check once
 			}
-			break // only need to check once
+			return &DoDResult{
+				Passed: false,
+				Failures: []string{fmt.Sprintf(
+					"WORKTREE BROKEN: package.json missing in %s (required for DoD check: %s). "+
+						"The worktree source files are gone — only build artifacts may remain. "+
+						"This is an infrastructure failure, not a code issue. "+
+						"Do NOT retry in this worktree — it must be recreated.",
+					req.WorkDir, check)},
+			}, nil
 		}
 	}
 
@@ -1476,7 +1478,7 @@ func loadSemgrepContext(workDir string) string {
 		return ""
 	}
 
-	var rules []string
+	rules := make([]string, 0, len(entries))
 	totalLen := 0
 	for _, entry := range entries {
 		if entry.IsDir() || filepath.Ext(entry.Name()) != ".yml" {
@@ -1642,7 +1644,7 @@ func (a *Activities) AuditSpeciesHealthActivity(ctx context.Context, req Paleont
 				}
 				msg := fmt.Sprintf("⚠️ **Stale Hibernator Detected**\nSpecies `%s` has been hibernating for >24h. It may need higher-level LLM intervention or manual review.", h.Species)
 				_ = a.Sender.SendMessage(ctx, targetRoom, msg)
-				_ = a.Store.RecordHealthEvent(eventType, h.Species) //nolint:errcheck // best-effort
+				_ = a.Store.RecordHealthEvent(eventType, h.Species)
 			}
 		}
 	}
@@ -1666,7 +1668,7 @@ func (a *Activities) AuditSpeciesHealthActivity(ctx context.Context, req Paleont
 				}
 				msg := fmt.Sprintf("⚠️ **Stuck Species Detected**\nSpecies `%s` has %d antibodies but 0 fossils. The agent keeps failing but cannot consolidate the learnings. Please review the failures.", s.Species, s.AntibodyCount)
 				_ = a.Sender.SendMessage(ctx, targetRoom, msg)
-				_ = a.Store.RecordHealthEvent(eventType, s.Species) //nolint:errcheck // best-effort
+				_ = a.Store.RecordHealthEvent(eventType, s.Species)
 			}
 		}
 	}

@@ -24,14 +24,6 @@ var turtleBotUser = map[string]string{
 	"geminibot": "gemini",
 }
 
-// turtleBotSenders is the set of Matrix user IDs for the 3 turtle bots,
-// used to filter out their own messages during polling.
-var turtleBotSenders = map[string]struct{}{
-	"@claudebot": {},
-	"@codexbot":  {},
-	"@geminibot": {},
-}
-
 // TurtleChatHandler handles interactive messages in the turtle deliberation room.
 // When a human posts a message, it detects which agent(s) are @mentioned and runs
 // them, posting responses as each agent's dedicated Matrix bot persona.
@@ -284,7 +276,10 @@ func readRoomMessages(ctx context.Context, reader *HTTPSender, roomID, since str
 	}
 	defer resp.Body.Close()
 
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+	if err != nil {
+		return nil, "", fmt.Errorf("read messages response: %w", err)
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, "", fmt.Errorf("matrix messages: status %d", resp.StatusCode)
 	}
@@ -306,7 +301,7 @@ func readRoomMessages(ctx context.Context, reader *HTTPSender, roomID, since str
 		return nil, "", fmt.Errorf("parse messages: %w", err)
 	}
 
-	var messages []InboundMessage
+	messages := make([]InboundMessage, 0, len(result.Chunk))
 	for _, evt := range result.Chunk {
 		if evt.Type != "m.room.message" || evt.Content.MsgType != "m.text" {
 			continue

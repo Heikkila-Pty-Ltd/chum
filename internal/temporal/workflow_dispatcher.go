@@ -661,6 +661,7 @@ func listOpenAgentWorkflows(ctx context.Context, tc workflowListClient, project 
 	return listOpenAgentWorkflowsForAgent(ctx, tc, project, "")
 }
 
+//nolint:unused // Reserved for follow-up dispatch de-duplication against explosion workflows.
 // listOpenExplosionWorkflows returns all currently running CambrianExplosionWorkflow
 // instances. The dispatcher must check these to prevent re-dispatching tasks that
 // already have an in-flight explosion (which spawns child ChumAgentWorkflows).
@@ -766,6 +767,7 @@ func buildOpenAgentWorkflowQueryForAgent(project, agent string) string {
 	return ChumAgentRunningVisibilityQueryForProjectAndAgent(project, agent)
 }
 
+//nolint:unused // Reserved for follow-up dispatch de-duplication against recently completed workflows.
 // listRecentlyCompletedWorkflows returns IDs of ChumAgentWorkflows that
 // completed in the last 24 hours. The dispatcher skips these to avoid
 // re-dispatching tasks that already succeeded.

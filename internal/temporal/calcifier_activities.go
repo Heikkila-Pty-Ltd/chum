@@ -2,7 +2,6 @@ package temporal
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -79,7 +78,7 @@ func (a *Activities) DetectCalcificationCandidatesActivity(ctx context.Context, 
 		return nil, err
 	}
 
-	var candidates []CalcificationCandidate
+	candidates := make([]CalcificationCandidate, 0, len(seen))
 	for morselType, labels := range seen {
 		// Check if script already exists (active or shadow)
 		active, _ := a.Store.GetActiveScriptForType(morselType)
@@ -157,14 +156,12 @@ func (a *Activities) CompileCalcifiedScriptActivity(ctx context.Context, candida
 	defer rows.Close()
 
 	var prompts []string
-	var dispatchIDs []int64
 	for rows.Next() {
 		var id int64
 		var prompt string
 		if err := rows.Scan(&id, &prompt); err != nil {
 			continue
 		}
-		dispatchIDs = append(dispatchIDs, id)
 		prompts = append(prompts, prompt)
 	}
 
@@ -340,13 +337,4 @@ func detectScriptLanguage(content string) (lang, ext string) {
 	default:
 		return "python", "py"
 	}
-}
-
-// marshalJSON is a safe JSON marshal helper.
-func marshalJSON(v interface{}) string {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return "{}"
-	}
-	return string(b)
 }

@@ -2,6 +2,7 @@ package temporal
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -147,6 +148,9 @@ Respond with ONLY a JSON array:
 	)
 
 	cliResult, _, err := a.runAgentWithFailover(ctx, req.Tier, prompt, req.WorkDir)
+	if errors.Is(err, ErrInfrastructureDead) {
+		cliResult.FailureCategory = FailureCategoryInfrastructureDead
+	}
 	if err != nil {
 		logger.Warn(CrabPrefix+" Chief LLM clarification failed", "error", err)
 		// Fall through to tier 3 with all unresolved items.
@@ -330,6 +334,9 @@ Respond with ONLY a JSON array of whales:
 	activity.RecordHeartbeat(ctx, "calling-llm-decompose")
 
 	cliResult, _, err := a.runAgentWithFailover(ctx, req.Tier, prompt, req.WorkDir)
+	if errors.Is(err, ErrInfrastructureDead) {
+		cliResult.FailureCategory = FailureCategoryInfrastructureDead
+	}
 	if err != nil {
 		return nil, fmt.Errorf("decomposition LLM call failed: %w", err)
 	}
@@ -453,6 +460,9 @@ Respond with ONLY a JSON array of whales (same format as input, with adjustments
 	)
 
 	cliResult, _, err := a.runAgentWithFailover(ctx, req.Tier, prompt, req.WorkDir)
+	if errors.Is(err, ErrInfrastructureDead) {
+		cliResult.FailureCategory = FailureCategoryInfrastructureDead
+	}
 	if err != nil {
 		return nil, fmt.Errorf("scope review LLM call failed: %w", err)
 	}
@@ -562,6 +572,9 @@ Respond with ONLY a JSON array of sized morsels:
 	)
 
 	cliResult, _, err := a.runAgentWithFailover(ctx, req.Tier, prompt, req.WorkDir)
+	if errors.Is(err, ErrInfrastructureDead) {
+		cliResult.FailureCategory = FailureCategoryInfrastructureDead
+	}
 	if err != nil {
 		return nil, fmt.Errorf("sizing LLM call failed: %w", err)
 	}

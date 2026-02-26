@@ -23,10 +23,10 @@ type ProteinSynthesisRequest struct {
 
 // ProteinSynthesisResult is the output of a protein synthesis attempt.
 type ProteinSynthesisResult struct {
-	ProteinID  string `json:"protein_id"`
-	Name       string `json:"name"`
-	Molecules  int    `json:"molecules"`
-	Synthesized bool  `json:"synthesized"`
+	ProteinID   string `json:"protein_id"`
+	Name        string `json:"name"`
+	Molecules   int    `json:"molecules"`
+	Synthesized bool   `json:"synthesized"`
 }
 
 // SynthesizeProteinActivity analyses accumulated success patterns for a species
@@ -217,12 +217,12 @@ Respond with ONLY a JSON object:
 // MutateProteinRequest contains the inputs for mutating an existing protein
 // based on fold retro feedback.
 type MutateProteinRequest struct {
-	ProteinID     string `json:"protein_id"`
-	Species       string `json:"species"`
-	RetroVerdict  string `json:"retro_verdict"`  // "rewrite", "split", or "merge"
-	RetroImprove  []string `json:"retro_improve"` // improvement suggestions from retro
-	RetroFailed   []string `json:"retro_failed"`  // what failed
-	FoldCount     int    `json:"fold_count"`       // how many folds the protein has
+	ProteinID    string   `json:"protein_id"`
+	Species      string   `json:"species"`
+	RetroVerdict string   `json:"retro_verdict"` // "rewrite", "split", or "merge"
+	RetroImprove []string `json:"retro_improve"` // improvement suggestions from retro
+	RetroFailed  []string `json:"retro_failed"`  // what failed
+	FoldCount    int      `json:"fold_count"`    // how many folds the protein has
 }
 
 // MutateProteinResult is the output of a protein mutation.

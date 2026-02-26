@@ -36,6 +36,12 @@ type Activities struct {
 	TurtleRoom  string        // Matrix room for turtle deliberation (3-agent conversation)
 }
 
+// ErrInfrastructureDead marks terminal infrastructure failure from failover dispatch.
+var ErrInfrastructureDead = errors.New("infrastructure dead")
+
+// FailureCategoryInfrastructureDead is persisted when infrastructure is terminally unavailable.
+const FailureCategoryInfrastructureDead = "infrastructure_dead"
+
 // WorktreeDir returns the worktree directory path for a task/explosion pair.
 // Uses os.TempDir() so paths are portable across systems with different $TMPDIR.
 func WorktreeDir(taskID, explosionID string) string {

@@ -3,6 +3,7 @@ package temporal
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -56,6 +57,9 @@ Rules:
 		req.TaskID, req.Project, req.Description, strings.Join(req.Context, "\n"))
 
 	cliResult, _, err := a.runAgentWithFailover(ctx, "premium", prompt, req.WorkDir)
+	if errors.Is(err, ErrInfrastructureDead) {
+		cliResult.FailureCategory = FailureCategoryInfrastructureDead
+	}
 	if err != nil {
 		logger.Warn(TurtlePrefix+" Planner invocation failed, using deterministic fallback", "error", err)
 		fallback := buildFallbackTurtlePlan(req)
@@ -465,6 +469,9 @@ Per-item confidence shows how aligned the team is on each specific deliverable.`
 
 	// Use the first agent (balanced tier) for synthesis
 	cliResult, _, err := a.runAgentWithFailover(ctx, "balanced", prompt, req.WorkDir)
+	if errors.Is(err, ErrInfrastructureDead) {
+		cliResult.FailureCategory = FailureCategoryInfrastructureDead
+	}
 	if err != nil {
 		return nil, fmt.Errorf("convergence failed: %w", err)
 	}
@@ -565,6 +572,9 @@ IMPORTANT: Each morsel must be small enough for a shark. If something is too big
 		req.TaskID, req.Project, consensus.MergedPlan, itemsSummary.String())
 
 	cliResult, _, err := a.runAgentWithFailover(ctx, "balanced", prompt, req.WorkDir)
+	if errors.Is(err, ErrInfrastructureDead) {
+		cliResult.FailureCategory = FailureCategoryInfrastructureDead
+	}
 	if err != nil {
 		return nil, fmt.Errorf("decomposition failed: %w", err)
 	}

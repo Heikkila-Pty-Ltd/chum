@@ -15,23 +15,23 @@ import (
 // Events form a tree/graph via parent_event_id, capturing LLM calls,
 // tool executions, human feedback, and phase boundaries.
 type GraphTraceEvent struct {
-	EventID         string  `json:"event_id"`
-	ParentEventID   string  `json:"parent_event_id"`
-	SessionID       string  `json:"session_id"`
-	Timestamp       int64   `json:"timestamp"`
-	Depth           int     `json:"depth"`
-	EventType       string  `json:"event_type"` // 'llm_call' | 'tool_call' | 'human_feedback' | 'phase_boundary'
-	Phase           string  `json:"phase"`      // 'plan' | 'execute' | 'review' | 'dod' | 'record'
-	ModelName       string  `json:"model_name,omitempty"`
-	TokensInput     int     `json:"tokens_input,omitempty"`
-	TokensOutput    int     `json:"tokens_output,omitempty"`
-	ToolName        string  `json:"tool_name,omitempty"`
-	ToolSuccess     *bool   `json:"tool_success,omitempty"`
-	HumanMessage    string  `json:"human_message,omitempty"`
-	Reward          float64 `json:"reward"`
-	TerminalReward  *float64 `json:"terminal_reward,omitempty"`
-	IsTerminal      bool    `json:"is_terminal"`
-	Metadata        string  `json:"metadata,omitempty"` // JSON for extensibility
+	EventID        string   `json:"event_id"`
+	ParentEventID  string   `json:"parent_event_id"`
+	SessionID      string   `json:"session_id"`
+	Timestamp      int64    `json:"timestamp"`
+	Depth          int      `json:"depth"`
+	EventType      string   `json:"event_type"` // 'llm_call' | 'tool_call' | 'human_feedback' | 'phase_boundary'
+	Phase          string   `json:"phase"`      // 'plan' | 'execute' | 'review' | 'dod' | 'record'
+	ModelName      string   `json:"model_name,omitempty"`
+	TokensInput    int      `json:"tokens_input,omitempty"`
+	TokensOutput   int      `json:"tokens_output,omitempty"`
+	ToolName       string   `json:"tool_name,omitempty"`
+	ToolSuccess    *bool    `json:"tool_success,omitempty"`
+	HumanMessage   string   `json:"human_message,omitempty"`
+	Reward         float64  `json:"reward"`
+	TerminalReward *float64 `json:"terminal_reward,omitempty"`
+	IsTerminal     bool     `json:"is_terminal"`
+	Metadata       string   `json:"metadata,omitempty"` // JSON for extensibility
 }
 
 // RecordGraphTraceEvent inserts a new trace event into the graph.

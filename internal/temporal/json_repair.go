@@ -4,7 +4,9 @@ import "encoding/json"
 
 // repairTruncatedJSONArray attempts to fix truncated JSON array output from LLMs.
 // When an LLM hits its output token limit, it often produces:
-//   [{"key": "value"}, {"key": "val
+//
+//	[{"key": "value"}, {"key": "val
+//
 // This function tries to close unclosed braces/brackets to make it parseable.
 func repairTruncatedJSONArray(s string) string {
 	if json.Valid([]byte(s)) {

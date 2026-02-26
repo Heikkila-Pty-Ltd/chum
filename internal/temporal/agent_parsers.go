@@ -9,8 +9,9 @@ import (
 // extracted from claude's --output-format json. For non-JSON agents (codex),
 // Tokens is zero-valued.
 type CLIResult struct {
-	Output string
-	Tokens TokenUsage
+	Output          string
+	Tokens          TokenUsage
+	FailureCategory string
 }
 
 // claudeJSONOutput matches the JSON structure from `claude --print --output-format json`.

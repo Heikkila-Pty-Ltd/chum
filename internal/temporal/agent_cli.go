@@ -509,9 +509,9 @@ func (a *Activities) runAgentWithFailover(ctx context.Context, tier, prompt, wor
 		a.alertAgentFailure(ctx, "ALL", tier, "all_agents_exhausted",
 			fmt.Sprintf("🔴 ALL AGENTS EXHAUSTED in tier %s. Chain: %v. Last error: %v",
 				tier, chain, lastErr))
-		return lastResult, "", fmt.Errorf("all agents in tier %s exhausted: %w", tier, lastErr)
+		return lastResult, "", fmt.Errorf("%w: all agents in tier %s exhausted: %w", ErrInfrastructureDead, tier, lastErr)
 	}
-	return CLIResult{}, "", fmt.Errorf("no agents available in tier %s (all circuit-broken)", tier)
+	return CLIResult{}, "", fmt.Errorf("%w: no agents available in tier %s (all circuit-broken)", ErrInfrastructureDead, tier)
 }
 
 // alertAgentFailure records a health event AND sends a Matrix notification.

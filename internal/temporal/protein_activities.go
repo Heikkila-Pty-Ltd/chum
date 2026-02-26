@@ -131,13 +131,13 @@ func (a *Activities) MoleculeRetroActivity(ctx context.Context, req MoleculeRetr
 
 // MoleculeRetroRequest contains inputs for a retro analysis.
 type MoleculeRetroRequest struct {
-	ProteinID    string `json:"protein_id"`
-	MorselID     string `json:"morsel_id"`
-	DoDPassed    bool   `json:"dod_passed"`
-	BuildPassed  bool   `json:"build_passed"`
-	UBSCritical  int    `json:"ubs_critical"`
-	AttemptCount int    `json:"attempt_count"`
-	TokensUsed   int    `json:"tokens_used"`
+	ProteinID    string  `json:"protein_id"`
+	MorselID     string  `json:"morsel_id"`
+	DoDPassed    bool    `json:"dod_passed"`
+	BuildPassed  bool    `json:"build_passed"`
+	UBSCritical  int     `json:"ubs_critical"`
+	AttemptCount int     `json:"attempt_count"`
+	TokensUsed   int     `json:"tokens_used"`
 	DurationS    float64 `json:"duration_s"`
 }
 

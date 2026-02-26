@@ -398,9 +398,9 @@ type mockConfigManager struct {
 	cfg *config.Config
 }
 
-func (m *mockConfigManager) Get() *config.Config  { return m.cfg }
-func (m *mockConfigManager) Set(*config.Config)    {}
-func (m *mockConfigManager) Reload(string) error   { return nil }
+func (m *mockConfigManager) Get() *config.Config { return m.cfg }
+func (m *mockConfigManager) Set(*config.Config)  {}
+func (m *mockConfigManager) Reload(string) error { return nil }
 
 func TestCLICommandWithModel_ConfigDriven_CodexHigh(t *testing.T) {
 	acts := &Activities{
@@ -548,4 +548,3 @@ func TestCLICommandWithModel_ConfigDriven_DoesNotMutateConfigArgs(t *testing.T) 
 	// Original config args should be untouched
 	require.Equal(t, []string{"exec", "--full-auto"}, cliCfg.Args)
 }
-

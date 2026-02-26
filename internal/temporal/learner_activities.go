@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -119,6 +120,9 @@ If there are no meaningful lessons, return an empty array [].`,
 	)
 
 	cliResult, _, err := a.runAgentWithFailover(ctx, req.Tier, prompt, req.WorkDir)
+	if errors.Is(err, ErrInfrastructureDead) {
+		cliResult.FailureCategory = FailureCategoryInfrastructureDead
+	}
 	if err != nil {
 		logger.Warn(OctopusPrefix+" Lesson extraction LLM failed", "error", err)
 		return nil, nil // non-fatal
@@ -150,7 +154,7 @@ If there are no meaningful lessons, return an empty array [].`,
 		if first := extractFirstCompleteJSONObject(jsonStr); first != "" {
 			wrapped := "[" + first + "]"
 			if err3 := json.Unmarshal([]byte(wrapped), &lessons); err3 == nil {
-				logger.Info(OctopusPrefix+" Recovered 1 lesson from partial JSON array")
+				logger.Info(OctopusPrefix + " Recovered 1 lesson from partial JSON array")
 				goto stamped
 			}
 		}
@@ -262,6 +266,9 @@ rules:
 		)
 
 		cliResult, _, err := a.runAgentWithFailover(ctx, req.Tier, prompt, req.WorkDir)
+		if errors.Is(err, ErrInfrastructureDead) {
+			cliResult.FailureCategory = FailureCategoryInfrastructureDead
+		}
 		if err != nil {
 			logger.Warn(OctopusPrefix+" Semgrep rule generation failed", "lesson", lesson.Summary, "error", err)
 			continue
@@ -320,7 +327,6 @@ rules:
 
 	return rules, nil
 }
-
 
 // SynthesizeCLAUDEmdActivity reads ALL accumulated lessons from the knowledge base,
 // deduplicates and groups by category, and writes a CLAUDE.md file to the project root.
@@ -581,6 +587,9 @@ func (a *Activities) CalcifyPatternActivity(ctx context.Context, req LearnerRequ
 	// Build compilation prompt and dispatch to premium model
 	compilationPrompt := buildCompilationPrompt(morselType, prompts)
 	cliResult, _, err := a.runAgentWithFailover(ctx, "premium", compilationPrompt, req.WorkDir)
+	if errors.Is(err, ErrInfrastructureDead) {
+		cliResult.FailureCategory = FailureCategoryInfrastructureDead
+	}
 	if err != nil {
 		logger.Warn(OctopusPrefix+" Calcification LLM failed", "error", err)
 		return false, nil // non-fatal
@@ -667,4 +676,3 @@ func (a *Activities) CommitAndPushLearnerOutputsActivity(ctx context.Context, wo
 	logger.Info(OctopusPrefix + " Learner outputs committed and pushed successfully")
 	return nil
 }
-

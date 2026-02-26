@@ -3,6 +3,7 @@ package temporal
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -56,6 +57,9 @@ Start wide — consider all possible areas of improvement. Then rank by impact.`
 
 	agent := ResolveTierAgent(a.Tiers, req.Tier)
 	cliResult, usedAgent, err := a.runAgentWithFailover(ctx, req.Tier, prompt, req.WorkDir)
+	if errors.Is(err, ErrInfrastructureDead) {
+		cliResult.FailureCategory = FailureCategoryInfrastructureDead
+	}
 	if usedAgent != "" {
 		agent = usedAgent
 	}

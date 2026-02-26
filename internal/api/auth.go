@@ -120,7 +120,7 @@ func extractToken(r *http.Request) string {
 	}
 
 	parts := strings.Split(auth, " ")
-	if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "bearer") {
 		return ""
 	}
 

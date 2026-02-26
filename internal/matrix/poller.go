@@ -20,7 +20,7 @@ import (
 	"github.com/antigravity-dev/chum/internal/store"
 )
 
-// temporalDial creates a Temporal client for signalling workflows.
+// temporalDial creates a Temporal client for signaling workflows.
 func temporalDial(hostPort string) (tclient.Client, error) {
 	return tclient.Dial(tclient.Options{HostPort: hostPort})
 }
@@ -520,7 +520,7 @@ func (p *Poller) handleCancelCommand(_ context.Context, dispatchID int64) (strin
 	if err := p.canceler.CancelDispatch(dispatchID); err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("Cancelled dispatch %d", dispatchID), nil
+	return fmt.Sprintf("Canceled dispatch %d", dispatchID), nil
 }
 
 func (p *Poller) handleCreateCommand(project, title, description string) (string, error) {

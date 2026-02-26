@@ -1,0 +1,20 @@
+rules:
+  - id: chum-clone-configured-cli-args-before-runtime-append
+    patterns:
+      - pattern-either:
+          - pattern: append($CFG.Args, ...)
+          - pattern: |
+              $ARGS := $CFG.Args
+              ...
+              $ARGS = append($ARGS, ...)
+          - pattern: |
+              $ARGS = $CFG.Args
+              ...
+              $ARGS = append($ARGS, ...)
+    message: |
+      Do not append runtime flags directly to config-backed CLI args.
+      This can mutate shared slices across calls. Clone first:
+      `args := append([]string{}, cliCfg.Args...)`
+      then append model/runtime flags to `args`.
+    languages: [go]
+    severity: WARNING

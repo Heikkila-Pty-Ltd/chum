@@ -1,0 +1,23 @@
+rules:
+  - id: chum-failover-parse-before-err-guard
+    patterns:
+      - pattern-inside: |
+          $CLIRESULT, _, $ERR := $A.runAgentWithFailover(...)
+          ...
+      - pattern-either:
+          - pattern: $CLIRESULT.Output
+          - pattern: $CLIRESULT.Tokens
+      - pattern-not-inside: |
+          $CLIRESULT, _, $ERR := $A.runAgentWithFailover(...)
+          if $ERR != nil {
+            ...
+          }
+          ...
+    message: |
+      Standardize failover flow: call once, branch on `err` immediately, and parse result only on success.
+      Expected template:
+      `cliResult, _, err := a.runAgentWithFailover(...)`
+      `if err != nil { return/fallback/continue }`
+      then consume `cliResult.Output` and `cliResult.Tokens`.
+    languages: [go]
+    severity: WARNING

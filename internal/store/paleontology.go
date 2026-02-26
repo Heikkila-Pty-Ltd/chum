@@ -8,12 +8,12 @@ import (
 
 // ProviderSuccessRate holds aggregated success/failure data for a provider+species pair.
 type ProviderSuccessRate struct {
-	Provider   string
-	Species    string
-	Successes  int
-	Failures   int
-	TotalCost  float64
-	AvgCostUSD float64
+	Provider    string
+	Species     string
+	Successes   int
+	Failures    int
+	TotalCost   float64
+	AvgCostUSD  float64
 	SuccessRate float64
 }
 
@@ -76,13 +76,13 @@ type RecurringDoDFailure struct {
 
 // FailureRateTrend holds DoD failure rate metrics for a time window.
 type FailureRateTrend struct {
-	Project        string
-	WindowStart    time.Time
-	WindowEnd      time.Time
+	Project         string
+	WindowStart     time.Time
+	WindowEnd       time.Time
 	TotalDispatches int
-	DoDPassed      int
-	DoDFailed      int
-	FailureRate    float64 // percentage (0-100)
+	DoDPassed       int
+	DoDFailed       int
+	FailureRate     float64 // percentage (0-100)
 }
 
 // FailureRateDelta compares failure rates between two time windows.
@@ -98,14 +98,14 @@ type FailureRateDelta struct {
 
 // SystemHealthScore represents the meteor/extinction event risk state.
 type SystemHealthScore struct {
-	Score              int       // 0-100 (0 = impact, 100 = distant)
-	DegradationStreak  int       // consecutive degrading periods
-	ImprovementStreak  int       // consecutive improving periods
-	LastTrendChange    time.Time // when trend last changed
-	MeteorStatus       string    // "Distant", "Approaching", "Incoming", "IMPACT"
-	MeteorDistance     string    // visual representation
-	AlertLevel         string    // "green", "yellow", "orange", "red"
-	Recommendation     string    // what Hex should consider
+	Score             int       // 0-100 (0 = impact, 100 = distant)
+	DegradationStreak int       // consecutive degrading periods
+	ImprovementStreak int       // consecutive improving periods
+	LastTrendChange   time.Time // when trend last changed
+	MeteorStatus      string    // "Distant", "Approaching", "Incoming", "IMPACT"
+	MeteorDistance    string    // visual representation
+	AlertLevel        string    // "green", "yellow", "orange", "red"
+	Recommendation    string    // what Hex should consider
 }
 
 // PaleontologyRunResult holds the summary of a paleontologist analysis run.
@@ -187,9 +187,7 @@ func (s *Store) GetRepeatingUBSPatterns(minCount int) ([]RepeatingUBSPattern, er
 			return nil, fmt.Errorf("scan UBS pattern: %w", err)
 		}
 		if providers != "" {
-			for _, p := range splitCSV(providers) {
-				r.Providers = append(r.Providers, p)
-			}
+			r.Providers = append(r.Providers, splitCSV(providers)...)
 		}
 		results = append(results, r)
 	}
@@ -463,14 +461,10 @@ func (s *Store) GetRecurringDoDFailures(minCount int, since time.Time) ([]Recurr
 			return nil, fmt.Errorf("scan recurring DoD failure: %w", err)
 		}
 		if projects != "" {
-			for _, p := range splitCSV(projects) {
-				r.Projects = append(r.Projects, p)
-			}
+			r.Projects = append(r.Projects, splitCSV(projects)...)
 		}
 		if morsels != "" {
-			for _, m := range splitCSV(morsels) {
-				r.MorselIDs = append(r.MorselIDs, m)
-			}
+			r.MorselIDs = append(r.MorselIDs, splitCSV(morsels)...)
 		}
 		results = append(results, r)
 	}
@@ -487,8 +481,8 @@ func (s *Store) GetFailureRateTrend(project string, windowStart, windowEnd time.
 	query := `
 		SELECT
 			COUNT(*) as total,
-			SUM(CASE WHEN passed = 1 THEN 1 ELSE 0 END) as passed,
-			SUM(CASE WHEN passed = 0 THEN 1 ELSE 0 END) as failed
+			COALESCE(SUM(CASE WHEN passed = 1 THEN 1 ELSE 0 END), 0) as passed,
+			COALESCE(SUM(CASE WHEN passed = 0 THEN 1 ELSE 0 END), 0) as failed
 		FROM dod_results
 		WHERE checked_at >= ? AND checked_at < ?`
 

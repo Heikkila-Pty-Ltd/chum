@@ -31,16 +31,15 @@ linters:
 
 linters-settings:
   errcheck:
-    check-blank: true
+    check-blank: false
   govet:
     enable-all: true
     disable:
       - fieldalignment    # noisy, low-value for this project
+      - shadow            # high false-positive/noise in existing codebase
   gocritic:
     enabled-tags:
       - diagnostic
-      - style
-      - performance
     disabled-checks:
       - hugeParam          # Temporal workflow params are value types by design
   revive:

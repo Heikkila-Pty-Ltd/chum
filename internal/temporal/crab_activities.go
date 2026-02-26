@@ -245,7 +245,7 @@ func (a *Activities) DecomposeActivity(ctx context.Context, req CrabDecompositio
 					existingMorsels.WriteString(fmt.Sprintf("- [%s|P%d] %s: %s\n", t.Type, t.Priority, t.ID, t.Title))
 					openCount++
 					if openCount >= 30 {
-						existingMorsels.WriteString(fmt.Sprintf("... and more open tasks\n"))
+						existingMorsels.WriteString("... and more open tasks\n")
 						break
 					}
 				}

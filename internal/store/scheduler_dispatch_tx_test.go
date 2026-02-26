@@ -62,7 +62,7 @@ func TestRecordSchedulerDispatch_RollbackAndRetrySafety(t *testing.T) {
 	injectedErr := errors.New("injected db failure")
 
 	for _, tc := range testCases {
-		tc := tc
+
 		t.Run(tc.name, func(t *testing.T) {
 			s := inMemoryStore(t)
 			s.SetDispatchPersistHookForTesting(func(point string) error {

@@ -104,29 +104,29 @@ func performBackup(srcPath, dstPath string, compress bool) error {
 
 	srcFile, err := os.Open(srcPath)
 	if err != nil {
-		return fmt.Errorf("open source: %v", err)
+		return fmt.Errorf("open source: %w", err)
 	}
 	defer srcFile.Close()
 
 	dstFile, err := os.Create(dstPath)
 	if err != nil {
-		return fmt.Errorf("create destination: %v", err)
+		return fmt.Errorf("create destination: %w", err)
 	}
 	defer dstFile.Close()
 
 	gz, err := gzip.NewWriterLevel(dstFile, gzip.BestCompression)
 	if err != nil {
-		return fmt.Errorf("create gzip writer: %v", err)
+		return fmt.Errorf("create gzip writer: %w", err)
 	}
 	gz.Name = filepath.Base(srcPath)
 	gz.ModTime = time.Now()
 
 	if _, err := io.Copy(gz, srcFile); err != nil {
 		gz.Close()
-		return fmt.Errorf("gzip copy: %v", err)
+		return fmt.Errorf("gzip copy: %w", err)
 	}
 	if err := gz.Close(); err != nil {
-		return fmt.Errorf("gzip close: %v", err)
+		return fmt.Errorf("gzip close: %w", err)
 	}
 
 	return dstFile.Sync()
@@ -139,7 +139,7 @@ func verifyBackup(backupPath string, compress bool) error {
 	if compress {
 		tmp, err := decompressToTemp(backupPath)
 		if err != nil {
-			return fmt.Errorf("decompress for verification: %v", err)
+			return fmt.Errorf("decompress for verification: %w", err)
 		}
 		defer os.Remove(tmp)
 		verifyPath = tmp
@@ -151,7 +151,7 @@ func verifyBackup(backupPath string, compress bool) error {
 
 	counts, err := dbutil.CountTableRows(verifyPath, dbutil.KnownTables)
 	if err != nil {
-		return fmt.Errorf("count table rows: %v", err)
+		return fmt.Errorf("count table rows: %w", err)
 	}
 	for table, count := range counts {
 		if count >= 0 {
@@ -169,29 +169,29 @@ func verifyBackup(backupPath string, compress bool) error {
 func decompressToTemp(gzPath string) (string, error) {
 	f, err := os.Open(gzPath)
 	if err != nil {
-		return "", fmt.Errorf("open gzip file: %v", err)
+		return "", fmt.Errorf("open gzip file: %w", err)
 	}
 	defer f.Close()
 
 	gz, err := gzip.NewReader(f)
 	if err != nil {
-		return "", fmt.Errorf("create gzip reader: %v", err)
+		return "", fmt.Errorf("create gzip reader: %w", err)
 	}
 	defer gz.Close()
 
 	tmp, err := os.CreateTemp("", "chum-backup-verify-*.db")
 	if err != nil {
-		return "", fmt.Errorf("create temp file: %v", err)
+		return "", fmt.Errorf("create temp file: %w", err)
 	}
 
 	if _, err := io.Copy(tmp, gz); err != nil {
 		tmp.Close()
 		os.Remove(tmp.Name())
-		return "", fmt.Errorf("decompress: %v", err)
+		return "", fmt.Errorf("decompress: %w", err)
 	}
 	if err := tmp.Close(); err != nil {
 		os.Remove(tmp.Name())
-		return "", fmt.Errorf("close temp file: %v", err)
+		return "", fmt.Errorf("close temp file: %w", err)
 	}
 
 	return tmp.Name(), nil

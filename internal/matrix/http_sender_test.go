@@ -1,7 +1,6 @@
 package matrix
 
 import (
-	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -45,7 +44,7 @@ func TestHTTPSenderSendMessageSuccess(t *testing.T) {
 	sender := NewHTTPSender(client, "spritzbot")
 	sender.configPath = cfgPath
 
-	if err := sender.SendMessage(context.Background(), "!room:matrix.org", "hello world"); err != nil {
+	if err := sender.SendMessage(t.Context(), "!room:matrix.org", "hello world"); err != nil {
 		t.Fatalf("SendMessage returned error: %v", err)
 	}
 
@@ -88,7 +87,7 @@ func TestHTTPSenderSendMessageUsesDefaultConfiguredAccount(t *testing.T) {
 	sender := NewHTTPSender(client, "")
 	sender.configPath = cfgPath
 
-	if err := sender.SendMessage(context.Background(), "!room:matrix.org", "hello"); err != nil {
+	if err := sender.SendMessage(t.Context(), "!room:matrix.org", "hello"); err != nil {
 		t.Fatalf("SendMessage returned error: %v", err)
 	}
 	if gotAuth != "Bearer token-spritz" {
@@ -129,7 +128,7 @@ func TestHTTPSenderSendMessageSupportsObjectAccountsFormat(t *testing.T) {
 	sender := NewHTTPSender(client, "spritzbot")
 	sender.configPath = cfgPath
 
-	if err := sender.SendMessage(context.Background(), "!room:matrix.org", "hello"); err != nil {
+	if err := sender.SendMessage(t.Context(), "!room:matrix.org", "hello"); err != nil {
 		t.Fatalf("SendMessage returned error: %v", err)
 	}
 	if gotAuth != "Bearer token-spritz" {
@@ -140,10 +139,10 @@ func TestHTTPSenderSendMessageSupportsObjectAccountsFormat(t *testing.T) {
 func TestHTTPSenderSendMessageValidatesInputs(t *testing.T) {
 	sender := NewHTTPSender(http.DefaultClient, "spritzbot")
 
-	if err := sender.SendMessage(context.Background(), "", "hello"); err == nil {
+	if err := sender.SendMessage(t.Context(), "", "hello"); err == nil {
 		t.Fatal("expected error for empty room")
 	}
-	if err := sender.SendMessage(context.Background(), "!room:matrix.org", ""); err == nil {
+	if err := sender.SendMessage(t.Context(), "!room:matrix.org", ""); err == nil {
 		t.Fatal("expected error for empty message")
 	}
 }
@@ -156,7 +155,7 @@ func TestHTTPSenderSendMessageErrorsWhenAccountMissing(t *testing.T) {
 	sender := NewHTTPSender(http.DefaultClient, "spritzbot")
 	sender.configPath = cfgPath
 
-	err := sender.SendMessage(context.Background(), "!room:matrix.org", "hello")
+	err := sender.SendMessage(t.Context(), "!room:matrix.org", "hello")
 	if err == nil {
 		t.Fatal("expected account resolution error")
 	}
@@ -184,7 +183,7 @@ func TestHTTPSenderSendMessageHandlesHTTPFailure(t *testing.T) {
 	sender := NewHTTPSender(client, "spritzbot")
 	sender.configPath = cfgPath
 
-	err := sender.SendMessage(context.Background(), "!room:matrix.org", "hello")
+	err := sender.SendMessage(t.Context(), "!room:matrix.org", "hello")
 	if err == nil {
 		t.Fatal("expected HTTP status error")
 	}

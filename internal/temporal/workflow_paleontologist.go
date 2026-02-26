@@ -10,10 +10,10 @@ import (
 
 // PaleontologistRequest configures a paleontologist analysis run.
 type PaleontologistRequest struct {
-	Project     string
-	WorkDir     string
-	LookbackH   int    // how far back to look (default: 6 hours)
-	Tier        string // LLM tier for protein synthesis (default: "premium")
+	Project   string
+	WorkDir   string
+	LookbackH int    // how far back to look (default: 6 hours)
+	Tier      string // LLM tier for protein synthesis (default: "premium")
 }
 
 // PaleontologistPrefix is the log prefix for paleontologist operations.
@@ -85,18 +85,18 @@ func PaleontologistWorkflow(ctx workflow.Context, req PaleontologistRequest) err
 	}
 
 	// Step 3.5: Protein Synthesis — actually create proteins for nominated candidates.
-	// The scan above finds candidates; this step synthesises deterministic molecule
+	// The scan above finds candidates; this step synthesizes deterministic molecule
 	// sequences for species that don't have a protein yet. This is the bridge from
 	// "immune system" (antibodies prevent errors) to "capability extension"
 	// (proteins codify what works into reusable programs).
 	if proteins > 0 {
 		llmCtx := workflow.WithActivityOptions(ctx, llmOpts)
-		var synthesised int
-		if err := workflow.ExecuteActivity(llmCtx, a.SynthesizeProteinCandidatesActivity, req).Get(ctx, &synthesised); err != nil {
+		var synthesized int
+		if err := workflow.ExecuteActivity(llmCtx, a.SynthesizeProteinCandidatesActivity, req).Get(ctx, &synthesized); err != nil {
 			logger.Warn(PaleontologistPrefix+" Protein synthesis failed (non-fatal)", "error", err)
-		} else if synthesised > 0 {
-			totalSynthesised += synthesised
-			logger.Info(PaleontologistPrefix+" 🧬 Proteins synthesised!", "Count", synthesised)
+		} else if synthesized > 0 {
+			totalSynthesised += synthesized
+			logger.Info(PaleontologistPrefix+" 🧬 Proteins synthesized!", "Count", synthesized)
 		}
 	}
 
@@ -133,11 +133,11 @@ func PaleontologistWorkflow(ctx workflow.Context, req PaleontologistRequest) err
 	if err := workflow.ExecuteActivity(sqlCtx, a.AnalyzeFailureRateTrendsActivity, req).Get(ctx, nil); err != nil {
 		logger.Warn(PaleontologistPrefix+" Failure rate trend analysis failed (non-fatal)", "error", err)
 	} else {
-		logger.Info(PaleontologistPrefix+" Failure rate trend analysis complete")
+		logger.Info(PaleontologistPrefix + " Failure rate trend analysis complete")
 	}
 
 	// Record the run
-	summary := fmt.Sprintf("Antibodies:%d Genes:%d Proteins:%d Synthesised:%d Audited:%d Alerts:%d RecurringFailures:%d",
+	summary := fmt.Sprintf("Antibodies:%d Genes:%d Proteins:%d Synthesized:%d Audited:%d Alerts:%d RecurringFailures:%d",
 		totalAntibodies, totalGenes, totalProteins, totalSynthesised, totalAudited, totalAlerts, recurringFailures)
 
 	_ = workflow.ExecuteActivity(sqlCtx, a.RecordPaleontologyRunActivity,

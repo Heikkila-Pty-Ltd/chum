@@ -8,6 +8,7 @@ import (
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/worker"
 
+	astpkg "github.com/antigravity-dev/chum/internal/ast"
 	"github.com/antigravity-dev/chum/internal/config"
 	"github.com/antigravity-dev/chum/internal/graph"
 	"github.com/antigravity-dev/chum/internal/matrix"
@@ -62,11 +63,16 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 		logger.Warn("CLI preflight warnings", "count", len(warnings))
 	}
 
+	// Initialize tree-sitter parser for codebase context injection.
+	astParser := astpkg.NewParser(logger)
+	defer astParser.Close()
+
 	acts := &Activities{
 		Store:       st,
 		Tiers:       tiers,
 		CfgMgr:      cfgMgr,
 		DAG:         dag,
+		AST:         astParser,
 		Sender:      sender,
 		DefaultRoom: cfg.Reporter.DefaultRoom,
 		AdminRoom:   cfg.Reporter.AdminRoom,
@@ -142,6 +148,8 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 	w.RegisterActivity(acts.ScanProteinCandidatesActivity)
 	w.RegisterActivity(acts.AuditSpeciesHealthActivity)
 	w.RegisterActivity(acts.AnalyzeCostTrendsActivity)
+	w.RegisterActivity(acts.DiscoverRecurringDoDFailuresActivity)
+	w.RegisterActivity(acts.AnalyzeFailureRateTrendsActivity)
 	w.RegisterActivity(acts.RecordPaleontologyRunActivity)
 
 	// --- UBS (Ultimate Bug Scanner) ---

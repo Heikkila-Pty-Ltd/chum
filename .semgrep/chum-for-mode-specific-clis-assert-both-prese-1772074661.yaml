@@ -1,0 +1,70 @@
+rules:
+  - id: chum-codex-json-flag-paired-mode-tests
+    patterns:
+      - pattern-either:
+          - patterns:
+              - pattern: |
+                  func $TEST(...) {
+                    ...
+                    $CODING := cliCommand("codex", ...)
+                    ...
+                    $CODING_HAS_JSON := false
+                    for _, $ARG := range $CODING.Args {
+                      if $ARG == "--json" {
+                        $CODING_HAS_JSON = true
+                      }
+                    }
+                    require.True($T, $CODING_HAS_JSON, ...)
+                    ...
+                  }
+              - pattern-not: |
+                  func $TEST(...) {
+                    ...
+                    $REVIEW := cliReviewCommand("codex", ...)
+                    ...
+                    $REVIEW_HAS_JSON := false
+                    for _, $ARG := range $REVIEW.Args {
+                      if $ARG == "--json" {
+                        $REVIEW_HAS_JSON = true
+                      }
+                    }
+                    require.False($T, $REVIEW_HAS_JSON, ...)
+                    ...
+                  }
+          - patterns:
+              - pattern: |
+                  func $TEST(...) {
+                    ...
+                    $REVIEW := cliReviewCommand("codex", ...)
+                    ...
+                    $REVIEW_HAS_JSON := false
+                    for _, $ARG := range $REVIEW.Args {
+                      if $ARG == "--json" {
+                        $REVIEW_HAS_JSON = true
+                      }
+                    }
+                    require.False($T, $REVIEW_HAS_JSON, ...)
+                    ...
+                  }
+              - pattern-not: |
+                  func $TEST(...) {
+                    ...
+                    $CODING := cliCommand("codex", ...)
+                    ...
+                    $CODING_HAS_JSON := false
+                    for _, $ARG := range $CODING.Args {
+                      if $ARG == "--json" {
+                        $CODING_HAS_JSON = true
+                      }
+                    }
+                    require.True($T, $CODING_HAS_JSON, ...)
+                    ...
+                  }
+    message: |
+      Codex mode tests must assert both directions of the --json contract: coding mode includes --json and review mode excludes it.
+      Add explicit paired assertions in the same test to prevent flag drift during command-builder refactors.
+    languages: [go]
+    severity: WARNING
+    paths:
+      include:
+        - internal/temporal/agent_cli_test.go

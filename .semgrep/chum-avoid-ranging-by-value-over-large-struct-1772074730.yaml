@@ -1,0 +1,29 @@
+rules:
+  - id: chum-go-range-by-value-struct-copy
+    paths:
+      include:
+        - internal/temporal/stingray_helpers.go
+    patterns:
+      - pattern-either:
+          - pattern: |
+              for _, $ELEM := range $COLL {
+                ...
+              }
+          - pattern: |
+              for $I, $ELEM := range $COLL {
+                ...
+              }
+      - pattern-not: |
+          for _, _ := range $COLL {
+            ...
+          }
+      - pattern-not: |
+          for $I, _ := range $COLL {
+            ...
+          }
+    message: |
+      Avoid ranging by value over struct slices in helper loops: each iteration copies the element.
+      In hot/repeated paths this can cause copy churn (e.g., ~128B per iteration) and trigger gocritic `rangeValCopy`.
+      Use index iteration (`for i := range $COLL`) and access `$COLL[i]` or `&$COLL[i]` instead.
+    languages: [go]
+    severity: WARNING

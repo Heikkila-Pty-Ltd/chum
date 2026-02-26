@@ -271,7 +271,7 @@ func readRoomMessages(ctx context.Context, reader *HTTPSender, roomID, since str
 		endpoint += "&from=" + neturl.QueryEscape(since)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, http.NoBody)
 	if err != nil {
 		return nil, "", err
 	}

@@ -1,0 +1,12 @@
+rules:
+  - id: chum-go-test-use-t-context-instead-of-background
+    patterns:
+      - pattern: context.Background()
+    message: |
+      Use `t.Context()` in tests instead of `context.Background()`.
+      Pass `t.Context()` to activity/API calls so cancellation and deadlines follow the test lifecycle.
+    languages: [go]
+    severity: WARNING
+    paths:
+      include:
+        - "**/*_test.go"

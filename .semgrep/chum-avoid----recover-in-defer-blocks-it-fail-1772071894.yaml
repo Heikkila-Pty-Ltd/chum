@@ -1,0 +1,21 @@
+rules:
+  - id: chum-go-blank-recover-in-defer
+    patterns:
+      - pattern: _ = recover()
+      - pattern-either:
+          - pattern-inside: |
+              defer func() {
+                ...
+              }()
+          - pattern-inside: |
+              defer func(...) {
+                ...
+              }(...)
+    message: |
+      Avoid blank-assigning recover() in defer blocks (`_ = recover()`).
+      This hides panic-handling intent and is lint-hostile (errcheck).
+      Replace with explicit handling, e.g.:
+      `if r := recover(); r != nil { /* log/convert to returned error */ }`
+      so panic paths are observable and testable.
+    languages: [go]
+    severity: WARNING

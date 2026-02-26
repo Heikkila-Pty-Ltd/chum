@@ -17,6 +17,7 @@ import (
 	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/temporal"
 
+	astpkg "github.com/antigravity-dev/chum/internal/ast"
 	"github.com/antigravity-dev/chum/internal/config"
 	"github.com/antigravity-dev/chum/internal/git"
 	"github.com/antigravity-dev/chum/internal/graph"
@@ -30,10 +31,11 @@ type Activities struct {
 	Tiers       config.Tiers
 	CfgMgr      config.ConfigManager // hot-reloadable config for CLI dispatch
 	DAG         *graph.DAG
-	Sender      matrix.Sender // Matrix notification sender (nil = disabled)
-	DefaultRoom string        // Matrix room ID for standard notifications
-	AdminRoom   string        // Matrix room ID for critical escalations (DM)
-	TurtleRoom  string        // Matrix room for turtle deliberation (3-agent conversation)
+	AST         *astpkg.Parser       // tree-sitter Go parser for codebase context injection
+	Sender      matrix.Sender        // Matrix notification sender (nil = disabled)
+	DefaultRoom string               // Matrix room ID for standard notifications
+	AdminRoom   string               // Matrix room ID for critical escalations (DM)
+	TurtleRoom  string               // Matrix room for turtle deliberation (3-agent conversation)
 }
 
 // WorktreeDir returns the worktree directory path for a task/explosion pair.
@@ -83,10 +85,18 @@ func (a *Activities) StructuredPlanActivity(ctx context.Context, req TaskRequest
 		}
 	}
 
+	// Build AST codebase context — gives the planner structural awareness.
+	codebaseContext := a.buildCodebaseContext(ctx, req.WorkDir)
+	var codebaseSection string
+	if codebaseContext != "" {
+		codebaseSection = "\nCODEBASE STRUCTURE:\n" + codebaseContext + "\n"
+		logger.Info(SharkPrefix+" Codebase context injected into planning prompt", "Bytes", len(codebaseContext))
+	}
+
 	prompt := fmt.Sprintf(`You are a senior engineering planner. Analyze this task and produce a structured execution plan.
 
 TASK: %s
-%s%s%s
+%s%s%s%s
 OUTPUT FORMAT: You MUST respond with ONLY a JSON object (no markdown, no commentary) with this exact structure:
 {
   "summary": "one-line summary of the task",
@@ -97,7 +107,7 @@ OUTPUT FORMAT: You MUST respond with ONLY a JSON object (no markdown, no comment
   "risk_assessment": "what could go wrong"
 }
 
-Be thorough. Planning space is cheap — implementation is expensive.`, req.Prompt, genomeContext, semgrepContext, failureContext)
+Be thorough. Planning space is cheap — implementation is expensive.`, req.Prompt, genomeContext, semgrepContext, failureContext, codebaseSection)
 
 	cliResult, err := a.runAgent(ctx, req.Agent, prompt, req.WorkDir)
 	if err != nil {
@@ -168,6 +178,15 @@ func (a *Activities) ExecuteActivity(ctx context.Context, plan StructuredPlan, r
 	sb.WriteString("\nACCEPTANCE CRITERIA:\n")
 	for _, c := range plan.AcceptanceCriteria {
 		sb.WriteString(fmt.Sprintf("- %s\n", c))
+	}
+
+	// Inject targeted AST context — full source for files we're about to modify,
+	// signatures-only for the rest. This gives the executing agent deep understanding
+	// of the code it needs to change without overwhelming with the whole codebase.
+	if targetedCtx := a.buildTargetedCodebaseContext(ctx, req.WorkDir, plan.FilesToModify); targetedCtx != "" {
+		sb.WriteString("\nCODEBASE STRUCTURE:\n")
+		sb.WriteString(targetedCtx)
+		sb.WriteByte('\n')
 	}
 
 	if len(plan.PreviousErrors) > 0 {
@@ -659,6 +678,81 @@ func (a *Activities) RecordOrganismLogActivity(ctx context.Context, log Organism
 
 // --- helpers ---
 
+// buildCodebaseContext produces an AST-based codebase overview for the planner.
+// Falls back to a simple file listing if tree-sitter is unavailable or fails.
+// Output is capped at 8000 characters to keep prompt size reasonable.
+func (a *Activities) buildCodebaseContext(ctx context.Context, workDir string) string {
+	const maxContextBytes = 8000
+	if a.AST != nil && workDir != "" {
+		files, err := a.AST.ParseDir(ctx, workDir)
+		if err == nil && len(files) > 0 {
+			summary := astpkg.Summarize(files)
+			if len(summary) > maxContextBytes {
+				summary = summary[:maxContextBytes] + "\n... (truncated)"
+			}
+			return summary
+		}
+	}
+	return fallbackFileList(ctx, workDir)
+}
+
+// buildTargetedCodebaseContext produces context with full source for files the
+// agent is about to modify and signatures-only for surrounding files.
+// Falls back to buildCodebaseContext if target files can't be resolved.
+func (a *Activities) buildTargetedCodebaseContext(ctx context.Context, workDir string, targetPaths []string) string {
+	const maxContextBytes = 12000 // can be larger since it's targeted
+	if a.AST == nil || workDir == "" || len(targetPaths) == 0 {
+		return a.buildCodebaseContext(ctx, workDir)
+	}
+	allFiles, err := a.AST.ParseDir(ctx, workDir)
+	if err != nil || len(allFiles) == 0 {
+		return a.buildCodebaseContext(ctx, workDir)
+	}
+	targetFiles := a.AST.ParseFiles(ctx, workDir, targetPaths)
+	if len(targetFiles) == 0 {
+		return astpkg.Summarize(allFiles)
+	}
+	summary := astpkg.SummarizeTargeted(allFiles, targetFiles)
+	if len(summary) > maxContextBytes {
+		summary = summary[:maxContextBytes] + "\n... (truncated)"
+	}
+	return summary
+}
+
+// fallbackFileList is the original file-listing approach used when AST parsing
+// is unavailable or fails.
+func fallbackFileList(ctx context.Context, workDir string) string {
+	if workDir == "" {
+		return ""
+	}
+	var sections []string
+
+	cmd := exec.CommandContext(ctx, "go", "list", "./...")
+	cmd.Dir = workDir
+	if out, err := cmd.Output(); err == nil && len(out) > 0 {
+		sections = append(sections, "Go packages:\n"+string(out))
+	}
+
+	cmd = exec.CommandContext(ctx, "find", ".", "-type", "f",
+		"-not", "-path", "./.git/*",
+		"-not", "-path", "./vendor/*",
+		"-not", "-path", "./node_modules/*",
+		"-not", "-name", "*.sum",
+	)
+	cmd.Dir = workDir
+	if out, err := cmd.Output(); err == nil && len(out) > 0 {
+		tree := string(out)
+		if len(tree) > 4000 {
+			tree = tree[:4000] + "\n... (truncated)"
+		}
+		sections = append(sections, "Files:\n"+tree)
+	}
+
+	if len(sections) == 0 {
+		return ""
+	}
+	return strings.Join(sections, "\n")
+}
 // extractJSON finds the first JSON object in text (handles markdown code fences).
 // Applies sanitizeJSON to fix common LLM output issues (invalid escapes, trailing commas).
 func extractJSON(text string) string {
@@ -1539,13 +1633,16 @@ func (a *Activities) AuditSpeciesHealthActivity(ctx context.Context, req Paleont
 				"Species", h.Species, "Generation", h.Generation,
 				"Issue", h.Issue, "Antibodies", h.AntibodyCount, "LastEvolved", h.LastEvolved)
 
-			if a.Sender != nil {
+			// Only send Matrix notification once per species per 24h to avoid spam.
+			eventType := "stale_hibernator_alerted"
+			if a.Sender != nil && !a.Store.HasRecentHealthEvent(eventType, h.Species, 24*time.Hour) {
 				targetRoom := a.AdminRoom
 				if targetRoom == "" {
 					targetRoom = a.DefaultRoom
 				}
 				msg := fmt.Sprintf("⚠️ **Stale Hibernator Detected**\nSpecies `%s` has been hibernating for >24h. It may need higher-level LLM intervention or manual review.", h.Species)
 				_ = a.Sender.SendMessage(ctx, targetRoom, msg)
+				_ = a.Store.RecordHealthEvent(eventType, h.Species) //nolint:errcheck // best-effort
 			}
 		}
 	}
@@ -1560,13 +1657,16 @@ func (a *Activities) AuditSpeciesHealthActivity(ctx context.Context, req Paleont
 			logger.Info(PaleontologistPrefix+" Stuck species detected",
 				"Species", s.Species, "Antibodies", s.AntibodyCount)
 
-			if a.Sender != nil {
+			// Only send Matrix notification once per species per 24h to avoid spam.
+			eventType := "stuck_species_alerted"
+			if a.Sender != nil && !a.Store.HasRecentHealthEvent(eventType, s.Species, 24*time.Hour) {
 				targetRoom := a.AdminRoom
 				if targetRoom == "" {
 					targetRoom = a.DefaultRoom
 				}
 				msg := fmt.Sprintf("⚠️ **Stuck Species Detected**\nSpecies `%s` has %d antibodies but 0 fossils. The agent keeps failing but cannot consolidate the learnings. Please review the failures.", s.Species, s.AntibodyCount)
 				_ = a.Sender.SendMessage(ctx, targetRoom, msg)
+				_ = a.Store.RecordHealthEvent(eventType, s.Species) //nolint:errcheck // best-effort
 			}
 		}
 	}

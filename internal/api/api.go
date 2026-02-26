@@ -65,7 +65,7 @@ func (s *Server) Close() error {
 	return nil
 }
 
-// Start begins listening on the configured bind address. Blocks until context is cancelled.
+// Start begins listening on the configured bind address. Blocks until context is canceled.
 func (s *Server) Start(ctx context.Context) error {
 	mux := http.NewServeMux()
 

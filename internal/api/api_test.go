@@ -273,7 +273,7 @@ func TestServerStartStop(t *testing.T) {
 	srv := setupTestServer(t)
 	srv.cfg.API.Bind = "127.0.0.1:0" // random port
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 
 	errCh := make(chan error, 1)
 	go func() {

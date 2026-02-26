@@ -11,7 +11,7 @@ func TestOpenClawSenderSendMessageIncludesAccount(t *testing.T) {
 	runner := &fakeRunner{out: []byte(`{"ok":true}`)}
 	sender := NewOpenClawSender(runner, "spritzbot")
 
-	if err := sender.SendMessage(context.Background(), "!room:matrix.org", "hello"); err != nil {
+	if err := sender.SendMessage(t.Context(), "!room:matrix.org", "hello"); err != nil {
 		t.Fatalf("SendMessage returned error: %v", err)
 	}
 
@@ -34,7 +34,7 @@ func TestOpenClawSenderSendMessageOmitsEmptyAccount(t *testing.T) {
 	runner := &fakeRunner{out: []byte(`{"ok":true}`)}
 	sender := NewOpenClawSender(runner, "")
 
-	if err := sender.SendMessage(context.Background(), "!room:matrix.org", "hello"); err != nil {
+	if err := sender.SendMessage(t.Context(), "!room:matrix.org", "hello"); err != nil {
 		t.Fatalf("SendMessage returned error: %v", err)
 	}
 
@@ -47,10 +47,10 @@ func TestOpenClawSenderSendMessageOmitsEmptyAccount(t *testing.T) {
 func TestOpenClawSenderSendMessageValidatesInputs(t *testing.T) {
 	sender := NewOpenClawSender(&fakeRunner{}, "spritzbot")
 
-	if err := sender.SendMessage(context.Background(), "", "hello"); err == nil {
+	if err := sender.SendMessage(t.Context(), "", "hello"); err == nil {
 		t.Fatal("expected error for empty room id")
 	}
-	if err := sender.SendMessage(context.Background(), "!room:matrix.org", ""); err == nil {
+	if err := sender.SendMessage(t.Context(), "!room:matrix.org", ""); err == nil {
 		t.Fatal("expected error for empty message")
 	}
 }
@@ -62,7 +62,7 @@ func TestOpenClawSenderSendMessageHandlesRunnerError(t *testing.T) {
 	}
 	sender := NewOpenClawSender(runner, "spritzbot")
 
-	err := sender.SendMessage(context.Background(), "!room:matrix.org", "hello")
+	err := sender.SendMessage(t.Context(), "!room:matrix.org", "hello")
 	if err == nil {
 		t.Fatal("expected runner error")
 	}
@@ -90,7 +90,7 @@ func TestOpenClawSenderSendMessageUsesDirectSenderWhenAvailable(t *testing.T) {
 		direct:  direct,
 	}
 
-	if err := sender.SendMessage(context.Background(), "!room:matrix.org", "hello"); err != nil {
+	if err := sender.SendMessage(t.Context(), "!room:matrix.org", "hello"); err != nil {
 		t.Fatalf("SendMessage returned error: %v", err)
 	}
 	if direct.calls != 1 {
@@ -110,7 +110,7 @@ func TestOpenClawSenderSendMessageFallsBackToRunnerAfterDirectFailure(t *testing
 		direct:  direct,
 	}
 
-	if err := sender.SendMessage(context.Background(), "!room:matrix.org", "hello"); err != nil {
+	if err := sender.SendMessage(t.Context(), "!room:matrix.org", "hello"); err != nil {
 		t.Fatalf("SendMessage returned error: %v", err)
 	}
 	if direct.calls != 1 {
@@ -133,7 +133,7 @@ func TestOpenClawSenderSendMessageReturnsCombinedErrorWhenDirectAndRunnerFail(t 
 		direct:  direct,
 	}
 
-	err := sender.SendMessage(context.Background(), "!room:matrix.org", "hello")
+	err := sender.SendMessage(t.Context(), "!room:matrix.org", "hello")
 	if err == nil {
 		t.Fatal("expected error")
 	}

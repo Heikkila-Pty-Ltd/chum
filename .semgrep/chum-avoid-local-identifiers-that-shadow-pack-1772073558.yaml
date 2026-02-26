@@ -1,0 +1,42 @@
+rules:
+  - id: chum-go-no-shadow-early-kill-policy-seam
+    paths:
+      include:
+        - internal/temporal/agent_cli.go
+    patterns:
+      - pattern-either:
+          - pattern: |
+              func $FUNC(...) {
+                ...
+                earlyKillPolicy := $VALUE
+                ...
+              }
+          - pattern: |
+              func $FUNC(...) {
+                ...
+                var earlyKillPolicy = $VALUE
+                ...
+              }
+          - pattern: |
+              func $FUNC(...) {
+                ...
+                var earlyKillPolicy $TYPE
+                ...
+              }
+          - pattern: |
+              func $FUNC(...) {
+                ...
+                $X, earlyKillPolicy := $VALUE
+                ...
+              }
+          - pattern: |
+              func $FUNC(...) {
+                ...
+                earlyKillPolicy, $X := $VALUE
+                ...
+              }
+    message: |
+      Avoid declaring a local `earlyKillPolicy`; it shadows the package-level test seam and can fail vet/lint checks.
+      Keep the seam distinct (for example `earlyKillPolicyFn`) and use a different local name (for example `policy`) for resolved values.
+    languages: [go]
+    severity: WARNING

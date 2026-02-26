@@ -1,0 +1,33 @@
+rules:
+  - id: chum-temporal-dod-lint-verbatim-gate
+    paths:
+      include:
+        - internal/temporal/agent_cli.go
+        - internal/temporal/agent_cli_test.go
+    patterns:
+      - pattern-either:
+          - patterns:
+              - pattern: exec.Command("golangci-lint", "run", ...)
+              - pattern-not: exec.Command("golangci-lint", "run", "--timeout=5m", "--allow-parallel-runners", "--new-from-rev=HEAD~1")
+          - patterns:
+              - pattern: exec.CommandContext(..., "golangci-lint", "run", ...)
+              - pattern-not: exec.CommandContext(..., "golangci-lint", "run", "--timeout=5m", "--allow-parallel-runners", "--new-from-rev=HEAD~1")
+          - patterns:
+              - pattern: exec.Command("sh", "-c", $CMD)
+              - metavariable-regex:
+                  metavariable: $CMD
+                  regex: '(^|.*\s)golangci-lint\s+run(\s.*|$)'
+              - pattern-not: exec.Command("sh", "-c", "GOFLAGS=-buildvcs=false golangci-lint run --timeout=5m --allow-parallel-runners --new-from-rev=HEAD~1")
+          - patterns:
+              - pattern: exec.CommandContext(..., "sh", "-c", $CMD)
+              - metavariable-regex:
+                  metavariable: $CMD
+                  regex: '(^|.*\s)golangci-lint\s+run(\s.*|$)'
+              - pattern-not: exec.CommandContext(..., "sh", "-c", "GOFLAGS=-buildvcs=false golangci-lint run --timeout=5m --allow-parallel-runners --new-from-rev=HEAD~1")
+    message: |
+      Completion must be gated with the exact DoD sequence for this area:
+      1) go test ./internal/temporal/...
+      2) GOFLAGS=-buildvcs=false golangci-lint run --timeout=5m --allow-parallel-runners --new-from-rev=HEAD~1
+      Replace looser/local golangci-lint variants with the exact command before handoff.
+    languages: [go]
+    severity: WARNING

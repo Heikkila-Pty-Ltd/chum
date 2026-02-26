@@ -16,6 +16,18 @@ import (
 	"github.com/antigravity-dev/chum/internal/config"
 )
 
+// filterEnv returns a copy of env with the named variable removed.
+func filterEnv(env []string, key string) []string {
+	prefix := key + "="
+	out := make([]string, 0, len(env))
+	for _, e := range env {
+		if !strings.HasPrefix(e, prefix) {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
 // ErrModelExhausted is returned when a model hits its usage/rate limit.
 var ErrModelExhausted = errors.New("model exhausted (rate/usage limit)")
 
@@ -348,6 +360,11 @@ func (a *Activities) runCLI(ctx context.Context, agent, prompt string, cmd *exec
 		promptFile.Close()
 		return CLIResult{}, fmt.Errorf("seek prompt temp file: %w", err)
 	}
+
+	// Strip CLAUDECODE env var so child CLI processes (especially `claude`)
+	// don't reject themselves as nested sessions. The chum worker may have
+	// inherited this variable from the shell that launched it.
+	cmd.Env = filterEnv(os.Environ(), "CLAUDECODE")
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

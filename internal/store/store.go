@@ -557,7 +557,7 @@ func Open(dbPath string) (*Store, error) {
 		return nil, fmt.Errorf("store: open %s: %w", dbPath, err)
 	}
 
-	// Single-writer enforcement: serialise all writes through one connection.
+	// Single-writer enforcement: serialize all writes through one connection.
 	// SQLite WAL supports concurrent reads but only one writer at a time.
 	// Without this, Cambrian Explosion child workflows race for the write lock
 	// and get SQLITE_BUSY errors even with busy_timeout.

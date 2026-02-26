@@ -1,0 +1,17 @@
+rules:
+  - id: chum-go-strip-session-sentinel-env-before-spawn
+    patterns:
+      - pattern-either:
+          - pattern: $CMD.Env = os.Environ()
+          - pattern: $CMD.Env = append(os.Environ(), ...)
+          - pattern: $CMD.Env = append($ENV, os.Environ()...)
+          - pattern: |
+              &exec.Cmd{..., Env: os.Environ(), ...}
+          - pattern: |
+              &exec.Cmd{..., Env: append(os.Environ(), ...), ...}
+    message: |
+      Child CLI processes should not inherit parent session-marker environment variables (for example, CLAUDECODE).
+      Passing os.Environ() directly into Cmd.Env can leak sentinel vars and cause nested/self-session failures.
+      Filter known marker variables before assigning child process environments.
+    languages: [go]
+    severity: WARNING

@@ -1,0 +1,18 @@
+rules:
+  - id: chum-separate-failure-category-from-human-reason
+    patterns:
+      - pattern-inside: |
+          func classifyFailure(...) (category, summary string) {
+            ...
+          }
+      - pattern-either:
+          - pattern: return extractInfraReason(...), $SUMMARY
+          - pattern: return extractFirstLine(...), $SUMMARY
+    message: |
+      Keep classifier outputs split by purpose: return a stable machine category in the first value and human-readable diagnostics in the second.
+      Do not return reason text helpers as the category; use a literal category (for example, "infrastructure_failure") first.
+    languages: [go]
+    severity: WARNING
+    paths:
+      include:
+        - internal/temporal/failure_classifier.go

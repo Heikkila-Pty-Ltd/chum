@@ -1089,10 +1089,10 @@ func buildPrompt(t graph.Task) string {
 	return strings.TrimSpace(sb.String())
 }
 
-// resolveProvider picks the first fast-tier provider from config.
+// resolveProvider picks the next fast-tier provider from config using round-robin.
 func resolveProvider(cfg *config.Config) string {
 	if len(cfg.Tiers.Fast) > 0 {
-		return cfg.Tiers.Fast[0]
+		return ResolveTierAgent(cfg.Tiers, "fast")
 	}
 	for name := range cfg.Providers {
 		return name

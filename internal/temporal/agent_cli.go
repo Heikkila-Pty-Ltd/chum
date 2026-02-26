@@ -67,12 +67,11 @@ func applyEnvOverrides(base []string, overrides map[string]string) []string {
 }
 
 // expandEnvValue expands "$VAR_NAME" references to their current value.
+// Returns empty string when the referenced variable is unset — this triggers
+// removal in applyEnvOverrides rather than passing a literal "$VAR" to the CLI.
 func expandEnvValue(val string) string {
 	if strings.HasPrefix(val, "$") {
-		envKey := val[1:]
-		if resolved := os.Getenv(envKey); resolved != "" {
-			return resolved
-		}
+		return os.Getenv(val[1:]) // empty if unset → triggers removal
 	}
 	return val
 }

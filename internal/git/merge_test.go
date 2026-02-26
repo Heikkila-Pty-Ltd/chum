@@ -256,6 +256,28 @@ func TestRunPostMergeChecks_UsesShell(t *testing.T) {
 	}
 }
 
+func TestAugmentPATH_WhenMissingPath_UsesSystemFallback(t *testing.T) {
+	env := []string{"FOO=bar"}
+	got := augmentPATH(env)
+
+	var pathVal string
+	for _, e := range got {
+		if strings.HasPrefix(e, "PATH=") {
+			pathVal = strings.TrimPrefix(e, "PATH=")
+			break
+		}
+	}
+	if pathVal == "" {
+		t.Fatal("expected PATH to be added when missing")
+	}
+
+	for _, want := range []string{"/usr/bin", "/bin", "/usr/sbin", "/sbin", "/usr/local/bin", "/usr/local/go/bin"} {
+		if !strings.Contains(pathVal, want) {
+			t.Fatalf("expected PATH fallback to include %q, got %q", want, pathVal)
+		}
+	}
+}
+
 func readFileOrT(t *testing.T, path string) string {
 	t.Helper()
 	data, err := os.ReadFile(path)

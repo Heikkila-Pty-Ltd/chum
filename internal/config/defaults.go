@@ -153,9 +153,7 @@ func applyDefaults(cfg *Config, md toml.MetaData) {
 	if cfg.Dispatch.CostControl.StageCooldown.Duration == 0 {
 		cfg.Dispatch.CostControl.StageCooldown.Duration = 45 * time.Minute
 	}
-	if cfg.Dispatch.CostControl.BeachedSharkWindow.Duration == 0 {
-		cfg.Dispatch.CostControl.BeachedSharkWindow.Duration = 24 * time.Hour
-	}
+	// BeachedSharkWindow default removed — beached shark blocking is no longer used.
 	if cfg.Dispatch.CostControl.TokenWasteWindow.Duration == 0 {
 		cfg.Dispatch.CostControl.TokenWasteWindow.Duration = 24 * time.Hour
 	}

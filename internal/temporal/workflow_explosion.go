@@ -20,8 +20,8 @@ func CambrianExplosionWorkflow(ctx workflow.Context, req TaskRequest, providers 
 	var a *Activities
 
 	// Create future variables for each fork
-	var futures []workflow.Future
-	var explosionIDs []string
+	futures := make([]workflow.Future, 0, len(providers))
+	explosionIDs := make([]string, 0, len(providers))
 
 	// Launch parallel isolated sandboxes
 	for i, tier := range providers {
@@ -61,13 +61,12 @@ func CambrianExplosionWorkflow(ctx workflow.Context, req TaskRequest, providers 
 		ElapsedS    float64
 	}
 
-	var results []ExplosionResult
+	results := make([]ExplosionResult, 0, len(futures))
 
 	sel := workflow.NewSelector(ctx)
 	remaining := len(futures)
 
 	for i, fut := range futures {
-		i, fut := i, fut // capture loop vars
 		sel.AddFuture(fut, func(f workflow.Future) {
 			provider := providers[i].ProviderKey
 			explosionID := explosionIDs[i]
@@ -121,7 +120,7 @@ func CambrianExplosionWorkflow(ctx workflow.Context, req TaskRequest, providers 
 	recordCtx := workflow.WithActivityOptions(ctx, recordOpts)
 
 	// === WINNER SELECTION ===
-	var passingResults []ExplosionResult
+	passingResults := make([]ExplosionResult, 0, len(results))
 	for _, res := range results {
 		if res.DoDPassed {
 			passingResults = append(passingResults, res)
@@ -136,13 +135,17 @@ func CambrianExplosionWorkflow(ctx workflow.Context, req TaskRequest, providers 
 				allFailures = append(allFailures, fmt.Sprintf("%s: %s", res.Provider, res.Error))
 			}
 		}
-		workflow.ExecuteActivity(recordCtx, a.EscalateActivity, req.TaskID, allFailures).Get(ctx, nil)
+			if err := workflow.ExecuteActivity(recordCtx, a.EscalateActivity, req.TaskID, allFailures).Get(ctx, nil); err != nil {
+				logger.Warn(SharkPrefix+" Failed to record escalation in explosion workflow", "error", err)
+			}
 
 		// Clean up all worktrees
 		for _, res := range results {
 			resDir := WorktreeDir(req.TaskID, res.ExplosionID)
-			workflow.ExecuteActivity(recordCtx, a.CleanupWorktreeActivity, req.WorkDir, resDir).Get(ctx, nil)
-		}
+				if err := workflow.ExecuteActivity(recordCtx, a.CleanupWorktreeActivity, req.WorkDir, resDir).Get(ctx, nil); err != nil {
+					logger.Warn(SharkPrefix+" Failed cleanup worktree after explosion extinction", "error", err, "workdir", resDir)
+				}
+			}
 		recordOrganismLog(ctx, "explosion", req.TaskID, req.Project, "failed",
 			fmt.Sprintf("all %d providers extinct", len(results)),
 			startTime, len(results), "all providers failed")
@@ -166,7 +169,7 @@ func CambrianExplosionWorkflow(ctx workflow.Context, req TaskRequest, providers 
 		reviewCtx := workflow.WithActivityOptions(ctx, reviewOpts)
 
 		// Build candidates with their git diffs
-		var candidates []ExplosionCandidate
+		candidates := make([]ExplosionCandidate, 0, len(passingResults))
 		for _, res := range passingResults {
 			wtDir := WorktreeDir(req.TaskID, res.ExplosionID)
 			// Get the diff for this candidate
@@ -213,13 +216,17 @@ func CambrianExplosionWorkflow(ctx workflow.Context, req TaskRequest, providers 
 	}
 
 	// Close the task.
-	workflow.ExecuteActivity(recordCtx, a.CloseTaskActivity, req.TaskID, "completed").Get(ctx, nil)
-	recordOutcome(ctx, recordOpts, a, req, "completed", 0, 0, true, "", workflow.Now(ctx), TokenUsage{}, nil, nil)
+	if err := workflow.ExecuteActivity(recordCtx, a.CloseTaskActivity, req.TaskID, "completed").Get(ctx, nil); err != nil {
+		logger.Warn(SharkPrefix+" Failed to close task after explosion winner", "error", err, "task", req.TaskID)
+	}
+	recordOutcome(ctx, recordOpts, a, req, "completed", 0, true, "", workflow.Now(ctx), TokenUsage{}, nil, nil)
 
 	// Clean up ALL worktrees (including winner's, since it's merged now).
 	for _, res := range results {
 		resDir := WorktreeDir(req.TaskID, res.ExplosionID)
-		workflow.ExecuteActivity(recordCtx, a.CleanupWorktreeActivity, req.WorkDir, resDir).Get(ctx, nil)
+		if err := workflow.ExecuteActivity(recordCtx, a.CleanupWorktreeActivity, req.WorkDir, resDir).Get(ctx, nil); err != nil {
+			logger.Warn(SharkPrefix+" Failed cleanup worktree after explosion", "error", err, "workdir", resDir)
+		}
 	}
 
 	recordOrganismLog(ctx, "explosion", req.TaskID, req.Project, "completed",

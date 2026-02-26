@@ -124,20 +124,22 @@ func extractTitle(line string) string {
 func parseScopeItem(line string, index int) (ScopeItem, bool) {
 	// Normalize leading bullet: accept both "- " and "* "
 	var rest string
-	if strings.HasPrefix(line, "- ") {
+	switch {
+	case strings.HasPrefix(line, "- "):
 		rest = strings.TrimPrefix(line, "- ")
-	} else if strings.HasPrefix(line, "* ") {
+	case strings.HasPrefix(line, "* "):
 		rest = strings.TrimPrefix(line, "* ")
-	} else {
+	default:
 		return ScopeItem{}, false
 	}
 
 	// Expect a checkbox: "[ ]" or "[x]" / "[X]"
 	completed := false
-	if strings.HasPrefix(rest, "[ ] ") || rest == "[ ]" {
+	switch {
+	case strings.HasPrefix(rest, "[ ] ") || rest == "[ ]":
 		rest = strings.TrimPrefix(rest, "[ ]")
-	} else if strings.HasPrefix(rest, "[x] ") || rest == "[x]" ||
-		strings.HasPrefix(rest, "[X] ") || rest == "[X]" {
+	case strings.HasPrefix(rest, "[x] ") || rest == "[x]" ||
+		strings.HasPrefix(rest, "[X] ") || rest == "[X]":
 		completed = true
 		// Strip whichever variant matched.
 		if strings.HasPrefix(rest, "[x] ") {
@@ -145,7 +147,7 @@ func parseScopeItem(line string, index int) (ScopeItem, bool) {
 		} else {
 			rest = strings.TrimPrefix(rest, "[X]")
 		}
-	} else {
+	default:
 		return ScopeItem{}, false
 	}
 

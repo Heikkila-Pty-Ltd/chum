@@ -2,7 +2,9 @@ package temporal
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -247,8 +249,16 @@ func (a *Activities) MutateProteinActivity(ctx context.Context, req MutateProtei
 	}
 
 	// Fetch existing protein
-	existing, err := a.Store.GetProteinForSpecies(req.Species)
-	if err != nil || existing == nil {
+	existing, lookupErr := a.Store.GetProteinForSpecies(req.Species)
+	if lookupErr != nil {
+		if errors.Is(lookupErr, sql.ErrNoRows) {
+			logger.Warn(PaleontologistPrefix+" Cannot mutate: protein not found",
+				"Species", req.Species)
+			return &MutateProteinResult{Mutated: false}, nil
+		}
+		return nil, fmt.Errorf("lookup protein for species %q: %w", req.Species, lookupErr)
+	}
+	if existing == nil {
 		logger.Warn(PaleontologistPrefix+" Cannot mutate: protein not found",
 			"Species", req.Species)
 		return &MutateProteinResult{Mutated: false}, nil

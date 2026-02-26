@@ -641,7 +641,7 @@ func (a *Activities) EmitMorselsActivity(ctx context.Context, req CrabDecomposit
 			continue
 		}
 
-		labels := append(morsel.Labels, "source:crab", fmt.Sprintf("plan:%s", req.PlanID))
+		labels := append(append([]string{}, morsel.Labels...), "source:crab", fmt.Sprintf("plan:%s", req.PlanID))
 		if morsel.RiskLevel == "high" {
 			labels = append(labels, "risk:high")
 		}

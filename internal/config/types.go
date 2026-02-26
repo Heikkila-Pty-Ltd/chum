@@ -224,6 +224,7 @@ type Dispatch struct {
 	Routing          DispatchRouting      `toml:"routing"`
 	Timeouts         DispatchTimeouts     `toml:"timeouts"`
 	Git              DispatchGit          `toml:"git"`
+	EarlyKill        DispatchEarlyKill    `toml:"early_kill"`
 	CostControl      DispatchCostControl  `toml:"cost_control"`
 	LogDir           string               `toml:"log_dir"`
 	LogRetentionDays int                  `toml:"log_retention_days"`
@@ -260,6 +261,13 @@ type DispatchGit struct {
 	BranchCleanupDays       int    `toml:"branch_cleanup_days"`        // default 7
 	MergeStrategy           string `toml:"merge_strategy"`             // "merge", "squash", "rebase"
 	MaxConcurrentPerProject int    `toml:"max_concurrent_per_project"` // default 3
+}
+
+// DispatchEarlyKill defines file-size watchdog thresholds for long-running CLI commands.
+type DispatchEarlyKill struct {
+	Enabled    bool  `toml:"enabled"`
+	MinBytes3m int64 `toml:"min_bytes_3m"`
+	MinBytes8m int64 `toml:"min_bytes_8m"`
 }
 
 // DispatchCostControl defines configurable dispatch policies to reduce expensive usage/churn.

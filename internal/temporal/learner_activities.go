@@ -150,7 +150,7 @@ If there are no meaningful lessons, return an empty array [].`,
 		if first := extractFirstCompleteJSONObject(jsonStr); first != "" {
 			wrapped := "[" + first + "]"
 			if err3 := json.Unmarshal([]byte(wrapped), &lessons); err3 == nil {
-				logger.Info(OctopusPrefix+" Recovered 1 lesson from partial JSON array")
+				logger.Info(OctopusPrefix + " Recovered 1 lesson from partial JSON array")
 				goto stamped
 			}
 		}
@@ -320,7 +320,6 @@ rules:
 
 	return rules, nil
 }
-
 
 // SynthesizeCLAUDEmdActivity reads ALL accumulated lessons from the knowledge base,
 // deduplicates and groups by category, and writes a CLAUDE.md file to the project root.
@@ -667,4 +666,3 @@ func (a *Activities) CommitAndPushLearnerOutputsActivity(ctx context.Context, wo
 	logger.Info(OctopusPrefix + " Learner outputs committed and pushed successfully")
 	return nil
 }
-

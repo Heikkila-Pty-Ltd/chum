@@ -189,6 +189,9 @@ func validate(cfg *Config) error {
 	if err := validateDispatchCostControlConfig(cfg.Dispatch.CostControl); err != nil {
 		return fmt.Errorf("dispatch cost control configuration: %w", err)
 	}
+	if err := validateDispatchEarlyKillConfig(cfg.Dispatch.EarlyKill); err != nil {
+		return fmt.Errorf("dispatch early_kill configuration: %w", err)
+	}
 
 	return nil
 }
@@ -530,6 +533,19 @@ func validateDispatchCostControlConfig(cc DispatchCostControl) error {
 	}
 	if cc.PauseOnTokenWastage && cc.TokenWasteWindow.Duration == 0 {
 		return fmt.Errorf("token_waste_window must be > 0 when pause_on_token_waste is enabled")
+	}
+	return nil
+}
+
+func validateDispatchEarlyKillConfig(cfg DispatchEarlyKill) error {
+	if cfg.MinBytes3m < 0 {
+		return fmt.Errorf("min_bytes_3m cannot be negative")
+	}
+	if cfg.MinBytes8m < 0 {
+		return fmt.Errorf("min_bytes_8m cannot be negative")
+	}
+	if cfg.MinBytes8m < cfg.MinBytes3m {
+		return fmt.Errorf("min_bytes_8m must be >= min_bytes_3m")
 	}
 	return nil
 }

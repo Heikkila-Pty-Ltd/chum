@@ -146,7 +146,6 @@ func (s *Store) UpdateDispatchStatus(id int64, status string, exitCode int, dura
 	return nil
 }
 
-
 // MarkDispatchPendingRetry marks a failed dispatch for retry, increments retries,
 // and updates the tier for the next retry attempt.
 func (s *Store) MarkDispatchPendingRetry(id int64, nextTier string, nextRetryAt time.Time) error {
@@ -179,8 +178,6 @@ func (s *Store) MarkDispatchPendingRetry(id int64, nextTier string, nextRetryAt 
 	}
 	return nil
 }
-
-
 
 // CountRecentDispatchesByFailureCategory counts dispatches diagnosed with category within a window.
 func (s *Store) CountRecentDispatchesByFailureCategory(category string, window time.Duration) (int, error) {

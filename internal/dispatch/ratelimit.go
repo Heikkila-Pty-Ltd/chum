@@ -194,8 +194,6 @@ func (r *RateLimiter) pickAndReserveFromCandidates(
 	return nil, "", 0, nil, nil
 }
 
-
-
 // DowngradeTier returns the next lower tier, or "" if already at lowest.
 func DowngradeTier(tier string) string {
 	switch tier {

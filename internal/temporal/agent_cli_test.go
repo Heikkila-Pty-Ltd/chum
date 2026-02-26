@@ -1,7 +1,10 @@
 package temporal
 
 import (
+	"context"
+	"os/exec"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -398,9 +401,9 @@ type mockConfigManager struct {
 	cfg *config.Config
 }
 
-func (m *mockConfigManager) Get() *config.Config  { return m.cfg }
-func (m *mockConfigManager) Set(*config.Config)    {}
-func (m *mockConfigManager) Reload(string) error   { return nil }
+func (m *mockConfigManager) Get() *config.Config { return m.cfg }
+func (m *mockConfigManager) Set(*config.Config)  {}
+func (m *mockConfigManager) Reload(string) error { return nil }
 
 func TestCLICommandWithModel_ConfigDriven_CodexHigh(t *testing.T) {
 	acts := &Activities{
@@ -549,3 +552,84 @@ func TestCLICommandWithModel_ConfigDriven_DoesNotMutateConfigArgs(t *testing.T) 
 	require.Equal(t, []string{"exec", "--full-auto"}, cliCfg.Args)
 }
 
+func TestShouldEarlyKill_DisabledSkipsChecks(t *testing.T) {
+	shouldKill, reason := shouldEarlyKill(config.DispatchEarlyKill{
+		Enabled:    false,
+		MinBytes3m: 1,
+		MinBytes8m: 2,
+	}, 9*time.Minute, 0)
+
+	require.False(t, shouldKill)
+	require.Empty(t, reason)
+}
+
+func TestShouldEarlyKill_ThreeMinuteThreshold(t *testing.T) {
+	orig3 := earlyKillThreshold3m
+	orig8 := earlyKillThreshold8m
+	earlyKillThreshold3m = 3 * time.Minute
+	earlyKillThreshold8m = 8 * time.Minute
+	t.Cleanup(func() {
+		earlyKillThreshold3m = orig3
+		earlyKillThreshold8m = orig8
+	})
+
+	shouldKill, reason := shouldEarlyKill(config.DispatchEarlyKill{
+		Enabled:    true,
+		MinBytes3m: 100,
+		MinBytes8m: 500,
+	}, 3*time.Minute+time.Second, 99)
+
+	require.True(t, shouldKill)
+	require.Contains(t, reason, "min_bytes_3m=100")
+}
+
+func TestShouldEarlyKill_EightMinuteThreshold(t *testing.T) {
+	orig3 := earlyKillThreshold3m
+	orig8 := earlyKillThreshold8m
+	earlyKillThreshold3m = 3 * time.Minute
+	earlyKillThreshold8m = 8 * time.Minute
+	t.Cleanup(func() {
+		earlyKillThreshold3m = orig3
+		earlyKillThreshold8m = orig8
+	})
+
+	shouldKill, reason := shouldEarlyKill(config.DispatchEarlyKill{
+		Enabled:    true,
+		MinBytes3m: 100,
+		MinBytes8m: 1000,
+	}, 8*time.Minute+time.Second, 999)
+
+	require.True(t, shouldKill)
+	require.Contains(t, reason, "min_bytes_8m=1000")
+}
+
+func TestRunCLI_EarlyKillReturnsErrInfrastructureDead(t *testing.T) {
+	origHeartbeat := cliHeartbeatInterval
+	orig3 := earlyKillThreshold3m
+	orig8 := earlyKillThreshold8m
+	cliHeartbeatInterval = 10 * time.Millisecond
+	earlyKillThreshold3m = 20 * time.Millisecond
+	earlyKillThreshold8m = 40 * time.Millisecond
+	t.Cleanup(func() {
+		cliHeartbeatInterval = origHeartbeat
+		earlyKillThreshold3m = orig3
+		earlyKillThreshold8m = orig8
+	})
+
+	acts := &Activities{
+		CfgMgr: &mockConfigManager{cfg: &config.Config{
+			Dispatch: config.Dispatch{
+				EarlyKill: config.DispatchEarlyKill{
+					Enabled:    true,
+					MinBytes3m: 1,
+					MinBytes8m: 2,
+				},
+			},
+		}},
+	}
+
+	cmd := exec.Command("sh", "-c", "sleep 2")
+	_, err := acts.runCLI(context.Background(), "codex", "watchdog test", cmd)
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrInfrastructureDead)
+}

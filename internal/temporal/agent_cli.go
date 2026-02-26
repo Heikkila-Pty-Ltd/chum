@@ -5,10 +5,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"go.temporal.io/sdk/activity"
@@ -18,6 +20,9 @@ import (
 
 // ErrModelExhausted is returned when a model hits its usage/rate limit.
 var ErrModelExhausted = errors.New("model exhausted (rate/usage limit)")
+
+// ErrInfrastructureDead is returned when CLI execution is killed by infrastructure safeguards.
+var ErrInfrastructureDead = errors.New("infrastructure dead")
 
 // modelExhaustedPatterns are substrings that indicate rate/usage limits in CLI output.
 var modelExhaustedPatterns = []string{
@@ -54,6 +59,12 @@ var globalFailureTracker = &agentFailureTracker{
 
 const agentCircuitBreakerThreshold = 3
 
+var (
+	cliHeartbeatInterval = 5 * time.Second
+	earlyKillThreshold3m = 3 * time.Minute
+	earlyKillThreshold8m = 8 * time.Minute
+)
+
 // recordFailure increments the consecutive failure count for an agent.
 // Returns true if the circuit breaker is now open (>= threshold).
 func (t *agentFailureTracker) recordFailure(agent string) bool {
@@ -82,6 +93,75 @@ func (t *agentFailureTracker) consecutiveFailures(agent string) int {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return t.failures[agent]
+}
+
+func (a *Activities) dispatchEarlyKillConfig() config.DispatchEarlyKill {
+	if a == nil || a.CfgMgr == nil {
+		return config.DispatchEarlyKill{}
+	}
+	cfg := a.CfgMgr.Get()
+	if cfg == nil {
+		return config.DispatchEarlyKill{}
+	}
+	return cfg.Dispatch.EarlyKill
+}
+
+func outputFileSize(path string) (int64, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return 0, err
+	}
+	return info.Size(), nil
+}
+
+func shouldEarlyKill(cfg config.DispatchEarlyKill, elapsed time.Duration, outputBytes int64) (bool, string) {
+	if !cfg.Enabled {
+		return false, ""
+	}
+	if elapsed >= earlyKillThreshold8m && outputBytes < cfg.MinBytes8m {
+		return true, fmt.Sprintf("elapsed=%s output_bytes=%d below min_bytes_8m=%d", elapsed, outputBytes, cfg.MinBytes8m)
+	}
+	if elapsed >= earlyKillThreshold3m && outputBytes < cfg.MinBytes3m {
+		return true, fmt.Sprintf("elapsed=%s output_bytes=%d below min_bytes_3m=%d", elapsed, outputBytes, cfg.MinBytes3m)
+	}
+	return false, ""
+}
+
+func killCLIProcess(cmd *exec.Cmd) (bool, error) {
+	if cmd == nil || cmd.Process == nil {
+		return false, fmt.Errorf("process is not started")
+	}
+	if cmd.ProcessState != nil && cmd.ProcessState.Exited() {
+		return false, nil
+	}
+	if err := cmd.Process.Kill(); err != nil {
+		if errors.Is(err, os.ErrProcessDone) {
+			return false, nil
+		}
+		var errno syscall.Errno
+		if errors.As(err, &errno) && errno == syscall.ESRCH {
+			return false, nil
+		}
+		if strings.Contains(strings.ToLower(err.Error()), "process already finished") {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+func recordHeartbeatSafe(ctx context.Context) {
+	defer func() {
+		_ = recover()
+	}()
+	activity.RecordHeartbeat(ctx)
+}
+
+func activityWarnSafe(ctx context.Context, msg string, keysAndValues ...interface{}) {
+	defer func() {
+		_ = recover()
+	}()
+	activity.GetLogger(ctx).Warn(msg, keysAndValues...)
 }
 
 // ResolveTierAgent returns the first agent in the given tier's agent list.
@@ -338,20 +418,30 @@ func (a *Activities) runCLI(ctx context.Context, agent, prompt string, cmd *exec
 	if err != nil {
 		return CLIResult{}, fmt.Errorf("create prompt temp file: %w", err)
 	}
-	defer os.Remove(promptFile.Name())
+	defer func() {
+		_ = promptFile.Close()
+		_ = os.Remove(promptFile.Name())
+	}()
 
 	if _, err := promptFile.WriteString(prompt); err != nil {
-		promptFile.Close()
 		return CLIResult{}, fmt.Errorf("write prompt temp file: %w", err)
 	}
 	if _, err := promptFile.Seek(0, 0); err != nil {
-		promptFile.Close()
 		return CLIResult{}, fmt.Errorf("seek prompt temp file: %w", err)
 	}
 
+	outputFile, err := os.CreateTemp("", "chum-cli-output-*.log")
+	if err != nil {
+		return CLIResult{}, fmt.Errorf("create output temp file: %w", err)
+	}
+	defer func() {
+		_ = outputFile.Close()
+		_ = os.Remove(outputFile.Name())
+	}()
+
 	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	cmd.Stdout = io.MultiWriter(&stdout, outputFile)
+	cmd.Stderr = io.MultiWriter(&stderr, outputFile)
 	cmd.Stdin = promptFile
 
 	// Defensive: ensure the working directory exists before exec.
@@ -359,43 +449,80 @@ func (a *Activities) runCLI(ctx context.Context, agent, prompt string, cmd *exec
 	// this guard the chdir fails and the entire activity errors out.
 	if cmd.Dir != "" {
 		if _, statErr := os.Stat(cmd.Dir); os.IsNotExist(statErr) {
-			activity.GetLogger(ctx).Warn("⚠️ CLI workdir missing — creating it defensively (investigate root cause)",
+			activityWarnSafe(ctx, "⚠️ CLI workdir missing — creating it defensively (investigate root cause)",
 				"WorkDir", cmd.Dir, "Agent", agent)
 			if mkErr := os.MkdirAll(cmd.Dir, 0o755); mkErr != nil {
-				promptFile.Close()
 				return CLIResult{}, fmt.Errorf("failed to create workdir %s: %w", cmd.Dir, mkErr)
 			}
 		}
 	}
 
 	if err := cmd.Start(); err != nil {
-		promptFile.Close()
 		return CLIResult{}, fmt.Errorf("failed to start %s: %w", agent, err)
 	}
 
 	done := make(chan error, 1)
 	go func() { done <- cmd.Wait() }()
 
+	startTime := time.Now()
+	heartbeatTicker := time.NewTicker(cliHeartbeatInterval)
+	defer heartbeatTicker.Stop()
+	earlyKilled := false
+
 	for {
 		select {
 		case err := <-done:
-			promptFile.Close()
 			raw := strings.TrimSpace(stdout.String())
 			if err != nil {
 				errOut := strings.TrimSpace(stderr.String())
 				if errOut != "" {
 					raw += "\n" + errOut
 				}
-				result := parseAgentOutput(agent, raw)
+			}
+			result := parseAgentOutput(agent, raw)
+			if earlyKilled {
+				return result, fmt.Errorf("%s: %w", agent, ErrInfrastructureDead)
+			}
+			if err != nil {
 				// Wrap with ErrModelExhausted if rate limit detected
 				if IsModelExhausted(raw) {
 					return result, fmt.Errorf("%s: %w: %w", agent, ErrModelExhausted, err)
 				}
 				return result, fmt.Errorf("%s exited with error: %w", agent, err)
 			}
-			return parseAgentOutput(agent, raw), nil
-		case <-time.After(5 * time.Second):
-			activity.RecordHeartbeat(ctx)
+			return result, nil
+		case <-heartbeatTicker.C:
+			recordHeartbeatSafe(ctx)
+			if earlyKilled {
+				continue
+			}
+			earlyKillCfg := a.dispatchEarlyKillConfig()
+			if !earlyKillCfg.Enabled {
+				continue
+			}
+
+			outputBytes, statErr := outputFileSize(outputFile.Name())
+			if statErr != nil {
+				activityWarnSafe(ctx, "failed output size stat during watchdog heartbeat",
+					"Agent", agent, "OutputFile", outputFile.Name(), "error", statErr)
+				continue
+			}
+
+			elapsed := time.Since(startTime)
+			shouldKill, reason := shouldEarlyKill(earlyKillCfg, elapsed, outputBytes)
+			if !shouldKill {
+				continue
+			}
+
+			killed, killErr := killCLIProcess(cmd)
+			if killErr != nil {
+				return CLIResult{}, fmt.Errorf("early-kill watchdog failed for %s: %w", agent, killErr)
+			}
+			if killed {
+				earlyKilled = true
+				activityWarnSafe(ctx, "early-kill watchdog terminated stalled CLI process",
+					"Agent", agent, "Reason", reason, "Elapsed", elapsed, "OutputBytes", outputBytes)
+			}
 		}
 	}
 }

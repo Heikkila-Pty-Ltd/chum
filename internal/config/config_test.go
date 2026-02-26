@@ -883,6 +883,101 @@ premium_backend = "headless_cli"
 	}
 }
 
+func TestLoadDispatchEarlyKillDefaults(t *testing.T) {
+	path := writeTestConfig(t, validConfig)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("expected config to load with early-kill defaults: %v", err)
+	}
+
+	if cfg.Dispatch.EarlyKill.Enabled {
+		t.Fatal("dispatch.early_kill.enabled = true, want false by default")
+	}
+	if cfg.Dispatch.EarlyKill.MinBytes3m != 1024 {
+		t.Fatalf("dispatch.early_kill.min_bytes_3m = %d, want 1024", cfg.Dispatch.EarlyKill.MinBytes3m)
+	}
+	if cfg.Dispatch.EarlyKill.MinBytes8m != 4096 {
+		t.Fatalf("dispatch.early_kill.min_bytes_8m = %d, want 4096", cfg.Dispatch.EarlyKill.MinBytes8m)
+	}
+}
+
+func TestLoadDispatchEarlyKillConfig(t *testing.T) {
+	cfg := validConfig + `
+
+[dispatch.early_kill]
+enabled = true
+min_bytes_3m = 2048
+min_bytes_8m = 8192
+`
+	path := writeTestConfig(t, cfg)
+	loaded, err := Load(path)
+	if err != nil {
+		t.Fatalf("expected dispatch early_kill config to load: %v", err)
+	}
+
+	if !loaded.Dispatch.EarlyKill.Enabled {
+		t.Fatal("dispatch.early_kill.enabled = false, want true")
+	}
+	if loaded.Dispatch.EarlyKill.MinBytes3m != 2048 {
+		t.Fatalf("dispatch.early_kill.min_bytes_3m = %d, want 2048", loaded.Dispatch.EarlyKill.MinBytes3m)
+	}
+	if loaded.Dispatch.EarlyKill.MinBytes8m != 8192 {
+		t.Fatalf("dispatch.early_kill.min_bytes_8m = %d, want 8192", loaded.Dispatch.EarlyKill.MinBytes8m)
+	}
+}
+
+func TestLoadDispatchEarlyKillInvalidConfig(t *testing.T) {
+	tests := []struct {
+		name   string
+		config string
+		errMsg string
+	}{
+		{
+			name: "negative min_bytes_3m",
+			config: `
+[dispatch.early_kill]
+enabled = true
+min_bytes_3m = -1
+min_bytes_8m = 10
+`,
+			errMsg: "min_bytes_3m cannot be negative",
+		},
+		{
+			name: "negative min_bytes_8m",
+			config: `
+[dispatch.early_kill]
+enabled = true
+min_bytes_3m = 10
+min_bytes_8m = -1
+`,
+			errMsg: "min_bytes_8m cannot be negative",
+		},
+		{
+			name: "ordering violation",
+			config: `
+[dispatch.early_kill]
+enabled = true
+min_bytes_3m = 200
+min_bytes_8m = 100
+`,
+			errMsg: "min_bytes_8m must be >= min_bytes_3m",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := writeTestConfig(t, validConfig+tt.config)
+			_, err := Load(path)
+			if err == nil {
+				t.Fatal("expected dispatch early_kill validation error")
+			}
+			if !strings.Contains(err.Error(), tt.errMsg) {
+				t.Fatalf("expected error containing %q, got: %v", tt.errMsg, err)
+			}
+		})
+	}
+}
+
 func TestLoadDispatchInvalidBackend(t *testing.T) {
 	cfg := validConfig + `
 

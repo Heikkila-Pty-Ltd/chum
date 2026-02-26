@@ -8,12 +8,12 @@ import (
 
 // ProviderSuccessRate holds aggregated success/failure data for a provider+species pair.
 type ProviderSuccessRate struct {
-	Provider   string
-	Species    string
-	Successes  int
-	Failures   int
-	TotalCost  float64
-	AvgCostUSD float64
+	Provider    string
+	Species     string
+	Successes   int
+	Failures    int
+	TotalCost   float64
+	AvgCostUSD  float64
 	SuccessRate float64
 }
 
@@ -76,13 +76,13 @@ type RecurringDoDFailure struct {
 
 // FailureRateTrend holds DoD failure rate metrics for a time window.
 type FailureRateTrend struct {
-	Project        string
-	WindowStart    time.Time
-	WindowEnd      time.Time
+	Project         string
+	WindowStart     time.Time
+	WindowEnd       time.Time
 	TotalDispatches int
-	DoDPassed      int
-	DoDFailed      int
-	FailureRate    float64 // percentage (0-100)
+	DoDPassed       int
+	DoDFailed       int
+	FailureRate     float64 // percentage (0-100)
 }
 
 // FailureRateDelta compares failure rates between two time windows.
@@ -98,14 +98,14 @@ type FailureRateDelta struct {
 
 // SystemHealthScore represents the meteor/extinction event risk state.
 type SystemHealthScore struct {
-	Score              int       // 0-100 (0 = impact, 100 = distant)
-	DegradationStreak  int       // consecutive degrading periods
-	ImprovementStreak  int       // consecutive improving periods
-	LastTrendChange    time.Time // when trend last changed
-	MeteorStatus       string    // "Distant", "Approaching", "Incoming", "IMPACT"
-	MeteorDistance     string    // visual representation
-	AlertLevel         string    // "green", "yellow", "orange", "red"
-	Recommendation     string    // what Hex should consider
+	Score             int       // 0-100 (0 = impact, 100 = distant)
+	DegradationStreak int       // consecutive degrading periods
+	ImprovementStreak int       // consecutive improving periods
+	LastTrendChange   time.Time // when trend last changed
+	MeteorStatus      string    // "Distant", "Approaching", "Incoming", "IMPACT"
+	MeteorDistance    string    // visual representation
+	AlertLevel        string    // "green", "yellow", "orange", "red"
+	Recommendation    string    // what Hex should consider
 }
 
 // PaleontologyRunResult holds the summary of a paleontologist analysis run.

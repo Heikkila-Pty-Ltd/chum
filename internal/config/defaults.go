@@ -119,6 +119,15 @@ func applyDefaults(cfg *Config, md toml.MetaData) {
 		cfg.Dispatch.Git.MaxConcurrentPerProject = 3
 	}
 
+	// Dispatch early-kill watchdog defaults.
+	// Enabled defaults to false for backward-compatible rollout.
+	if cfg.Dispatch.EarlyKill.MinBytes3m == 0 {
+		cfg.Dispatch.EarlyKill.MinBytes3m = 1024
+	}
+	if cfg.Dispatch.EarlyKill.MinBytes8m == 0 {
+		cfg.Dispatch.EarlyKill.MinBytes8m = 4096
+	}
+
 	// Dispatch cost-control defaults
 	if cfg.Dispatch.CostControl.PlanningCandidateTopK == 0 {
 		cfg.Dispatch.CostControl.PlanningCandidateTopK = 5

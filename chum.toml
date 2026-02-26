@@ -144,6 +144,11 @@ stage_attempt_window = "6h"
 [dispatch.cost_control.higher_learning]
 enabled = false
 
+[dispatch.early_kill]
+enabled = false
+min_bytes_3m = 1024
+min_bytes_8m = 4096
+
 [dispatch.timeouts]
 fast = "15m"
 balanced = "30m"

@@ -906,11 +906,11 @@ func TestStepDurationLoggingEscalation(t *testing.T) {
 	}).Return(nil)
 
 	env.ExecuteWorkflow(ChumAgentWorkflow, TaskRequest{
-		TaskID:           "test-morsel-escalate",
-		Project:          "test-project",
-		Prompt:           "will fail dod",
-		Agent:            "claude",
-		WorkDir:          "/tmp/test",
+		TaskID:             "test-morsel-escalate",
+		Project:            "test-project",
+		Prompt:             "will fail dod",
+		Agent:              "claude",
+		WorkDir:            "/tmp/test",
 		MaxRetriesOverride: 1,
 	})
 

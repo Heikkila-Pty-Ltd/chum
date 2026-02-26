@@ -73,7 +73,7 @@ type CrystalCandidate struct {
 type TraceStore interface {
 	StartExecutionTrace(taskID, species, goalSignature string) (int64, error)
 	AppendTraceEvent(traceID int64, event TraceEvent) error
-	CompleteExecutionTrace(traceID int64, status, outcome string, supportCount int, successCount int) error
+	CompleteExecutionTrace(traceID int64, status, outcome string, supportCount, successCount int) error
 	ListExecutionTraces(taskID string) ([]ExecutionTrace, error)
 	GetTraceEvents(traceID int64) ([]TraceEvent, error)
 }

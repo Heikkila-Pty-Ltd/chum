@@ -98,7 +98,7 @@ const (
 			FROM task_edges e
 			JOIN tasks dependency ON dependency.id = e.to_task
 			WHERE e.from_task = t.id
-			  AND lower(dependency.status) != ?
+			  AND lower(dependency.status) NOT IN (?, ?, ?, ?, ?, ?)
 		)
 		ORDER BY t.priority ASC, t.estimate_minutes ASC;`
 
@@ -118,7 +118,7 @@ const (
 		FROM task_edges e
 		LEFT JOIN tasks dependency ON dependency.id = e.to_task
 		WHERE e.from_task = ?
-		  AND (dependency.id IS NULL OR lower(dependency.status) != ?)
+		  AND (dependency.id IS NULL OR lower(dependency.status) NOT IN (?, ?, ?, ?, ?, ?))
 		ORDER BY e.to_task ASC
 		LIMIT 1;`
 	dependenciesSQL = `SELECT from_task, to_task FROM task_edges WHERE from_task IN `
@@ -477,7 +477,7 @@ func transitioningToReady(assignments []taskUpdateField) bool {
 func (d *DAG) ensureReadyTransitionUnblocked(ctx context.Context, id string) error {
 	var dependencyID string
 	var dependencyStatus string
-	err := queryRowContext(ctx, d.db, readyTransitionCheckSQL, id, statusClosed).Scan(&dependencyID, &dependencyStatus)
+	err := queryRowContext(ctx, d.db, readyTransitionCheckSQL, id, statusClosed, "completed", "escalated", "plan_failed", "canceled", "done").Scan(&dependencyID, &dependencyStatus)
 	if err == nil {
 		if dependencyStatus == "" {
 			dependencyStatus = "missing"
@@ -555,7 +555,7 @@ func (d *DAG) GetReadyNodes(ctx context.Context, project string) ([]Task, error)
 		return nil, fmt.Errorf("project is required")
 	}
 
-	rows, err := queryContext(ctx, d.db, readyNodesSQL, project, statusReady, taskTypeEpic, taskTypeWhale, statusClosed)
+	rows, err := queryContext(ctx, d.db, readyNodesSQL, project, statusReady, taskTypeEpic, taskTypeWhale, statusClosed, "completed", "escalated", "plan_failed", "canceled", "done")
 	if err != nil {
 		return nil, fmt.Errorf("get ready nodes: %w", err)
 	}

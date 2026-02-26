@@ -177,7 +177,7 @@ func allDepsClosed(task Task, graph *DepGraph) bool {
 // downstream work should not be blocked forever by a dead ancestor.
 func isClosedTask(status string) bool {
 	s := normalizeTaskStatus(status)
-	return s == statusClosed || s == "completed" || s == "escalated"
+	return s == statusClosed || s == "completed" || s == "escalated" || s == "plan_failed" || s == "canceled" || s == "done"
 }
 
 // isDispatchableTask returns true for tasks with status "ready".

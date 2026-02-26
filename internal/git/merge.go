@@ -176,6 +176,15 @@ func runSinglePostMergeCheck(workspace, command string) *CheckResult {
 	}
 
 	out := strings.TrimSpace(string(output))
+
+	// golangci-lint exits 1 with "no go files to analyze" when the
+	// --new-from-rev diff contains no .go files (e.g. only docs/config
+	// changes). This is not a real failure — treat it as a pass.
+	if !passed && strings.Contains(out, "no go files to analyze") {
+		passed = true
+		exitCode = 0
+	}
+
 	if len(out) > 2000 {
 		out = out[:2000] + "\n... [truncated]"
 	}

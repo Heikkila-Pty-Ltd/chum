@@ -182,7 +182,9 @@ func (s *Store) UpsertMCTSEdgeStat(stat MCTSEdgeStat) error {
 	if err != nil {
 		return fmt.Errorf("store: upsert mcts edge stat: begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		_ = tx.Rollback()
+	}()
 
 	if err := ensureMCTSGraph(tx, parent, action); err != nil {
 		return fmt.Errorf("store: upsert mcts edge stat: ensure graph: %w", err)
@@ -314,7 +316,9 @@ func (s *Store) RecordMCTSRollout(rollout MCTSRollout) (int64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("store: record mcts rollout: begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		_ = tx.Rollback()
+	}()
 
 	if err := ensureMCTSGraph(tx, parent, action); err != nil {
 		return 0, fmt.Errorf("store: record mcts rollout: ensure graph: %w", err)

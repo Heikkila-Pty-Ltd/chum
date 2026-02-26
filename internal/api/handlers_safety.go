@@ -30,7 +30,7 @@ func (s *Server) handleSafetyBlocks(w http.ResponseWriter, r *http.Request) {
 	}
 
 	countsByType := make(map[string]int)
-	var items []blockResponse
+	items := make([]blockResponse, 0, len(blocks))
 	for _, b := range blocks {
 		countsByType[b.BlockType]++
 		items = append(items, blockResponse{
@@ -83,7 +83,7 @@ func (s *Server) handleDispatchDetail(w http.ResponseWriter, r *http.Request) {
 		FailureSummary  string  `json:"failure_summary,omitempty"`
 	}
 
-	var dispatchList []dispatchResponse
+	dispatchList := make([]dispatchResponse, 0, len(dispatches))
 	for _, d := range dispatches {
 		outputTail, err := s.store.GetOutputTail(d.ID)
 		if err != nil {

@@ -182,7 +182,7 @@ func ListTeam(project string, roles []string) ([]AgentInfo, error) {
 		return nil, fmt.Errorf("team: get agents dir: %w", err)
 	}
 
-	var agents []AgentInfo
+	agents := make([]AgentInfo, 0, len(roles))
 	for _, role := range roles {
 		agentName := project + "-" + role
 		agentPath := filepath.Join(agentsDir, agentName)

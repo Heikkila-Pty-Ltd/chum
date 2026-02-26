@@ -35,6 +35,8 @@ type CrossProjectDependency struct {
 }
 
 // PortfolioBacklog aggregates backlogs from all projects for multi-team sprint planning
+//
+//nolint:revive // Kept for readability at package boundaries.
 type PortfolioBacklog struct {
 	ProjectBacklogs      map[string]ProjectBacklog `json:"project_backlogs"`
 	CrossProjectDeps     []CrossProjectDependency  `json:"cross_project_deps"`
@@ -45,6 +47,8 @@ type PortfolioBacklog struct {
 }
 
 // PortfolioSummary provides high-level statistics about the portfolio
+//
+//nolint:revive // Kept for readability at package boundaries.
 type PortfolioSummary struct {
 	ActiveProjects        int      `json:"active_projects"`
 	TotalOpenMorsels      int      `json:"total_open_morsels"`
@@ -71,8 +75,9 @@ func GatherPortfolioBacklogs(ctx context.Context, cfg *config.Config, dag *graph
 
 	// Build cross-project dependency graph
 	projectNames := make(map[string]string)
-	var enabledNames []string
-	for name, project := range cfg.Projects {
+	enabledNames := make([]string, 0, len(cfg.Projects))
+	for name := range cfg.Projects {
+		project := cfg.Projects[name]
 		if !project.Enabled {
 			logger.Debug("skipping disabled project", "project", name)
 			continue
@@ -149,7 +154,8 @@ func gatherProjectBacklog(ctx context.Context, projectName string, project confi
 	backlog.ReadyToWork = graph.FilterUnblockedCrossProject(backlog.AllMorsels, localGraph, crossGraph)
 
 	// Calculate total estimate
-	for _, task := range backlog.AllMorsels {
+	for i := range backlog.AllMorsels {
+		task := backlog.AllMorsels[i]
 		backlog.TotalEstimate += task.EstimateMinutes
 	}
 
@@ -167,7 +173,8 @@ func gatherProjectBacklog(ctx context.Context, projectName string, project confi
 // filterOpenTasks returns only open tasks (excludes closed, canceled, etc.)
 func filterOpenTasks(allTasks []graph.Task) []graph.Task {
 	var open []graph.Task
-	for _, task := range allTasks {
+	for i := range allTasks {
+		task := allTasks[i]
 		if task.Status == "open" {
 			open = append(open, task)
 		}
@@ -178,7 +185,8 @@ func filterOpenTasks(allTasks []graph.Task) []graph.Task {
 // filterRefinedTasks returns tasks that have acceptance criteria or design notes (considered refined)
 func filterRefinedTasks(openTasks []graph.Task) []graph.Task {
 	var refined []graph.Task
-	for _, task := range openTasks {
+	for i := range openTasks {
+		task := openTasks[i]
 		if task.Acceptance != "" || task.Design != "" || task.EstimateMinutes > 0 {
 			refined = append(refined, task)
 		}
@@ -189,7 +197,8 @@ func filterRefinedTasks(openTasks []graph.Task) []graph.Task {
 // filterUnrefinedTasks returns tasks that lack acceptance criteria and design notes
 func filterUnrefinedTasks(openTasks []graph.Task) []graph.Task {
 	var unrefined []graph.Task
-	for _, task := range openTasks {
+	for i := range openTasks {
+		task := openTasks[i]
 		if task.Acceptance == "" && task.Design == "" && task.EstimateMinutes == 0 {
 			unrefined = append(unrefined, task)
 		}
@@ -261,9 +270,10 @@ func generatePortfolioSummary(portfolio *PortfolioBacklog) PortfolioSummary {
 		name     string
 		priority int
 	}
-	var projects []projectPrio
+	projects := make([]projectPrio, 0, len(portfolio.ProjectBacklogs))
 
-	for name, backlog := range portfolio.ProjectBacklogs {
+	for name := range portfolio.ProjectBacklogs {
+		backlog := portfolio.ProjectBacklogs[name]
 		projects = append(projects, projectPrio{name: name, priority: backlog.Priority})
 		summary.TotalOpenMorsels += len(backlog.AllMorsels)
 		summary.TotalRefinedMorsels += len(backlog.RefinedMorsels)

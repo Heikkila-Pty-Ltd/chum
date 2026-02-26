@@ -183,11 +183,11 @@ func (h *TurtleChatHandler) executePlanningCommand(ctx context.Context, msg Inbo
 		if err := h.Planning.SubmitPlanningSignal(ctx, sessionID, "item-selected", cmd.value, "matrix-control"); err != nil {
 			return "", "", err
 		}
-		prompt, err := h.Planning.GetPlanningPrompt(ctx, sessionID, "matrix-control")
-		if err != nil {
-			return fmt.Sprintf("Submitted selection `%s` for `%s`.", cmd.value, sessionID), "", nil
+		prompt, promptErr := h.Planning.GetPlanningPrompt(ctx, sessionID, "matrix-control")
+		if promptErr == nil {
+			return formatPlanningPromptForChat(prompt), "", nil
 		}
-		return formatPlanningPromptForChat(prompt), "", nil
+		return fmt.Sprintf("Submitted selection `%s` for `%s`.", cmd.value, sessionID), "", nil
 	case planningCommandAnswer:
 		sessionID, err := h.resolvePlanningSession(msg.Room, cmd.sessionID)
 		if err != nil {
@@ -200,11 +200,11 @@ func (h *TurtleChatHandler) executePlanningCommand(ctx context.Context, msg Inbo
 		if err := h.Planning.SubmitPlanningSignal(ctx, sessionID, "answer", answer, "matrix-control"); err != nil {
 			return "", "", err
 		}
-		prompt, err := h.Planning.GetPlanningPrompt(ctx, sessionID, "matrix-control")
-		if err != nil {
-			return "Answer submitted.", "", nil
+		prompt, promptErr := h.Planning.GetPlanningPrompt(ctx, sessionID, "matrix-control")
+		if promptErr == nil {
+			return formatPlanningPromptForChat(prompt), "", nil
 		}
-		return formatPlanningPromptForChat(prompt), "", nil
+		return "Answer submitted.", "", nil
 	case planningCommandGo:
 		sessionID, err := h.resolvePlanningSession(msg.Room, cmd.sessionID)
 		if err != nil {
@@ -213,12 +213,12 @@ func (h *TurtleChatHandler) executePlanningCommand(ctx context.Context, msg Inbo
 		if err := h.Planning.SubmitPlanningSignal(ctx, sessionID, "greenlight", "GO", "matrix-control"); err != nil {
 			return "", "", err
 		}
-		status, err := h.Planning.GetPlanningStatus(ctx, sessionID)
-		if err != nil {
-			return fmt.Sprintf("Greenlight GO submitted for `%s`.", sessionID), "", nil
+		status, statusErr := h.Planning.GetPlanningStatus(ctx, sessionID)
+		if statusErr == nil {
+			bridge := fmt.Sprintf("[planning-control] decision=GO session=%s status=%s", sessionID, status.Status)
+			return fmt.Sprintf("Greenlight GO submitted for `%s` (status: %s).", sessionID, status.Status), bridge, nil
 		}
-		bridge := fmt.Sprintf("[planning-control] decision=GO session=%s status=%s", sessionID, status.Status)
-		return fmt.Sprintf("Greenlight GO submitted for `%s` (status: %s).", sessionID, status.Status), bridge, nil
+		return fmt.Sprintf("Greenlight GO submitted for `%s`.", sessionID), "", nil
 	case planningCommandRealign:
 		sessionID, err := h.resolvePlanningSession(msg.Room, cmd.sessionID)
 		if err != nil {
@@ -227,12 +227,12 @@ func (h *TurtleChatHandler) executePlanningCommand(ctx context.Context, msg Inbo
 		if err := h.Planning.SubmitPlanningSignal(ctx, sessionID, "greenlight", "REALIGN", "matrix-control"); err != nil {
 			return "", "", err
 		}
-		prompt, err := h.Planning.GetPlanningPrompt(ctx, sessionID, "matrix-control")
-		if err != nil {
-			return fmt.Sprintf("Greenlight REALIGN submitted for `%s`.", sessionID), "", nil
+		prompt, promptErr := h.Planning.GetPlanningPrompt(ctx, sessionID, "matrix-control")
+		if promptErr == nil {
+			bridge := fmt.Sprintf("[planning-control] decision=REALIGN session=%s", sessionID)
+			return formatPlanningPromptForChat(prompt), bridge, nil
 		}
-		bridge := fmt.Sprintf("[planning-control] decision=REALIGN session=%s", sessionID)
-		return formatPlanningPromptForChat(prompt), bridge, nil
+		return fmt.Sprintf("Greenlight REALIGN submitted for `%s`.", sessionID), "", nil
 	case planningCommandStop:
 		sessionID, err := h.resolvePlanningSession(msg.Room, cmd.sessionID)
 		if err != nil {

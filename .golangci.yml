@@ -40,8 +40,6 @@ linters-settings:
   gocritic:
     enabled-tags:
       - diagnostic
-    disabled-checks:
-      - hugeParam          # Temporal workflow params are value types by design
   revive:
     rules:
       - name: blank-imports

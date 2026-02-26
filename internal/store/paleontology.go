@@ -535,11 +535,12 @@ func (s *Store) GetFailureRateDelta(project string, windowHours int) (*FailureRa
 	}
 
 	// Classify trend
-	if delta.Delta < -5.0 {
+	switch {
+	case delta.Delta < -5.0:
 		delta.Trend = "improving"
-	} else if delta.Delta > 5.0 {
+	case delta.Delta > 5.0:
 		delta.Trend = "degrading"
-	} else {
+	default:
 		delta.Trend = "stable"
 	}
 

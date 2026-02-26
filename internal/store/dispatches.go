@@ -92,7 +92,9 @@ func (s *Store) RecordSchedulerDispatch(morselID, project, agent, provider, tier
 	if err != nil {
 		return 0, fmt.Errorf("store: begin scheduler dispatch transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		_ = tx.Rollback()
+	}()
 
 	if err := s.maybeFailDispatchPersist(dispatchPersistFailpointBeforeInsert); err != nil {
 		return 0, err

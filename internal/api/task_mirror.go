@@ -80,7 +80,7 @@ func (m *BeadsForkTaskMirror) MirrorTaskCreate(ctx context.Context, taskID strin
 			continue
 		}
 		if depIssueID, ok := m.lookup(depTaskID); ok {
-			_ = m.client.AddDependency(ctx, created.ID, depIssueID, "blocks") //nolint:errcheck // best-effort
+			_ = m.client.AddDependency(ctx, created.ID, depIssueID, "blocks")
 		}
 	}
 

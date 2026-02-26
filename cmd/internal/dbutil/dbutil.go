@@ -16,7 +16,10 @@ var KnownTables = []string{"dispatches", "health_events"}
 // ExpandPath resolves a leading ~/ to the user's home directory.
 func ExpandPath(path string) string {
 	if strings.HasPrefix(path, "~/") {
-		home, _ := os.UserHomeDir()
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return path
+		}
 		return filepath.Join(home, path[2:])
 	}
 	return path

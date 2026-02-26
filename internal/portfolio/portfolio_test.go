@@ -32,15 +32,8 @@ func TestPortfolioBacklogStructure(t *testing.T) {
 func TestProjectBacklogStructure(t *testing.T) {
 	// Test ProjectBacklog struct can be created with expected fields
 	backlog := ProjectBacklog{
-		ProjectName:      "test",
-		Workspace:        "/tmp",
-		Priority:         1,
-		UnrefinedMorsels: []graph.Task{},
-		RefinedMorsels:   []graph.Task{},
-		AllMorsels:       []graph.Task{},
-		ReadyToWork:      []graph.Task{},
-		TotalEstimate:    0,
-		CapacityPercent:  50,
+		ProjectName: "test",
+		Priority:    1,
 	}
 
 	if backlog.ProjectName != "test" {

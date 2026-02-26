@@ -242,7 +242,9 @@ func (s *Store) GetFailedDispatchDetails(startDate, endDate time.Time) ([]Failed
 				morselStage.TotalStages = int(totalStages.Int64)
 			}
 			if stageHistory.Valid {
-				json.Unmarshal([]byte(stageHistory.String), &morselStage.StageHistory)
+				if err := json.Unmarshal([]byte(stageHistory.String), &morselStage.StageHistory); err != nil {
+					return nil, fmt.Errorf("parse failed dispatch stage history: %w", err)
+				}
 			}
 			detail.MorselContext = morselStage
 		}
@@ -306,7 +308,9 @@ func (s *Store) GetStuckDispatchDetails(timeout time.Duration) ([]StuckDispatchD
 				morselStage.TotalStages = int(totalStages.Int64)
 			}
 			if stageHistory.Valid {
-				json.Unmarshal([]byte(stageHistory.String), &morselStage.StageHistory)
+				if err := json.Unmarshal([]byte(stageHistory.String), &morselStage.StageHistory); err != nil {
+					return nil, fmt.Errorf("parse stuck dispatch stage history: %w", err)
+				}
 			}
 			detail.MorselContext = morselStage
 		}

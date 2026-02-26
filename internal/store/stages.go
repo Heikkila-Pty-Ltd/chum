@@ -53,12 +53,6 @@ func (s *Store) GetMorselStage(project, morselID string) (*MorselStage, error) {
 		return nil, fmt.Errorf("store: get morsel stage: %w", err)
 	}
 
-	// Parse stage history JSON
-	if historyJSON != "" && historyJSON != "[]" {
-		// For simplicity, we'll store history as JSON string - proper JSON unmarshaling would be added in production
-		// This is a placeholder for the stage history parsing
-	}
-
 	return &stage, nil
 }
 

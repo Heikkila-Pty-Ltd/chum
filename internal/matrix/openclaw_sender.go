@@ -45,11 +45,11 @@ func (s *OpenClawSender) SendMessage(ctx context.Context, roomID, message string
 
 	var directErr error
 	if s.direct != nil {
-		if err := s.direct.SendMessage(ctx, roomID, message); err == nil {
+		err := s.direct.SendMessage(ctx, roomID, message)
+		if err == nil {
 			return nil
-		} else {
-			directErr = err
 		}
+		directErr = err
 	}
 
 	args := []string{

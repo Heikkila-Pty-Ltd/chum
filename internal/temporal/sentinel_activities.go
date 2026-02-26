@@ -93,13 +93,13 @@ func (a *Activities) SentinelScanActivity(ctx context.Context, req SentinelScanR
 
 	if !buildBroken {
 		// Out-of-scope but build still passes — warn but allow
-		logger.Info(SharkPrefix+" Sentinel: out-of-scope files found but build OK, allowing")
+		logger.Info(SharkPrefix + " Sentinel: out-of-scope files found but build OK, allowing")
 		result.Passed = true
 		return result, nil
 	}
 
 	// 5. Build is broken — revert out-of-scope files and re-check
-	logger.Warn(SharkPrefix+" Sentinel: build broken with out-of-scope changes, reverting")
+	logger.Warn(SharkPrefix + " Sentinel: build broken with out-of-scope changes, reverting")
 	for _, f := range result.OutOfScopeFiles {
 		revertCmd := exec.CommandContext(ctx, "git", "checkout", "main", "--", f)
 		revertCmd.Dir = workDir

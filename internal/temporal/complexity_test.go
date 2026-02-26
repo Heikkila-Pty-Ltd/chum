@@ -67,6 +67,6 @@ func TestScoreTaskComplexity(t *testing.T) {
 			if got < tt.wantMin || got > tt.wantMax {
 				t.Errorf("ScoreTaskComplexity() = %v, want between [%v, %v]", got, tt.wantMin, tt.wantMax)
 			}
-		} )
+		})
 	}
 }

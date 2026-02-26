@@ -19,6 +19,9 @@ import (
 // ErrModelExhausted is returned when a model hits its usage/rate limit.
 var ErrModelExhausted = errors.New("model exhausted (rate/usage limit)")
 
+// ErrInfrastructureDead is returned when the execution environment is unavailable.
+var ErrInfrastructureDead = errors.New("infrastructure dead")
+
 // modelExhaustedPatterns are substrings that indicate rate/usage limits in CLI output.
 var modelExhaustedPatterns = []string{
 	"usage limit",
@@ -427,6 +430,7 @@ func (a *Activities) runAgentWithFailover(ctx context.Context, tier, prompt, wor
 	var lastErr error
 	var lastResult CLIResult
 
+agentLoop:
 	for i, agent := range chain {
 		// Check persisted exhaustion block (survives restarts).
 		if a.Store != nil && !globalFailureTracker.isCircuitOpen(agent) {
@@ -465,10 +469,23 @@ func (a *Activities) runAgentWithFailover(ctx context.Context, tier, prompt, wor
 		lastErr = err
 		lastResult = result
 
+		errKind := "agent_failure"
+		if errors.Is(err, ErrInfrastructureDead) {
+			errKind = "infrastructure_dead"
+			detail := fmt.Sprintf("Agent %s failed (tier=%s, attempt=%d/%d): %v",
+				agent, tier, i+1, len(chain), err)
+
+			logger.Error("🚨 Infrastructure failure — stopping failover", "Agent", agent, "Tier", tier,
+				"ErrorKind", errKind, "error", err)
+
+			// Infrastructure failure is terminal for this run and should not affect per-agent health.
+			a.alertAgentFailure(ctx, agent, tier, errKind, detail)
+			break agentLoop
+		}
+
 		circuitOpen := globalFailureTracker.recordFailure(agent)
 		failCount := globalFailureTracker.consecutiveFailures(agent)
 
-		errKind := "agent_failure"
 		if errors.Is(err, ErrModelExhausted) {
 			errKind = "model_exhausted"
 		}

@@ -772,4 +772,3 @@ func (s *Store) RecordEscalation(esc ProviderEscalation) error {
 	}
 	return nil
 }
-

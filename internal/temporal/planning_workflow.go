@@ -352,7 +352,7 @@ func PlanningCeremonyWorkflow(ctx workflow.Context, req PlanningRequest) (*TaskR
 				StateHash:  selectionStateHash,
 				ActionHash: selectionActionHash,
 				Reason:     gate.Code,
-					Metadata:   fmt.Sprintf(`{"message":%q}`, gate.Message),
+				Metadata:   fmt.Sprintf(`{"message":%q}`, gate.Message),
 			})
 			reviewAndProposeAlternatives(ctx, req, graph, branchID, "selection_"+gate.Code, selectedID, rankedCandidates, candidateScoreAdjustments)
 			handlePlanningGateFailure(ctx, req, graph, branchID, "selection", gate, selectedID, selectionStateHash, selectionActionHash)
@@ -517,7 +517,7 @@ func PlanningCeremonyWorkflow(ctx workflow.Context, req PlanningRequest) (*TaskR
 				StateHash:  questionsStateHash,
 				ActionHash: questionsActionHash,
 				Reason:     gate.Code,
-					Metadata:   fmt.Sprintf(`{"message":%q}`, gate.Message),
+				Metadata:   fmt.Sprintf(`{"message":%q}`, gate.Message),
 			})
 			recordPlanningSnapshot(ctx, req, PlanningSnapshotRecord{
 				Project:   req.Project,
@@ -671,7 +671,7 @@ func PlanningCeremonyWorkflow(ctx workflow.Context, req PlanningRequest) (*TaskR
 				StateHash:  stateHash,
 				ActionHash: actionHash,
 				Reason:     gate.Code,
-					Metadata:   fmt.Sprintf(`{"message":%q}`, gate.Message),
+				Metadata:   fmt.Sprintf(`{"message":%q}`, gate.Message),
 			})
 			recordPlanningSnapshot(ctx, req, PlanningSnapshotRecord{
 				Project:   req.Project,
@@ -1219,7 +1219,7 @@ func handlePlanningGateFailure(
 		SummaryText:    gate.Code,
 		FullText:       gate.Message,
 		Reward:         0,
-			MetadataJSON:   fmt.Sprintf(`{"code":%q,"message":%q}`, gate.Code, gate.Message),
+		MetadataJSON:   fmt.Sprintf(`{"code":%q,"message":%q}`, gate.Code, gate.Message),
 		SelectedOption: "",
 	})
 	rollbackPlanningState(ctx, req, graph, branchID, gate.Code)

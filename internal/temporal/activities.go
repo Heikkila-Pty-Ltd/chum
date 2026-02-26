@@ -31,11 +31,11 @@ type Activities struct {
 	Tiers       config.Tiers
 	CfgMgr      config.ConfigManager // hot-reloadable config for CLI dispatch
 	DAG         *graph.DAG
-	AST         *astpkg.Parser       // tree-sitter Go parser for codebase context injection
-	Sender      matrix.Sender        // Matrix notification sender (nil = disabled)
-	DefaultRoom string               // Matrix room ID for standard notifications
-	AdminRoom   string               // Matrix room ID for critical escalations (DM)
-	TurtleRoom  string               // Matrix room for turtle deliberation (3-agent conversation)
+	AST         *astpkg.Parser // tree-sitter Go parser for codebase context injection
+	Sender      matrix.Sender  // Matrix notification sender (nil = disabled)
+	DefaultRoom string         // Matrix room ID for standard notifications
+	AdminRoom   string         // Matrix room ID for critical escalations (DM)
+	TurtleRoom  string         // Matrix room for turtle deliberation (3-agent conversation)
 }
 
 // WorktreeDir returns the worktree directory path for a task/explosion pair.
@@ -755,6 +755,7 @@ func fallbackFileList(ctx context.Context, workDir string) string {
 	}
 	return strings.Join(sections, "\n")
 }
+
 // extractJSON finds the first JSON object in text (handles markdown code fences).
 // Applies sanitizeJSON to fix common LLM output issues (invalid escapes, trailing commas).
 func extractJSON(text string) string {

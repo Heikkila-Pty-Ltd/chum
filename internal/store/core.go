@@ -49,7 +49,7 @@ func NewCoreStore(dbPath string) (*Store, error) {
 
 // migrateCoreTables applies column backfills for the core tables only.
 // This is the subset of migrate() relevant to NewCoreStore — it covers
-// dispatches, provider_usage, and health_events columns/indexes.
+// dispatches, provider_usage, health_events, and token_usage columns/indexes.
 func migrateCoreTables(db *sql.DB) error {
 	// Legacy databases used "agent" instead of "agent_id". The DDL and all
 	// queries now expect agent_id, so rename if the old column exists.
@@ -136,6 +136,21 @@ func migrateCoreTables(db *sql.DB) error {
 	} {
 		if _, err := db.Exec(idx); err != nil {
 			return fmt.Errorf("create health_events index: %w", err)
+		}
+	}
+
+	// token_usage column backfills for legacy schemas that predate cache metrics.
+	// Older DBs lack cache_read_tokens and cache_creation_tokens, which causes
+	// StoreTokenUsage() to fail with "no such column" errors.
+	for _, col := range []struct {
+		column string
+		ddl    string
+	}{
+		{"cache_read_tokens", "cache_read_tokens INTEGER NOT NULL DEFAULT 0"},
+		{"cache_creation_tokens", "cache_creation_tokens INTEGER NOT NULL DEFAULT 0"},
+	} {
+		if err := addColumnIfNotExists(db, "token_usage", col.column, col.ddl); err != nil {
+			return err
 		}
 	}
 

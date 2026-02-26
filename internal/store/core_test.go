@@ -135,11 +135,13 @@ func TestCoreStoreDispatchLifecycle(t *testing.T) {
 		t.Fatalf("RecordHealthEvent failed: %v", err)
 	}
 
-	// Record token usage
+	// Record token usage (including cache tokens to verify migration works)
 	err = s.StoreTokenUsage(id, "morsel-1", "proj", "execute", "agent-1", TokenUsage{
-		InputTokens:  100,
-		OutputTokens: 50,
-		CostUSD:      0.01,
+		InputTokens:         100,
+		OutputTokens:        50,
+		CacheReadTokens:     20,
+		CacheCreationTokens: 10,
+		CostUSD:             0.01,
 	})
 	if err != nil {
 		t.Fatalf("StoreTokenUsage failed: %v", err)
@@ -209,5 +211,72 @@ func TestNewCoreStoreUpgradesLegacyDB(t *testing.T) {
 	}
 	if id == 0 {
 		t.Fatal("expected non-zero dispatch ID")
+	}
+}
+
+// TestNewCoreStoreUpgradesLegacyTokenUsage verifies that NewCoreStore applies
+// cache token column migrations to legacy token_usage tables.
+func TestNewCoreStoreUpgradesLegacyTokenUsage(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "legacy-token-usage.db")
+
+	// Simulate a legacy DB with token_usage table missing cache columns.
+	db, err := sql.Open("sqlite", dbPath+"?_pragma=journal_mode(WAL)")
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS token_usage (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		dispatch_id INTEGER NOT NULL DEFAULT 0,
+		morsel_id TEXT NOT NULL DEFAULT '',
+		project TEXT NOT NULL DEFAULT '',
+		activity_name TEXT NOT NULL DEFAULT '',
+		agent TEXT NOT NULL DEFAULT '',
+		input_tokens INTEGER NOT NULL DEFAULT 0,
+		output_tokens INTEGER NOT NULL DEFAULT 0,
+		cost_usd REAL NOT NULL DEFAULT 0,
+		recorded_at DATETIME NOT NULL DEFAULT (datetime('now'))
+	)`)
+	if err != nil {
+		t.Fatalf("create legacy token_usage: %v", err)
+	}
+	// Create minimal dispatches table for foreign key constraint.
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS dispatches (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		morsel_id TEXT NOT NULL,
+		project TEXT NOT NULL,
+		agent_id TEXT NOT NULL,
+		provider TEXT NOT NULL,
+		tier TEXT NOT NULL,
+		prompt TEXT NOT NULL,
+		status TEXT NOT NULL DEFAULT 'running'
+	)`)
+	if err != nil {
+		t.Fatalf("create dispatches: %v", err)
+	}
+	db.Close()
+
+	// Re-open with NewCoreStore — should backfill cache token columns.
+	s, err := NewCoreStore(dbPath)
+	if err != nil {
+		t.Fatalf("NewCoreStore on legacy token_usage DB failed: %v", err)
+	}
+	defer s.Close()
+
+	// Verify cache columns exist by inserting a record with cache tokens.
+	dispatchID, err := s.RecordDispatch("morsel-cache-test", "proj", "agent-1", "cerebras", "fast", 100, "", "test", "", "", "")
+	if err != nil {
+		t.Fatalf("RecordDispatch: %v", err)
+	}
+
+	// This should NOT fail with "no such column: cache_read_tokens".
+	err = s.StoreTokenUsage(dispatchID, "morsel-cache-test", "proj", "execute", "agent-1", TokenUsage{
+		InputTokens:         100,
+		OutputTokens:        50,
+		CacheReadTokens:     20,
+		CacheCreationTokens: 10,
+		CostUSD:             0.01,
+	})
+	if err != nil {
+		t.Fatalf("StoreTokenUsage with cache tokens failed: %v", err)
 	}
 }

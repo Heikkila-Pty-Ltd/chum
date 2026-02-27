@@ -646,6 +646,53 @@ func (a *Activities) CloseTaskActivity(ctx context.Context, taskID, finalStatus 
 	return nil
 }
 
+// MarkMorselDoneActivity updates the morsel .md file on disk from status: ready
+// to status: done and commits the change. This prevents the dispatcher from
+// re-dispatching completed tasks. Non-fatal: returns nil on any failure.
+func (a *Activities) MarkMorselDoneActivity(ctx context.Context, workDir, taskID string) error {
+	logger := activity.GetLogger(ctx)
+
+	morselPath := filepath.Join(workDir, ".morsels", taskID+".md")
+	data, err := os.ReadFile(morselPath)
+	if err != nil {
+		logger.Warn(SharkPrefix+" Morsel file not found (non-fatal)", "path", morselPath, "error", err)
+		return nil
+	}
+
+	// Replace status: ready with status: done in YAML frontmatter.
+	// The frontmatter is delimited by --- lines at the top of the file.
+	re := regexp.MustCompile(`(?m)^status:\s*ready\b.*$`)
+	updated := re.ReplaceAllString(string(data), "status: done")
+	if updated == string(data) {
+		logger.Info(SharkPrefix+" Morsel already marked done or has non-ready status", "task", taskID)
+		return nil
+	}
+
+	if err := os.WriteFile(morselPath, []byte(updated), 0o644); err != nil {
+		logger.Warn(SharkPrefix+" Failed to write morsel file (non-fatal)", "path", morselPath, "error", err)
+		return nil
+	}
+
+	// Git add + commit
+	addCmd := exec.CommandContext(ctx, "git", "add", morselPath)
+	addCmd.Dir = workDir
+	if err := addCmd.Run(); err != nil {
+		logger.Warn(SharkPrefix+" git add morsel failed (non-fatal)", "error", err)
+		return nil
+	}
+
+	commitMsg := fmt.Sprintf("chore: mark morsel %s as done", taskID)
+	commitCmd := exec.CommandContext(ctx, "git", "commit", "-m", commitMsg)
+	commitCmd.Dir = workDir
+	if out, err := commitCmd.CombinedOutput(); err != nil {
+		logger.Warn(SharkPrefix+" git commit morsel failed (non-fatal)", "error", err, "output", string(out))
+		return nil
+	}
+
+	logger.Info(SharkPrefix+" Morsel marked as done", "task", taskID)
+	return nil
+}
+
 // RecordHealthEventActivity records a health event to the store from within a
 // workflow. This makes crabs, grooming, and other workflows visible to the
 // octopus and stingray observability system.

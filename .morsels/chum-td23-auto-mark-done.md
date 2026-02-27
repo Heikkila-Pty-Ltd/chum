@@ -1,6 +1,6 @@
 ---
 title: "Auto-mark morsel as done when shark catches land"
-status: ready
+status: done
 priority: 0
 type: task
 labels:

@@ -1,6 +1,6 @@
 ---
 title: "Add provider_genes column to genomes table"
-status: ready
+status: done # already fixed — migration exists in migrate.go:67, column in genomes.go DDL
 priority: 0
 type: task
 labels:

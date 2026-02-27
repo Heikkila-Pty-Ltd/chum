@@ -2,9 +2,11 @@ package temporal
 
 import (
 	"encoding/json"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.temporal.io/sdk/testsuite"
 
 	"github.com/antigravity-dev/chum/internal/config"
 )
@@ -137,6 +139,69 @@ func TestParseAgentOutput_RoutesCodex(t *testing.T) {
 	result := parseAgentOutput("codex", raw)
 	require.Equal(t, raw, result.Output)
 	require.Equal(t, 0, result.Tokens.InputTokens)
+}
+
+func TestMarkMorselDoneActivity(t *testing.T) {
+	a := &Activities{}
+	s := testsuite.WorkflowTestSuite{}
+	actEnv := s.NewTestActivityEnvironment()
+	actEnv.RegisterActivity(a.MarkMorselDoneActivity)
+
+	t.Run("updates ready to done", func(t *testing.T) {
+		dir := t.TempDir()
+		morselsDir := dir + "/.morsels"
+		require.NoError(t, os.MkdirAll(morselsDir, 0o755))
+
+		content := "---\ntitle: \"Test task\"\nstatus: ready\npriority: 1\n---\n\nSome description.\n"
+		require.NoError(t, os.WriteFile(morselsDir+"/test-task.md", []byte(content), 0o644))
+
+		_, err := actEnv.ExecuteActivity(a.MarkMorselDoneActivity, dir, "test-task")
+		require.NoError(t, err)
+
+		got, err := os.ReadFile(morselsDir + "/test-task.md")
+		require.NoError(t, err)
+		require.Contains(t, string(got), "status: done")
+		require.NotContains(t, string(got), "status: ready")
+	})
+
+	t.Run("idempotent on already done", func(t *testing.T) {
+		dir := t.TempDir()
+		morselsDir := dir + "/.morsels"
+		require.NoError(t, os.MkdirAll(morselsDir, 0o755))
+
+		content := "---\ntitle: \"Test task\"\nstatus: done\npriority: 1\n---\n\nDone task.\n"
+		require.NoError(t, os.WriteFile(morselsDir+"/done-task.md", []byte(content), 0o644))
+
+		_, err := actEnv.ExecuteActivity(a.MarkMorselDoneActivity, dir, "done-task")
+		require.NoError(t, err)
+
+		got, err := os.ReadFile(morselsDir + "/done-task.md")
+		require.NoError(t, err)
+		require.Contains(t, string(got), "status: done")
+	})
+
+	t.Run("missing file returns nil", func(t *testing.T) {
+		dir := t.TempDir()
+		_, err := actEnv.ExecuteActivity(a.MarkMorselDoneActivity, dir, "nonexistent")
+		require.NoError(t, err)
+	})
+
+	t.Run("handles status with comment", func(t *testing.T) {
+		dir := t.TempDir()
+		morselsDir := dir + "/.morsels"
+		require.NoError(t, os.MkdirAll(morselsDir, 0o755))
+
+		content := "---\ntitle: \"Commented task\"\nstatus: ready # waiting for deps\npriority: 0\n---\n"
+		require.NoError(t, os.WriteFile(morselsDir+"/commented.md", []byte(content), 0o644))
+
+		_, err := actEnv.ExecuteActivity(a.MarkMorselDoneActivity, dir, "commented")
+		require.NoError(t, err)
+
+		got, err := os.ReadFile(morselsDir + "/commented.md")
+		require.NoError(t, err)
+		require.Contains(t, string(got), "status: done")
+		require.NotContains(t, string(got), "status: ready")
+	})
 }
 
 func TestTokenUsageAdd(t *testing.T) {

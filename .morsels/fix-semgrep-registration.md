@@ -1,6 +1,6 @@
 ---
 title: "Register RunSemgrepScanActivity in Temporal worker"
-status: ready
+status: done # stale — RunSemgrepScanActivity never existed; actual activity is GenerateSemgrepRuleActivity, already registered in worker.go:141
 priority: 0
 type: task
 labels:

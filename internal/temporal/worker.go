@@ -108,6 +108,7 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 	w.RegisterActivity(acts.CleanupWorktreeActivity)
 	w.RegisterActivity(acts.RecordOutcomeActivity)
 	w.RegisterActivity(acts.CloseTaskActivity)
+	w.RegisterActivity(acts.MarkMorselDoneActivity)
 	w.RegisterActivity(acts.RecordHealthEventActivity)
 	w.RegisterActivity(acts.RecordOrganismLogActivity)
 	w.RegisterActivity(acts.EscalateActivity)

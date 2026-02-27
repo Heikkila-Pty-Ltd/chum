@@ -609,6 +609,12 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 				closeCtx := workflow.WithActivityOptions(ctx, recordOpts)
 				_ = workflow.ExecuteActivity(closeCtx, a.CloseTaskActivity, req.TaskID, "completed").Get(ctx, nil)
 
+				// Mark morsel file as done — prevents re-dispatch
+				markCtx := workflow.WithActivityOptions(ctx, recordOpts)
+				if err := workflow.ExecuteActivity(markCtx, a.MarkMorselDoneActivity, baseWorkDir, req.TaskID).Get(ctx, nil); err != nil {
+					logger.Warn(SharkPrefix+" Failed to mark morsel done (non-fatal)", "error", err)
+				}
+
 				recordOutcome(ctx, recordOpts, a, req, "completed", 0,
 					true, "", startTime, totalTokens, activityTokens, stepMetrics)
 

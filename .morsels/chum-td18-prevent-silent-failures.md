@@ -1,6 +1,6 @@
 ---
 title: "Prevent silent failures in CHUM pipeline"
-status: ready
+status: done # PRs #39, #41 — RecordHealthEvent on learner/groom paths, System Health in briefing, Matrix send, UTF-8 safe truncation
 priority: 1
 type: task
 labels:

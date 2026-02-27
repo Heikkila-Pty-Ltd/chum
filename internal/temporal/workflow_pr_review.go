@@ -17,7 +17,7 @@ func PRReviewWorkflow(ctx workflow.Context, req PRReviewRequest) error {
 	logger.Info("PR review workflow started", "pr", req.PRNumber, "author", req.Author)
 
 	reviewOpts := workflow.ActivityOptions{
-		StartToCloseTimeout: 5 * time.Minute,
+		StartToCloseTimeout: 10 * time.Minute,
 		RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 1},
 	}
 	reviewCtx := workflow.WithActivityOptions(ctx, reviewOpts)

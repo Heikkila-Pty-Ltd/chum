@@ -11,11 +11,11 @@ stuck_timeout = "30m"
 max_retries = 2
 log_level = "info"
 slow_step_threshold = "2m"
-state_db = "~/.local/share/chum/chum.db"
+state_db = "/home/ubuntu/.local/share/chum/chum.db"
 
 [projects.chum]
 enabled = false  # DISABLED: self-referential editing is too risky
-morsels_dir = "~/projects/cortex/.morsels"
+morsels_dir = "/home/ubuntu/projects/cortex/.morsels"
 workspace = "~/projects/cortex"
 priority = 0
 
@@ -31,7 +31,7 @@ require_acceptance = true
 
 [projects.golf-directory]
 enabled = true
-morsels_dir = "~/projects/golf-directory/.morsels"
+morsels_dir = "/home/ubuntu/projects/golf-directory/.morsels"
 workspace = "~/projects/golf-directory"
 priority = 1
 

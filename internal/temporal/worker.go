@@ -212,6 +212,10 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 	w.RegisterActivity(acts.PromoteCalcifiedScriptActivity)
 	w.RegisterActivity(acts.QuarantineAndRewireActivity)
 
+	// --- PR Review (Cross-Model Automated Review) ---
+	w.RegisterWorkflow(PRReviewWorkflow)
+	w.RegisterActivity(acts.ReviewPRActivity)
+
 	// --- Janitor (Worktree/Branch Cleanup) ---
 	w.RegisterWorkflow(JanitorWorkflow)
 	w.RegisterActivity(acts.JanitorSweepActivity)

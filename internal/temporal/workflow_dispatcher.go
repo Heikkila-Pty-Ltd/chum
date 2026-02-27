@@ -71,6 +71,8 @@ func DispatcherWorkflow(ctx workflow.Context, _ struct{}) error {
 
 	if len(result.Candidates) == 0 {
 		logger.Debug(SharkPrefix+" Dispatcher: nothing to dispatch", "running", result.Running)
+		// Still check for failed workflows even when there's nothing to dispatch.
+		checkAndSpawnPostMortems(ctx, da)
 		return nil
 	}
 
@@ -197,7 +199,21 @@ func DispatcherWorkflow(ctx workflow.Context, _ struct{}) error {
 		"running", result.Running,
 	)
 
-	// === POST-MORTEM: check for failed workflows and spawn investigations ===
+	checkAndSpawnPostMortems(ctx, da)
+
+	recordOrganismLog(ctx, "dispatcher", "", "", "completed",
+		fmt.Sprintf("%d dispatched, %d running, %d candidates",
+			dispatched, result.Running, len(result.Candidates)),
+		startTime, dispatched, "")
+
+	return nil
+}
+
+// checkAndSpawnPostMortems queries for recently failed workflows and spawns
+// PostMortemWorkflow children for each new failure. Non-fatal: errors are
+// logged but never fail the dispatcher tick.
+func checkAndSpawnPostMortems(ctx workflow.Context, da *DispatchActivities) {
+	logger := workflow.GetLogger(ctx)
 	failureCheckOpts := workflow.ActivityOptions{
 		StartToCloseTimeout: 1 * time.Minute,
 		RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 1},
@@ -207,45 +223,41 @@ func DispatcherWorkflow(ctx workflow.Context, _ struct{}) error {
 	var failures []FailedWorkflow
 	if err := workflow.ExecuteActivity(failCtx, da.CheckFailedWorkflowsActivity).Get(ctx, &failures); err != nil {
 		logger.Warn(SharkPrefix+" Dispatcher: failed workflow check failed (non-fatal)", "error", err)
-	} else if len(failures) > 0 {
-		logger.Info(SharkPrefix+" Dispatcher: found failed workflows to investigate", "count", len(failures))
-
-		for _, fw := range failures {
-			// Fetch context for each failure
-			var fc FailureContext
-			if err := workflow.ExecuteActivity(failCtx, da.FetchFailureContextActivity, fw).Get(ctx, &fc); err != nil {
-				logger.Warn(SharkPrefix+" Dispatcher: fetch failure context failed", "workflow_id", fw.WorkflowID, "error", err)
-				continue
-			}
-
-			// Spawn PostMortemWorkflow as fire-and-forget child
-			pmOpts := workflow.ChildWorkflowOptions{
-				WorkflowID:        fmt.Sprintf("postmortem-%s-%d", fw.WorkflowID, workflow.Now(ctx).Unix()),
-				ParentClosePolicy: enumspb.PARENT_CLOSE_POLICY_ABANDON,
-			}
-			pmCtx := workflow.WithChildOptions(ctx, pmOpts)
-			pmFut := workflow.ExecuteChildWorkflow(pmCtx, PostMortemWorkflow, PostMortemRequest{
-				Failure: fc,
-				Project: "chum",
-				Tier:    "fast",
-			})
-			var pmExec workflow.Execution
-			if err := pmFut.GetChildWorkflowExecution().Get(ctx, &pmExec); err != nil {
-				logger.Warn(SharkPrefix+" Dispatcher: postmortem workflow failed to start",
-					"workflow_id", fw.WorkflowID, "error", err)
-			} else {
-				logger.Info(SharkPrefix+" Dispatcher: postmortem spawned",
-					"failed_workflow", fw.WorkflowID, "postmortem_id", pmExec.ID)
-			}
-		}
+		return
 	}
 
-	recordOrganismLog(ctx, "dispatcher", "", "", "completed",
-		fmt.Sprintf("%d dispatched, %d running, %d candidates",
-			dispatched, result.Running, len(result.Candidates)),
-		startTime, dispatched, "")
+	if len(failures) == 0 {
+		return
+	}
 
-	return nil
+	logger.Info(SharkPrefix+" Dispatcher: found failed workflows to investigate", "count", len(failures))
+
+	for _, fw := range failures {
+		var fc FailureContext
+		if err := workflow.ExecuteActivity(failCtx, da.FetchFailureContextActivity, fw).Get(ctx, &fc); err != nil {
+			logger.Warn(SharkPrefix+" Dispatcher: fetch failure context failed", "workflow_id", fw.WorkflowID, "error", err)
+			continue
+		}
+
+		pmOpts := workflow.ChildWorkflowOptions{
+			WorkflowID:        fmt.Sprintf("postmortem-%s-%d", fw.WorkflowID, workflow.Now(ctx).Unix()),
+			ParentClosePolicy: enumspb.PARENT_CLOSE_POLICY_ABANDON,
+		}
+		pmCtx := workflow.WithChildOptions(ctx, pmOpts)
+		pmFut := workflow.ExecuteChildWorkflow(pmCtx, PostMortemWorkflow, PostMortemRequest{
+			Failure: fc,
+			Project: "chum",
+			Tier:    "fast",
+		})
+		var pmExec workflow.Execution
+		if err := pmFut.GetChildWorkflowExecution().Get(ctx, &pmExec); err != nil {
+			logger.Warn(SharkPrefix+" Dispatcher: postmortem workflow failed to start",
+				"workflow_id", fw.WorkflowID, "error", err)
+		} else {
+			logger.Info(SharkPrefix+" Dispatcher: postmortem spawned",
+				"failed_workflow", fw.WorkflowID, "postmortem_id", pmExec.ID)
+		}
+	}
 }
 
 // workflowTimeout calculates WorkflowExecutionTimeout from task estimate.

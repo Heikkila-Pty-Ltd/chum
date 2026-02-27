@@ -1474,7 +1474,7 @@ func (a *Activities) AutoFixLintActivity(ctx context.Context, workDir string) (*
 		if err := stageCmd.Run(); err != nil {
 			logger.Warn(OrcaPrefix+" git add failed during auto-fix", "error", err)
 		} else {
-			commitCmd := exec.CommandContext(ctx, "git", "commit", "-m", "chore: auto-fix formatting (gofmt/goimports)", "--no-verify")
+			commitCmd := exec.CommandContext(ctx, "git", "commit", "-m", "chore: auto-fix formatting (gofmt/goimports)")
 			commitCmd.Dir = workDir
 			if err := commitCmd.Run(); err != nil {
 				logger.Warn(OrcaPrefix+" git commit failed during auto-fix", "error", err)

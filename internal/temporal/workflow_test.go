@@ -465,11 +465,19 @@ func TestContinuousLearnerWorkflowPipeline(t *testing.T) {
 		{TaskID: "morsel-1", Category: "pattern", Summary: "table-driven tests"},
 	}
 
+	env.OnActivity(a.SetupWorktreeActivity, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return("/tmp/learner-wt", nil)
+	env.OnActivity(a.CleanupWorktreeActivity, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity(a.ExtractLessonsActivity, mock.Anything, mock.Anything).Return(lessons, nil)
 	env.OnActivity(a.StoreLessonActivity, mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity(a.GenerateSemgrepRuleActivity, mock.Anything, mock.Anything, mock.Anything).Return([]SemgrepRule{
 		{RuleID: "chum-nil-check", FileName: "chum-nil-check.yaml", Content: "rules: []"},
 	}, nil)
+	env.OnActivity(a.SynthesizeCLAUDEmdActivity, mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity(a.CalcifyPatternActivity, mock.Anything, mock.Anything).Return(false, nil)
+	env.OnActivity(a.CommitLearnerOutputsActivity, mock.Anything, mock.Anything, mock.Anything).Return(true, nil)
+	env.OnActivity(a.PushWorktreeActivity, mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity(a.MergeToMainActivity, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity(a.NotifyActivity, mock.Anything, mock.Anything).Return(nil)
 
 	env.ExecuteWorkflow(ContinuousLearnerWorkflow, LearnerRequest{
 		TaskID:  "morsel-1",

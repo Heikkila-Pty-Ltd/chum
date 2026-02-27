@@ -19,6 +19,7 @@ import (
 
 	enumspb "go.temporal.io/api/enums/v1"
 	"go.temporal.io/api/serviceerror"
+	"go.temporal.io/api/workflowservice/v1"
 	tclient "go.temporal.io/sdk/client"
 
 	"github.com/antigravity-dev/chum/internal/api"
@@ -250,19 +251,117 @@ func runAdminMode(args []string, logger *slog.Logger) error {
 	return nil
 }
 
-// acquirePIDFile checks for an existing CHUM process and writes a new PID file.
-// Prevents multiple CHUM instances (e.g. from different worktrees) from competing
-// for the same port and database.
+// killAllChumProcesses finds and kills ALL chum binary processes except the current one.
+// Only matches processes whose executable is a chum binary (not shell commands that
+// happen to mention "chum" in their arguments).
+// Returns the number of processes killed.
+func killAllChumProcesses(logger *slog.Logger) int {
+	self := os.Getpid()
+	killed := 0
+
+	out, err := exec.Command("pgrep", "-f", `chum`).Output()
+	if err != nil {
+		// pgrep exits 1 when no matches — not an error.
+		return 0
+	}
+
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		pid, parseErr := strconv.Atoi(strings.TrimSpace(line))
+		if parseErr != nil || pid == self || pid == os.Getppid() {
+			continue
+		}
+
+		proc, findErr := os.FindProcess(pid)
+		if findErr != nil {
+			continue
+		}
+		if sigErr := proc.Signal(syscall.Signal(0)); sigErr != nil {
+			continue
+		}
+
+		// Read the executable path via /proc to confirm it's actually a chum binary.
+		exePath, readErr := os.Readlink(fmt.Sprintf("/proc/%d/exe", pid))
+		if readErr != nil {
+			continue
+		}
+		if !strings.HasSuffix(filepath.Base(exePath), "chum") {
+			continue
+		}
+
+		// Read cmdline for logging.
+		cmdline, _ := os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid))
+		cmdStr := strings.ReplaceAll(string(cmdline), "\x00", " ")
+
+		logger.Info("killing chum process", "pid", pid, "exe", exePath, "cmd", strings.TrimSpace(cmdStr))
+		_ = proc.Signal(syscall.SIGTERM)
+
+		dead := false
+		for i := 0; i < 10; i++ {
+			time.Sleep(500 * time.Millisecond)
+			if sigErr := proc.Signal(syscall.Signal(0)); sigErr != nil {
+				dead = true
+				break
+			}
+		}
+		if !dead {
+			logger.Warn("process did not exit after SIGTERM, sending SIGKILL", "pid", pid)
+			_ = proc.Signal(syscall.SIGKILL)
+		}
+		killed++
+	}
+
+	// Clean up PID file.
+	pidPath := filepath.Join(dataDir(), "chum.pid")
+	if _, statErr := os.Stat(pidPath); statErr == nil {
+		os.Remove(pidPath)
+		logger.Info("removed pid file", "path", pidPath)
+	}
+
+	return killed
+}
+
+// terminateTemporalWorkflows terminates all running ChumAgentWorkflows via the
+// Temporal batch API. Best-effort: logs errors but does not fail the caller.
+func terminateTemporalWorkflows(logger *slog.Logger) {
+	namespace := resolveTemporalNamespace()
+	hostPort := strings.TrimSpace(os.Getenv("TEMPORAL_HOST_PORT"))
+	if hostPort == "" {
+		hostPort = temporal.DefaultTemporalHostPort
+	}
+
+	tc, err := tclient.Dial(tclient.Options{
+		HostPort:  hostPort,
+		Namespace: namespace,
+	})
+	if err != nil {
+		logger.Warn("cannot connect to temporal to terminate workflows", "error", err)
+		return
+	}
+	defer tc.Close()
+
+	query := temporal.ChumAgentRunningVisibilityQuery()
+	opID, termErr := temporal.StartTerminateAgentWorkflows(context.Background(), tc.WorkflowService(), namespace, query)
+	if termErr != nil {
+		// serviceerror.NotFound means no matching workflows — that's fine.
+		var notFound *serviceerror.NotFound
+		if errors.As(termErr, &notFound) {
+			logger.Info("no running temporal workflows to terminate")
+			return
+		}
+		logger.Warn("failed to terminate temporal workflows", "error", termErr)
+		return
+	}
+	logger.Info("temporal workflows terminated", "operation_id", opID)
+}
+
+// acquirePIDFile writes a new PID file after verifying no other instance holds it.
 func acquirePIDFile(pidPath, exe string, logger *slog.Logger) error {
 	data, err := os.ReadFile(pidPath)
 	if err == nil {
-		// PID file exists — check if process is still alive.
 		lines := strings.SplitN(string(data), "\n", 2)
 		if pid, parseErr := strconv.Atoi(strings.TrimSpace(lines[0])); parseErr == nil {
-			// Check if process exists by sending signal 0.
 			if process, findErr := os.FindProcess(pid); findErr == nil {
 				if signalErr := process.Signal(syscall.Signal(0)); signalErr == nil {
-					// Process is alive — read its binary path from PID file.
 					otherBinary := "unknown"
 					if len(lines) > 1 {
 						otherBinary = strings.TrimSpace(lines[1])
@@ -271,65 +370,298 @@ func acquirePIDFile(pidPath, exe string, logger *slog.Logger) error {
 				}
 			}
 		}
-		// Stale PID file — process is dead, safe to overwrite.
 		logger.Info("removing stale pid file", "pidfile", pidPath)
 	}
 
-	// Write new PID file: line 1 = PID, line 2 = binary path.
 	content := fmt.Sprintf("%d\n%s\n", os.Getpid(), exe)
 	return os.WriteFile(pidPath, []byte(content), 0644)
 }
 
-// runStopCommand reads the PID file, sends SIGTERM, waits for graceful shutdown,
-// and removes the PID file. Simple and reliable.
+// runStopCommand kills ALL chum processes and terminates running Temporal workflows.
+// Usage: chum stop
+//
+//nolint:unparam // error return kept for interface consistency with other run*Command funcs
 func runStopCommand(logger *slog.Logger) error {
+	fmt.Println("stopping all chum processes...")
+
+	killed := killAllChumProcesses(logger)
+	if killed == 0 {
+		fmt.Println("no chum processes found")
+	} else {
+		fmt.Printf("killed %d chum process(es)\n", killed)
+	}
+
+	fmt.Println("terminating running temporal workflows...")
+	terminateTemporalWorkflows(logger)
+
+	fmt.Println("chum stopped")
+	return nil
+}
+
+// runStatusCommand shows the current state of chum processes and Temporal workflows.
+// Usage: chum status
+func runStatusCommand(_ *slog.Logger) error {
+	// 1. PID file check.
 	pidPath := filepath.Join(dataDir(), "chum.pid")
 	data, err := os.ReadFile(pidPath)
 	if err != nil {
-		return fmt.Errorf("no running chum found (no pid file at %s)", pidPath)
-	}
-
-	lines := strings.SplitN(string(data), "\n", 2)
-	pid, err := strconv.Atoi(strings.TrimSpace(lines[0]))
-	if err != nil {
-		os.Remove(pidPath)
-		return fmt.Errorf("invalid pid file, removed: %w", err)
-	}
-
-	process, err := os.FindProcess(pid)
-	if err != nil {
-		os.Remove(pidPath)
-		return fmt.Errorf("process %d not found, removed stale pid file", pid)
-	}
-
-	// Check if process is alive
-	if sigErr := process.Signal(syscall.Signal(0)); sigErr != nil {
-		os.Remove(pidPath)
-		logger.Info("process already dead, removed stale pid file", "pid", pid)
-		return nil //nolint:nilerr // dead process is success
-	}
-
-	logger.Info("sending SIGTERM to chum worker", "pid", pid)
-	if err := process.Signal(syscall.SIGTERM); err != nil {
-		return fmt.Errorf("failed to send SIGTERM to pid %d: %w", pid, err)
-	}
-
-	// Wait up to 10 seconds for graceful shutdown
-	for i := 0; i < 20; i++ {
-		time.Sleep(500 * time.Millisecond)
-		if sigErr := process.Signal(syscall.Signal(0)); sigErr != nil {
-			os.Remove(pidPath)
-			logger.Info("chum worker stopped", "pid", pid)
-			return nil //nolint:nilerr // dead process is success
+		fmt.Println("pid file:   not found")
+	} else {
+		lines := strings.SplitN(string(data), "\n", 2)
+		pid, parseErr := strconv.Atoi(strings.TrimSpace(lines[0]))
+		if parseErr != nil {
+			fmt.Println("pid file:   invalid")
+		} else {
+			proc, findErr := os.FindProcess(pid)
+			alive := findErr == nil && proc.Signal(syscall.Signal(0)) == nil
+			binary := "unknown"
+			if len(lines) > 1 {
+				binary = strings.TrimSpace(lines[1])
+			}
+			status := "dead (stale pid file)"
+			if alive {
+				status = "running"
+			}
+			fmt.Printf("pid file:   %d (%s) — %s\n", pid, binary, status)
 		}
 	}
 
-	// Force kill if still alive
-	logger.Warn("graceful shutdown timed out, sending SIGKILL", "pid", pid)
-	_ = process.Signal(syscall.SIGKILL)
-	time.Sleep(500 * time.Millisecond)
-	os.Remove(pidPath)
-	logger.Info("chum worker killed", "pid", pid)
+	// 2. All chum processes via pgrep, verified by /proc/PID/exe.
+	out, pgrepErr := exec.Command("pgrep", "-f", `chum`).Output()
+	if pgrepErr != nil {
+		fmt.Println("processes:  none")
+	} else {
+		self := os.Getpid()
+		var procs []string
+		for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+			pid, parseErr := strconv.Atoi(strings.TrimSpace(line))
+			if parseErr != nil || pid == self || pid == os.Getppid() {
+				continue
+			}
+			exePath, readErr := os.Readlink(fmt.Sprintf("/proc/%d/exe", pid))
+			if readErr != nil || !strings.HasSuffix(filepath.Base(exePath), "chum") {
+				continue
+			}
+			cmdline, _ := os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid))
+			cmdStr := strings.ReplaceAll(string(cmdline), "\x00", " ")
+			procs = append(procs, fmt.Sprintf("  pid %d: %s", pid, strings.TrimSpace(cmdStr)))
+		}
+		if len(procs) == 0 {
+			fmt.Println("processes:  none")
+		} else {
+			fmt.Printf("processes:  %d found\n", len(procs))
+			for _, p := range procs {
+				fmt.Println(p)
+			}
+		}
+	}
+
+	// 3. Temporal connection check.
+	namespace := resolveTemporalNamespace()
+	hostPort := strings.TrimSpace(os.Getenv("TEMPORAL_HOST_PORT"))
+	if hostPort == "" {
+		hostPort = temporal.DefaultTemporalHostPort
+	}
+
+	tc, dialErr := tclient.Dial(tclient.Options{
+		HostPort:  hostPort,
+		Namespace: namespace,
+	})
+	if dialErr != nil {
+		fmt.Printf("temporal:   cannot connect (%s)\n", dialErr)
+		return nil
+	}
+	defer tc.Close()
+
+	query := temporal.ChumAgentRunningVisibilityQuery()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	resp, listErr := tc.ListWorkflow(ctx, &workflowservice.ListWorkflowExecutionsRequest{
+		Query: query,
+	})
+	if listErr != nil {
+		fmt.Printf("temporal:   connected but query failed (%s)\n", listErr)
+		return nil
+	}
+
+	fmt.Printf("temporal:   connected (%s/%s)\n", hostPort, namespace)
+	fmt.Printf("workflows:  %d running\n", len(resp.Executions))
+	for _, wf := range resp.Executions {
+		fmt.Printf("  %s (run: %s)\n", wf.Execution.WorkflowId, wf.Execution.RunId[:8])
+	}
+
+	return nil
+}
+
+// runDoctorCommand diagnoses common chum problems: orphaned processes, stale PID
+// files, Temporal connectivity, database health, and log errors.
+// Usage: chum doctor [--config chum.toml]
+func runDoctorCommand(args []string, _ *slog.Logger) error {
+	fs := flag.NewFlagSet("doctor", flag.ContinueOnError)
+	configPath := fs.String("config", "chum.toml", "path to config file")
+	if len(args) > 2 {
+		if parseErr := fs.Parse(args[2:]); parseErr != nil {
+			return parseErr
+		}
+	}
+
+	issues := 0
+	fmt.Println("chum doctor — diagnosing system health")
+	fmt.Println()
+
+	// Check 1: Orphaned processes (verified via /proc/PID/exe).
+	fmt.Println("[processes]")
+	self := os.Getpid()
+	out, pgrepErr := exec.Command("pgrep", "-f", `chum`).Output()
+	if pgrepErr != nil {
+		fmt.Println("  OK: no chum processes running")
+	} else {
+		var orphans []string
+		pidPath := filepath.Join(dataDir(), "chum.pid")
+		pidData, _ := os.ReadFile(pidPath)
+		trackedPID := -1
+		if pidData != nil {
+			lines := strings.SplitN(string(pidData), "\n", 2)
+			trackedPID, _ = strconv.Atoi(strings.TrimSpace(lines[0]))
+		}
+
+		for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+			pid, parseErr := strconv.Atoi(strings.TrimSpace(line))
+			if parseErr != nil || pid == self || pid == os.Getppid() {
+				continue
+			}
+			exePath, readErr := os.Readlink(fmt.Sprintf("/proc/%d/exe", pid))
+			if readErr != nil || !strings.HasSuffix(filepath.Base(exePath), "chum") {
+				continue
+			}
+			cmdline, _ := os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid))
+			cmdStr := strings.TrimSpace(strings.ReplaceAll(string(cmdline), "\x00", " "))
+			if pid == trackedPID {
+				fmt.Printf("  OK: tracked process %d is alive\n", pid)
+			} else {
+				orphans = append(orphans, fmt.Sprintf("  WARN: orphaned process pid %d: %s", pid, cmdStr))
+				issues++
+			}
+		}
+		for _, o := range orphans {
+			fmt.Println(o)
+		}
+		if len(orphans) > 0 {
+			fmt.Println("  FIX: run 'chum stop' to kill all processes")
+		}
+	}
+
+	// Check 2: PID file health.
+	fmt.Println("\n[pid file]")
+	pidPath := filepath.Join(dataDir(), "chum.pid")
+	pidData, pidErr := os.ReadFile(pidPath)
+	if pidErr != nil {
+		fmt.Println("  OK: no pid file (chum not running)")
+	} else {
+		lines := strings.SplitN(string(pidData), "\n", 2)
+		pid, parseErr := strconv.Atoi(strings.TrimSpace(lines[0]))
+		if parseErr != nil {
+			fmt.Println("  WARN: pid file contains invalid data")
+			issues++
+		} else {
+			proc, findErr := os.FindProcess(pid)
+			alive := findErr == nil && proc.Signal(syscall.Signal(0)) == nil
+			if alive {
+				fmt.Printf("  OK: pid %d is alive\n", pid)
+			} else {
+				fmt.Printf("  WARN: stale pid file (process %d is dead)\n", pid)
+				fmt.Println("  FIX: run 'chum stop' to clean up")
+				issues++
+			}
+		}
+	}
+
+	// Check 3: Temporal connectivity.
+	fmt.Println("\n[temporal]")
+	namespace := resolveTemporalNamespace()
+	hostPort := strings.TrimSpace(os.Getenv("TEMPORAL_HOST_PORT"))
+	if hostPort == "" {
+		hostPort = temporal.DefaultTemporalHostPort
+	}
+
+	tc, dialErr := tclient.Dial(tclient.Options{
+		HostPort:  hostPort,
+		Namespace: namespace,
+	})
+	if dialErr != nil {
+		fmt.Printf("  FAIL: cannot connect to Temporal at %s: %s\n", hostPort, dialErr)
+		fmt.Println("  FIX: ensure Temporal server is running")
+		issues++
+	} else {
+		defer tc.Close()
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		query := temporal.ChumAgentRunningVisibilityQuery()
+		resp, listErr := tc.ListWorkflow(ctx, &workflowservice.ListWorkflowExecutionsRequest{
+			Query: query,
+		})
+		if listErr != nil {
+			fmt.Printf("  WARN: connected but workflow query failed: %s\n", listErr)
+			issues++
+		} else {
+			fmt.Printf("  OK: connected (%s/%s), %d running workflow(s)\n", hostPort, namespace, len(resp.Executions))
+		}
+	}
+
+	// Check 4: Database health.
+	fmt.Println("\n[database]")
+	cfgManager, cfgErr := config.LoadManager(*configPath)
+	if cfgErr != nil {
+		fmt.Printf("  WARN: cannot load config %s: %s\n", *configPath, cfgErr)
+		issues++
+	} else {
+		cfg := cfgManager.Get()
+		dbPath := config.ExpandHome(cfg.General.StateDB)
+		if _, statErr := os.Stat(dbPath); statErr != nil {
+			fmt.Printf("  WARN: database not found at %s\n", dbPath)
+			issues++
+		} else {
+			fi, _ := os.Stat(dbPath)
+			fmt.Printf("  OK: %s (%.1f MB)\n", dbPath, float64(fi.Size())/(1024*1024))
+		}
+	}
+
+	// Check 5: Log tail for recent errors.
+	fmt.Println("\n[recent logs]")
+	logPath := filepath.Join(dataDir(), "worker.log")
+	if logData, logErr := os.ReadFile(logPath); logErr == nil {
+		logLines := strings.Split(string(logData), "\n")
+		errorCount := 0
+		start := 0
+		if len(logLines) > 50 {
+			start = len(logLines) - 50
+		}
+		for _, line := range logLines[start:] {
+			if strings.Contains(line, "level=ERROR") || strings.Contains(line, `"level":"ERROR"`) {
+				errorCount++
+			}
+		}
+		if errorCount > 0 {
+			fmt.Printf("  WARN: %d error(s) in last 50 log lines\n", errorCount)
+			fmt.Printf("  FIX: check %s\n", logPath)
+			issues++
+		} else {
+			fmt.Println("  OK: no recent errors")
+		}
+	} else {
+		fmt.Printf("  OK: no log file at %s\n", logPath)
+	}
+
+	// Summary.
+	fmt.Println()
+	if issues == 0 {
+		fmt.Println("all checks passed")
+	} else {
+		fmt.Printf("%d issue(s) found\n", issues)
+	}
+
 	return nil
 }
 
@@ -432,8 +764,9 @@ func (c *execCmd) run() (string, error) {
 	return string(outBytes), nil
 }
 
-// runRestartCommand builds from source, stops any running instance, and starts
-// a new worker. Supports --systemd to restart via systemctl instead.
+// runRestartCommand kills all existing chum processes and Temporal workflows,
+// rebuilds from source, and starts a fresh worker.
+// Usage: chum restart [--config chum.toml] [--systemd]
 func runRestartCommand(args []string, logger *slog.Logger) error {
 	fs := flag.NewFlagSet("restart", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
@@ -445,15 +778,25 @@ func runRestartCommand(args []string, logger *slog.Logger) error {
 		}
 	}
 
-	// Step 1: Always rebuild from source.
+	// Step 1: Kill everything — all processes and workflows.
+	fmt.Println("killing all chum processes...")
+	killed := killAllChumProcesses(logger)
+	fmt.Printf("killed %d process(es)\n", killed)
+
+	fmt.Println("terminating running temporal workflows...")
+	terminateTemporalWorkflows(logger)
+
+	// Step 2: Rebuild from source.
+	fmt.Println("rebuilding from source...")
 	exe, err := rebuildBinary(logger)
 	if err != nil {
 		return fmt.Errorf("rebuild failed: %w", err)
 	}
+	fmt.Printf("built %s\n", exe)
 
-	// Step 2: Restart via systemd or PID-based.
+	// Step 3: Start fresh.
 	if *useSystemd {
-		logger.Info("restarting via systemctl --user")
+		fmt.Println("restarting via systemctl --user...")
 		cmd := &execCmd{
 			path: "/bin/systemctl",
 			args: []string{"systemctl", "--user", "restart", "chum.service"},
@@ -462,13 +805,8 @@ func runRestartCommand(args []string, logger *slog.Logger) error {
 		if out, restartErr := cmd.run(); restartErr != nil {
 			return fmt.Errorf("systemctl restart failed: %w\n%s", restartErr, out)
 		}
-		logger.Info("chum service restarted via systemd")
+		fmt.Println("chum service restarted via systemd")
 		return nil
-	}
-
-	// PID-based restart: stop existing, re-exec new binary.
-	if err := runStopCommand(logger); err != nil {
-		logger.Info("no existing instance to stop", "detail", err.Error())
 	}
 
 	logPath := filepath.Join(dataDir(), "worker.log")
@@ -491,17 +829,18 @@ func runRestartCommand(args []string, logger *slog.Logger) error {
 		return fmt.Errorf("failed to start worker: %w", err)
 	}
 
-	logger.Info("chum worker started", "pid", proc.Pid, "log", logPath)
+	fmt.Printf("chum worker started (pid %d, log %s)\n", proc.Pid, logPath)
 	if releaseErr := proc.Release(); releaseErr != nil {
 		logger.Warn("failed to release process handle", "error", releaseErr)
 	}
 	logFile.Close()
 
-	// Wait a moment and verify it's running
+	// Verify it's running.
 	time.Sleep(2 * time.Second)
 	pidPath := filepath.Join(dataDir(), "chum.pid")
-	if pidData, err := os.ReadFile(pidPath); err == nil {
-		logger.Info("chum worker confirmed running", "pidfile", string(pidData))
+	if pidData, readErr := os.ReadFile(pidPath); readErr == nil {
+		lines := strings.SplitN(string(pidData), "\n", 2)
+		fmt.Printf("confirmed running (pid %s)\n", strings.TrimSpace(lines[0]))
 	}
 
 	return nil
@@ -513,6 +852,7 @@ func runReviewPRCommand(args []string, logger *slog.Logger) error {
 	fs := flag.NewFlagSet("review-pr", flag.ContinueOnError)
 	reviewer := fs.String("reviewer", "", "reviewer agent (default: auto-select cross-model)")
 	author := fs.String("author", "", "author agent for cross-model selection (default: claude)")
+	workspaceFlag := fs.String("workspace", "", "workspace directory containing the git repo (default: first enabled project)")
 	configPath := fs.String("config", "chum.toml", "path to config file")
 	if err := fs.Parse(args[2:]); err != nil {
 		return err
@@ -546,13 +886,18 @@ func runReviewPRCommand(args []string, logger *slog.Logger) error {
 	}
 	defer tc.Close()
 
-	// Resolve workspace from first enabled project
-	workspace := "."
-	for _, proj := range cfg.Projects {
-		if proj.Enabled && proj.Workspace != "" {
-			workspace = config.ExpandHome(proj.Workspace)
-			break
+	// Resolve workspace: explicit flag > first enabled project > cwd
+	workspace := *workspaceFlag
+	if workspace == "" {
+		for _, proj := range cfg.Projects {
+			if proj.Enabled && proj.Workspace != "" {
+				workspace = config.ExpandHome(proj.Workspace)
+				break
+			}
 		}
+	}
+	if workspace == "" {
+		workspace = "."
 	}
 
 	authorAgent := *author
@@ -626,6 +971,20 @@ func main() {
 	if len(os.Args) > 1 && os.Args[1] == "restart" {
 		if err := runRestartCommand(os.Args, logger); err != nil {
 			logger.Error("restart failed", "error", err)
+			os.Exit(1)
+		}
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "status" {
+		if err := runStatusCommand(logger); err != nil {
+			logger.Error("status failed", "error", err)
+			os.Exit(1)
+		}
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "doctor" {
+		if err := runDoctorCommand(os.Args, logger); err != nil {
+			logger.Error("doctor failed", "error", err)
 			os.Exit(1)
 		}
 		return
@@ -947,7 +1306,9 @@ func main() {
 		// Scans for open PRs that haven't been reviewed by CHUM and spawns
 		// cross-model reviews. Catches PRs from any source: sharks, humans, CI.
 		for name, proj := range cfg.Projects {
-			if !proj.Enabled || proj.Workspace == "" {
+			// PR review poller runs for ALL projects with a workspace,
+			// even disabled ones — disabled only skips shark dispatch.
+			if proj.Workspace == "" {
 				continue
 			}
 

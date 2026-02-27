@@ -4,7 +4,8 @@ After=openclaw-gateway.service
 
 [Service]
 Type=simple
-ExecStart=%h/projects/chum/chum --config %h/projects/chum/chum.toml
+ExecStartPre=/home/ubuntu/projects/cortex/chum stop
+ExecStart=/home/ubuntu/projects/cortex/chum --config /home/ubuntu/projects/cortex/chum.toml
 Restart=always
 RestartSec=10
 Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin

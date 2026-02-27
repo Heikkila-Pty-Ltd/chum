@@ -1088,6 +1088,14 @@ func (a *Activities) PushWorktreeActivity(ctx context.Context, wtDir string) err
 	logger := activity.GetLogger(ctx)
 	logger.Info(SharkPrefix+" Pushing worktree branch to remote", "worktree", wtDir)
 
+	// Check if origin remote exists before attempting push
+	checkCmd := exec.CommandContext(ctx, "git", "remote", "get-url", "origin")
+	checkCmd.Dir = wtDir
+	if out, err := checkCmd.CombinedOutput(); err != nil {
+		logger.Warn(SharkPrefix+" No origin remote configured, skipping push", "worktree", wtDir, "error", string(out))
+		return fmt.Errorf("no origin remote configured in worktree (non-fatal): %w", err)
+	}
+
 	pushCmd := exec.CommandContext(ctx, "git", "push", "origin", "HEAD")
 	pushCmd.Dir = wtDir
 	if out, err := pushCmd.CombinedOutput(); err != nil {

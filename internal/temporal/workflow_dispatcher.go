@@ -231,6 +231,15 @@ func checkAndSpawnPostMortems(ctx workflow.Context, da *DispatchActivities) {
 		return
 	}
 
+	// Cap postmortems per tick to avoid LLM stampedes during failure storms.
+	// Remaining failures will be picked up on subsequent ticks via dedup.
+	const maxPostMortemsPerTick = 5
+	if len(failures) > maxPostMortemsPerTick {
+		logger.Warn(SharkPrefix+" Dispatcher: capping postmortem spawns",
+			"total_failures", len(failures), "cap", maxPostMortemsPerTick)
+		failures = failures[:maxPostMortemsPerTick]
+	}
+
 	logger.Info(SharkPrefix+" Dispatcher: found failed workflows to investigate", "count", len(failures))
 
 	for _, fw := range failures {
@@ -925,9 +934,14 @@ func (da *DispatchActivities) CheckFailedWorkflowsActivity(ctx context.Context) 
 				ErrorMsg:   "", // Actual error extracted in FetchFailureContextActivity via history.
 				Project:    project,
 			})
+
+			// Cap at 20 un-investigated failures per query to avoid stampedes.
+			if len(failures) >= 20 {
+				break
+			}
 		}
 
-		if len(resp.NextPageToken) == 0 {
+		if len(failures) >= 20 || len(resp.NextPageToken) == 0 {
 			break
 		}
 		pageToken = resp.NextPageToken

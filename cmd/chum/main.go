@@ -301,11 +301,16 @@ func findChumProcesses() []chumProcess {
 }
 
 // killAllChumProcesses finds and kills ALL chum binary processes except the current one.
+// Sends SIGTERM to all processes first, then waits once, then SIGKILLs survivors.
 // Returns the number of processes killed.
 func killAllChumProcesses(logger *slog.Logger) int {
 	procs := findChumProcesses()
-	killed := 0
+	if len(procs) == 0 {
+		return 0
+	}
 
+	// Phase 1: SIGTERM all at once.
+	handles := make([]*os.Process, 0, len(procs))
 	for _, p := range procs {
 		logger.Info("killing chum process", "pid", p.pid, "exe", p.exePath, "cmd", p.cmdline)
 		proc, err := os.FindProcess(p.pid)
@@ -313,20 +318,26 @@ func killAllChumProcesses(logger *slog.Logger) int {
 			continue
 		}
 		_ = proc.Signal(syscall.SIGTERM)
+		handles = append(handles, proc)
+	}
 
-		dead := false
-		for i := 0; i < 10; i++ {
-			time.Sleep(500 * time.Millisecond)
-			if sigErr := proc.Signal(syscall.Signal(0)); sigErr != nil {
-				dead = true
-				break
-			}
+	// Phase 2: Single combined wait (up to 5s) for all to exit.
+	time.Sleep(2 * time.Second)
+	for _, proc := range handles {
+		if sigErr := proc.Signal(syscall.Signal(0)); sigErr == nil {
+			// Still alive after initial wait — give a bit more time.
+			time.Sleep(3 * time.Second)
+			break
 		}
-		if !dead {
-			logger.Warn("process did not exit after SIGTERM, sending SIGKILL", "pid", p.pid)
+	}
+
+	// Phase 3: SIGKILL any survivors.
+	killed := len(handles)
+	for _, proc := range handles {
+		if sigErr := proc.Signal(syscall.Signal(0)); sigErr == nil {
+			logger.Warn("process did not exit after SIGTERM, sending SIGKILL", "pid", proc.Pid)
 			_ = proc.Signal(syscall.SIGKILL)
 		}
-		killed++
 	}
 
 	// Clean up PID file.

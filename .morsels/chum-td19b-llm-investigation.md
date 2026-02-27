@@ -1,6 +1,6 @@
 ---
 title: "Auto-Postmortem Step 2: LLM Investigation & Antibody Filing"
-status: ready
+status: done
 priority: 1
 type: feature
 labels:

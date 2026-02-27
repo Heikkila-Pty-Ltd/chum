@@ -623,6 +623,24 @@ type PostMortemRequest struct {
 	Tier    string         `json:"tier"`
 }
 
+// PostMortemInvestigation is the structured output from an LLM root-cause
+// analysis of a failed workflow.
+type PostMortemInvestigation struct {
+	RootCause     string   `json:"root_cause"`
+	Severity      string   `json:"severity"`       // critical, high, medium, low
+	ProposedFix   string   `json:"proposed_fix"`
+	AffectedFiles []string `json:"affected_files"`
+	Category      string   `json:"category"` // infrastructure, logic, config, scope
+	Antibodies    []string `json:"antibodies"`
+}
+
+// FileAntibodyRequest drives the FileAntibodyActivity with investigation results.
+type FileAntibodyRequest struct {
+	Investigation PostMortemInvestigation `json:"investigation"`
+	Failure       FailureContext          `json:"failure"`
+	Project       string                 `json:"project"`
+}
+
 // --- Dispatcher Types ---
 // DispatcherWorkflow scans for ready morsels and starts ChumAgentWorkflow
 // children. Runs on a Temporal Schedule every tick_interval.

@@ -591,6 +591,38 @@ type UnreviewedPR struct {
 	Author string `json:"author"` // mapped to CLI agent name for cross-model selection
 }
 
+// --- Post-Mortem Types ---
+
+// FailedWorkflow is a workflow that failed and needs post-mortem investigation.
+type FailedWorkflow struct {
+	WorkflowID string `json:"workflow_id"`
+	RunID      string `json:"run_id"`
+	CloseTime  string `json:"close_time"`
+	ErrorMsg   string `json:"error_msg"`
+}
+
+// FailureContext is the structured context fetched from a failed workflow's
+// event history, ready for LLM investigation in td19b.
+type FailureContext struct {
+	WorkflowID     string            `json:"workflow_id"`
+	RunID          string            `json:"run_id"`
+	ErrorMessage   string            `json:"error_message"`
+	FailedActivity string            `json:"failed_activity"`
+	AttemptCount   int               `json:"attempt_count"`
+	DurationS      float64           `json:"duration_s"`
+	TaskID         string            `json:"task_id,omitempty"`
+	RecentCommits  string            `json:"recent_commits,omitempty"`
+	SearchAttrs    map[string]string `json:"search_attrs,omitempty"`
+}
+
+// PostMortemRequest drives the PostMortemWorkflow with failure context.
+type PostMortemRequest struct {
+	Failure FailureContext `json:"failure"`
+	Project string         `json:"project"`
+	WorkDir string         `json:"work_dir"`
+	Tier    string         `json:"tier"`
+}
+
 // --- Dispatcher Types ---
 // DispatcherWorkflow scans for ready morsels and starts ChumAgentWorkflow
 // children. Runs on a Temporal Schedule every tick_interval.

@@ -129,6 +129,11 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 	// --- Dispatcher Activities ---
 	w.RegisterActivity(dispatchActs.ScanCandidatesActivity)
 	w.RegisterActivity(dispatchActs.RecordPlannerOutcomeActivity)
+	w.RegisterActivity(dispatchActs.CheckFailedWorkflowsActivity)
+	w.RegisterActivity(dispatchActs.FetchFailureContextActivity)
+
+	// --- Post-Mortem Workflow ---
+	w.RegisterWorkflow(PostMortemWorkflow)
 
 	// --- CHUM Learner Activities ---
 	w.RegisterActivity(acts.ExtractLessonsActivity)

@@ -197,6 +197,49 @@ func DispatcherWorkflow(ctx workflow.Context, _ struct{}) error {
 		"running", result.Running,
 	)
 
+	// === POST-MORTEM: check for failed workflows and spawn investigations ===
+	failureCheckOpts := workflow.ActivityOptions{
+		StartToCloseTimeout: 1 * time.Minute,
+		RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 1},
+	}
+	failCtx := workflow.WithActivityOptions(ctx, failureCheckOpts)
+
+	var failures []FailedWorkflow
+	if err := workflow.ExecuteActivity(failCtx, da.CheckFailedWorkflowsActivity).Get(ctx, &failures); err != nil {
+		logger.Warn(SharkPrefix+" Dispatcher: failed workflow check failed (non-fatal)", "error", err)
+	} else if len(failures) > 0 {
+		logger.Info(SharkPrefix+" Dispatcher: found failed workflows to investigate", "count", len(failures))
+
+		for _, fw := range failures {
+			// Fetch context for each failure
+			var fc FailureContext
+			if err := workflow.ExecuteActivity(failCtx, da.FetchFailureContextActivity, fw).Get(ctx, &fc); err != nil {
+				logger.Warn(SharkPrefix+" Dispatcher: fetch failure context failed", "workflow_id", fw.WorkflowID, "error", err)
+				continue
+			}
+
+			// Spawn PostMortemWorkflow as fire-and-forget child
+			pmOpts := workflow.ChildWorkflowOptions{
+				WorkflowID:        fmt.Sprintf("postmortem-%s-%d", fw.WorkflowID, workflow.Now(ctx).Unix()),
+				ParentClosePolicy: enumspb.PARENT_CLOSE_POLICY_ABANDON,
+			}
+			pmCtx := workflow.WithChildOptions(ctx, pmOpts)
+			pmFut := workflow.ExecuteChildWorkflow(pmCtx, PostMortemWorkflow, PostMortemRequest{
+				Failure: fc,
+				Project: "chum",
+				Tier:    "fast",
+			})
+			var pmExec workflow.Execution
+			if err := pmFut.GetChildWorkflowExecution().Get(ctx, &pmExec); err != nil {
+				logger.Warn(SharkPrefix+" Dispatcher: postmortem workflow failed to start",
+					"workflow_id", fw.WorkflowID, "error", err)
+			} else {
+				logger.Info(SharkPrefix+" Dispatcher: postmortem spawned",
+					"failed_workflow", fw.WorkflowID, "postmortem_id", pmExec.ID)
+			}
+		}
+	}
+
 	recordOrganismLog(ctx, "dispatcher", "", "", "completed",
 		fmt.Sprintf("%d dispatched, %d running, %d candidates",
 			dispatched, result.Running, len(result.Candidates)),
@@ -800,6 +843,100 @@ func listRecentlyCompletedWorkflows(ctx context.Context, tc workflowListClient) 
 		pageToken = resp.NextPageToken
 	}
 	return result, nil
+}
+
+// CheckFailedWorkflowsActivity queries Temporal for recently failed ChumAgentWorkflows
+// and returns those that haven't been investigated yet (dedup via health_events).
+func (da *DispatchActivities) CheckFailedWorkflowsActivity(ctx context.Context) ([]FailedWorkflow, error) {
+	logger := activity.GetLogger(ctx)
+
+	cutoff := time.Now().Add(-1 * time.Hour).Format(time.RFC3339)
+	query := fmt.Sprintf(
+		`WorkflowType = 'ChumAgentWorkflow' AND ExecutionStatus = 'Failed' AND CloseTime > '%s'`,
+		cutoff,
+	)
+
+	var pageToken []byte
+	failures := make([]FailedWorkflow, 0, 20)
+	for {
+		resp, err := da.TC.ListWorkflow(ctx, &workflowservice.ListWorkflowExecutionsRequest{
+			Query:         query,
+			PageSize:      50,
+			NextPageToken: pageToken,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("list failed workflows: %w", err)
+		}
+		if resp == nil {
+			break
+		}
+
+		for _, exec := range resp.Executions {
+			execInfo := exec.GetExecution()
+			if execInfo == nil {
+				continue
+			}
+			wfID := execInfo.GetWorkflowId()
+			if wfID == "" {
+				continue
+			}
+
+			// Dedup: skip if we've already investigated this workflow
+			if da.Store != nil && da.Store.HasRecentHealthEvent(
+				"postmortem_started", wfID, 24*time.Hour) {
+				continue
+			}
+
+			closeTime := ""
+			if exec.CloseTime != nil {
+				closeTime = exec.CloseTime.AsTime().Format(time.RFC3339)
+			}
+
+			// Extract error from workflow status
+			errMsg := exec.Status.String()
+
+			failures = append(failures, FailedWorkflow{
+				WorkflowID: wfID,
+				RunID:      execInfo.GetRunId(),
+				CloseTime:  closeTime,
+				ErrorMsg:   errMsg,
+			})
+		}
+
+		if len(resp.NextPageToken) == 0 {
+			break
+		}
+		pageToken = resp.NextPageToken
+	}
+
+	logger.Info("Checked for failed workflows", "found", len(failures), "cutoff", cutoff)
+	return failures, nil
+}
+
+// FetchFailureContextActivity fetches the event history of a failed workflow
+// and extracts structured failure context for post-mortem analysis.
+func (da *DispatchActivities) FetchFailureContextActivity(ctx context.Context, fw FailedWorkflow) (*FailureContext, error) {
+	logger := activity.GetLogger(ctx)
+
+	fc := &FailureContext{
+		WorkflowID:   fw.WorkflowID,
+		RunID:        fw.RunID,
+		ErrorMessage: fw.ErrorMsg,
+	}
+
+	// Extract task ID from workflow ID (format: "chum-agent-<taskID>-<timestamp>")
+	if parts := strings.SplitN(fw.WorkflowID, "-", 4); len(parts) >= 3 {
+		fc.TaskID = strings.Join(parts[2:], "-")
+	}
+
+	// Record that we're investigating this workflow (dedup marker)
+	if da.Store != nil {
+		_ = da.Store.RecordHealthEvent("postmortem_started",
+			fmt.Sprintf("wf=%s run=%s", fw.WorkflowID, fw.RunID))
+	}
+
+	logger.Info("Fetched failure context", "workflow_id", fw.WorkflowID, "task_id", fc.TaskID)
+	return fc, nil
 }
 
 func clampTaskPriority(priority int) int {

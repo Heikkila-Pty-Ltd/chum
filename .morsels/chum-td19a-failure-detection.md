@@ -1,6 +1,6 @@
 ---
 title: "Auto-Postmortem Step 1: Failure Detection & History Fetching"
-status: ready
+status: done # feat/td19a-auto-postmortem branch — failure detection, context fetching, postmortem spawn, tests
 priority: 1
 type: feature
 labels:

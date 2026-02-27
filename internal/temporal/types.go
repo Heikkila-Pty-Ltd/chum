@@ -580,6 +580,17 @@ type PRReviewResult struct {
 	ReviewerAgent string   `json:"reviewer_agent"`
 }
 
+// PRReviewPollerRequest drives the periodic scan for unreviewed PRs.
+type PRReviewPollerRequest struct {
+	Workspace string `json:"workspace"`
+}
+
+// UnreviewedPR is an open PR that hasn't been reviewed by CHUM yet.
+type UnreviewedPR struct {
+	Number int    `json:"number"`
+	Author string `json:"author"` // mapped to CLI agent name for cross-model selection
+}
+
 // --- Dispatcher Types ---
 // DispatcherWorkflow scans for ready morsels and starts ChumAgentWorkflow
 // children. Runs on a Temporal Schedule every tick_interval.

@@ -1376,6 +1376,88 @@ Be rigorous but fair. Flag real problems, not style preferences.`,
 	return result, nil
 }
 
+// ScanOpenPRsActivity lists open PRs via gh CLI and returns those that haven't
+// been reviewed by CHUM yet (no comment containing "Cross-Model PR Review").
+// This enables the poller to catch PRs created by any source — sharks, humans,
+// or external tools.
+func (a *Activities) ScanOpenPRsActivity(ctx context.Context, req PRReviewPollerRequest) ([]UnreviewedPR, error) {
+	logger := activity.GetLogger(ctx)
+
+	// List open PRs as JSON
+	listCmd := exec.CommandContext(ctx, "gh", "pr", "list",
+		"--state", "open",
+		"--json", "number,headRefName,author",
+		"--limit", "20",
+	)
+	listCmd.Dir = req.Workspace
+	listOut, err := listCmd.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("gh pr list failed: %w (%s)", err, string(listOut))
+	}
+
+	var prs []struct {
+		Number      int    `json:"number"`
+		HeadRefName string `json:"headRefName"`
+		Author      struct {
+			Login string `json:"login"`
+		} `json:"author"`
+	}
+	if err := json.Unmarshal(listOut, &prs); err != nil {
+		return nil, fmt.Errorf("parse PR list: %w", err)
+	}
+
+	if len(prs) == 0 {
+		return nil, nil
+	}
+
+	unreviewed := make([]UnreviewedPR, 0, len(prs))
+	for _, pr := range prs {
+		// Check if CHUM has already commented on this PR
+		commentsCmd := exec.CommandContext(ctx, "gh", "pr", "view",
+			fmt.Sprintf("%d", pr.Number),
+			"--json", "comments",
+		)
+		commentsCmd.Dir = req.Workspace
+		commentsOut, err := commentsCmd.CombinedOutput()
+		if err != nil {
+			logger.Warn("Failed to check PR comments", "pr", pr.Number, "error", err)
+			continue
+		}
+
+		// Look for the CHUM review signature in existing comments
+		if strings.Contains(string(commentsOut), "Cross-Model PR Review") {
+			continue // already reviewed
+		}
+
+		// Map branch prefix to author agent for cross-model selection
+		author := inferAuthorAgent(pr.HeadRefName)
+
+		unreviewed = append(unreviewed, UnreviewedPR{
+			Number: pr.Number,
+			Author: author,
+		})
+	}
+
+	logger.Info("PR scan complete", "open", len(prs), "unreviewed", len(unreviewed))
+	return unreviewed, nil
+}
+
+// inferAuthorAgent guesses which CLI agent created a PR based on branch name
+// conventions. Falls back to "claude" for unknown patterns.
+func inferAuthorAgent(branch string) string {
+	lower := strings.ToLower(branch)
+	switch {
+	case strings.Contains(lower, "codex"):
+		return "codex"
+	case strings.Contains(lower, "gemini"):
+		return "gemini"
+	case strings.Contains(lower, "chum/"):
+		return "claude" // CHUM sharks default to claude
+	default:
+		return "claude" // human PRs or unknown — review with codex (via DefaultReviewer)
+	}
+}
+
 // ExplosionCandidate holds data about a single explosion candidate for senior review.
 type ExplosionCandidate struct {
 	Provider    string

@@ -943,6 +943,47 @@ func main() {
 			logger.Info("janitor schedule registered", "interval", "1h")
 		}
 
+		// --- PR Review Poller Schedule (every 5 minutes, per-project) ---
+		// Scans for open PRs that haven't been reviewed by CHUM and spawns
+		// cross-model reviews. Catches PRs from any source: sharks, humans, CI.
+		for name, proj := range cfg.Projects {
+			if !proj.Enabled || proj.Workspace == "" {
+				continue
+			}
+
+			prPollerReq := temporal.PRReviewPollerRequest{
+				Workspace: config.ExpandHome(proj.Workspace),
+			}
+			prPollerID := fmt.Sprintf("chum-pr-review-poller-%s", name)
+			_, prPollerErr := schedClient.Create(ctx, tclient.ScheduleOptions{
+				ID: prPollerID,
+				Spec: tclient.ScheduleSpec{
+					Intervals: []tclient.ScheduleIntervalSpec{
+						{Every: 5 * time.Minute},
+					},
+				},
+				Action: &tclient.ScheduleWorkflowAction{
+					Workflow:  temporal.PRReviewPollerWorkflow,
+					Args:      []interface{}{prPollerReq},
+					TaskQueue: temporal.DefaultTaskQueue,
+					ID:        fmt.Sprintf("pr-review-poller-%s", name),
+				},
+				Overlap: enumspb.SCHEDULE_OVERLAP_POLICY_SKIP,
+			})
+			if prPollerErr != nil {
+				switch {
+				case strings.Contains(prPollerErr.Error(), "AlreadyExists") ||
+					strings.Contains(prPollerErr.Error(), "already registered") ||
+					strings.Contains(prPollerErr.Error(), "already exists"):
+					logger.Info("PR review poller schedule already exists", "project", name)
+				default:
+					logger.Error("failed to create PR review poller schedule", "project", name, "error", prPollerErr)
+				}
+			} else {
+				logger.Info("PR review poller schedule registered", "project", name, "interval", "5m")
+			}
+		}
+
 	}()
 
 	// Start API server

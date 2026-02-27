@@ -758,10 +758,7 @@ func (a *Activities) GenerateMorningBriefingActivity(ctx context.Context, req St
 		md.WriteString("All systems nominal.\n\n")
 	} else {
 		for _, hs := range healthSummaries {
-			detail := hs.LatestDetail
-			if len(detail) > 120 {
-				detail = detail[:120] + "..."
-			}
+			detail := truncateRunes(hs.LatestDetail, 120)
 			if hs.Count > 1 {
 				md.WriteString(fmt.Sprintf("- **%s** (%dx): %s\n", hs.EventType, hs.Count, detail))
 			} else {
@@ -824,7 +821,11 @@ func (a *Activities) GenerateMorningBriefingActivity(ctx context.Context, req St
 		if len(healthSummaries) > 0 {
 			summary.WriteString("**System Health:**\n")
 			for _, hs := range healthSummaries {
-				summary.WriteString(fmt.Sprintf("- %s (%dx)\n", hs.EventType, hs.Count))
+				if hs.Count > 1 {
+					summary.WriteString(fmt.Sprintf("- %s (%dx)\n", hs.EventType, hs.Count))
+				} else {
+					summary.WriteString(fmt.Sprintf("- %s\n", hs.EventType))
+				}
 			}
 			summary.WriteString("\n")
 		}

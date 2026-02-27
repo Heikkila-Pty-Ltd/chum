@@ -507,6 +507,86 @@ func runRestartCommand(args []string, logger *slog.Logger) error {
 	return nil
 }
 
+// runReviewPRCommand triggers a cross-model PR review via Temporal.
+// Usage: chum review-pr <number> [--reviewer agent] [--config chum.toml]
+func runReviewPRCommand(args []string, logger *slog.Logger) error {
+	fs := flag.NewFlagSet("review-pr", flag.ContinueOnError)
+	reviewer := fs.String("reviewer", "", "reviewer agent (default: auto-select cross-model)")
+	author := fs.String("author", "", "author agent for cross-model selection (default: claude)")
+	configPath := fs.String("config", "chum.toml", "path to config file")
+	if err := fs.Parse(args[2:]); err != nil {
+		return err
+	}
+	if fs.NArg() < 1 {
+		return fmt.Errorf("usage: chum review-pr <pr-number> [--reviewer agent] [--author agent]")
+	}
+	prNumber, err := strconv.Atoi(fs.Arg(0))
+	if err != nil {
+		return fmt.Errorf("invalid PR number %q: %w", fs.Arg(0), err)
+	}
+
+	cfgManager, err := config.LoadManager(*configPath)
+	if err != nil {
+		return err
+	}
+	cfg := cfgManager.Get()
+
+	host := strings.TrimSpace(cfg.General.TemporalHostPort)
+	if host == "" {
+		host = temporal.DefaultTemporalHostPort
+	}
+	temporalNamespace := resolveTemporalNamespace()
+
+	tc, err := tclient.Dial(tclient.Options{
+		HostPort:  host,
+		Namespace: temporalNamespace,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to connect to Temporal: %w", err)
+	}
+	defer tc.Close()
+
+	// Resolve workspace from first enabled project
+	workspace := "."
+	for _, proj := range cfg.Projects {
+		if proj.Enabled && proj.Workspace != "" {
+			workspace = config.ExpandHome(proj.Workspace)
+			break
+		}
+	}
+
+	authorAgent := *author
+	if authorAgent == "" {
+		authorAgent = "claude"
+	}
+
+	workflowID := fmt.Sprintf("pr-review-%d-manual-%d", prNumber, time.Now().Unix())
+	req := temporal.PRReviewRequest{
+		PRNumber:  prNumber,
+		Workspace: workspace,
+		Reviewer:  *reviewer,
+		Author:    authorAgent,
+	}
+
+	run, err := tc.ExecuteWorkflow(context.Background(), tclient.StartWorkflowOptions{
+		ID:        workflowID,
+		TaskQueue: temporal.DefaultTaskQueue,
+	}, temporal.PRReviewWorkflow, req)
+	if err != nil {
+		return fmt.Errorf("failed to start PR review workflow: %w", err)
+	}
+
+	logger.Info("PR review workflow started",
+		"workflow_id", run.GetID(),
+		"run_id", run.GetRunID(),
+		"pr", prNumber,
+		"reviewer", *reviewer,
+		"author", authorAgent,
+	)
+	fmt.Printf("PR review started: workflow_id=%s pr=#%d\n", run.GetID(), prNumber)
+	return nil
+}
+
 // dataDir returns the CHUM data directory (~/.local/share/chum).
 func dataDir() string {
 	home, err := os.UserHomeDir()
@@ -553,6 +633,13 @@ func main() {
 	if len(os.Args) > 1 && os.Args[1] == "watchdog" {
 		if err := runWatchdogCommand(os.Args, logger); err != nil {
 			logger.Error("watchdog failed", "error", err)
+			os.Exit(1)
+		}
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "review-pr" {
+		if err := runReviewPRCommand(os.Args, logger); err != nil {
+			logger.Error("review-pr failed", "error", err)
 			os.Exit(1)
 		}
 		return
@@ -854,6 +941,47 @@ func main() {
 			}
 		} else {
 			logger.Info("janitor schedule registered", "interval", "1h")
+		}
+
+		// --- PR Review Poller Schedule (every 5 minutes, per-project) ---
+		// Scans for open PRs that haven't been reviewed by CHUM and spawns
+		// cross-model reviews. Catches PRs from any source: sharks, humans, CI.
+		for name, proj := range cfg.Projects {
+			if !proj.Enabled || proj.Workspace == "" {
+				continue
+			}
+
+			prPollerReq := temporal.PRReviewPollerRequest{
+				Workspace: config.ExpandHome(proj.Workspace),
+			}
+			prPollerID := fmt.Sprintf("chum-pr-review-poller-%s", name)
+			_, prPollerErr := schedClient.Create(ctx, tclient.ScheduleOptions{
+				ID: prPollerID,
+				Spec: tclient.ScheduleSpec{
+					Intervals: []tclient.ScheduleIntervalSpec{
+						{Every: 5 * time.Minute},
+					},
+				},
+				Action: &tclient.ScheduleWorkflowAction{
+					Workflow:  temporal.PRReviewPollerWorkflow,
+					Args:      []interface{}{prPollerReq},
+					TaskQueue: temporal.DefaultTaskQueue,
+					ID:        fmt.Sprintf("pr-review-poller-%s", name),
+				},
+				Overlap: enumspb.SCHEDULE_OVERLAP_POLICY_SKIP,
+			})
+			if prPollerErr != nil {
+				switch {
+				case strings.Contains(prPollerErr.Error(), "AlreadyExists") ||
+					strings.Contains(prPollerErr.Error(), "already registered") ||
+					strings.Contains(prPollerErr.Error(), "already exists"):
+					logger.Info("PR review poller schedule already exists", "project", name)
+				default:
+					logger.Error("failed to create PR review poller schedule", "project", name, "error", prPollerErr)
+				}
+			} else {
+				logger.Info("PR review poller schedule registered", "project", name, "interval", "5m")
+			}
 		}
 
 	}()

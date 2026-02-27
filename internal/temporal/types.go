@@ -563,6 +563,34 @@ type HealthSummary struct {
 	LatestDetail string `json:"latest_detail"`
 }
 
+// PRReviewRequest asks ReviewPRActivity to fetch a PR diff and run a
+// cross-model review, posting the result as a GitHub PR comment.
+type PRReviewRequest struct {
+	PRNumber  int    `json:"pr_number"`
+	Workspace string `json:"workspace"`
+	Reviewer  string `json:"reviewer"` // empty = auto-select via DefaultReviewer(Author)
+	Author    string `json:"author"`   // agent that created the PR, for cross-model selection
+}
+
+// PRReviewResult is the structured output of a PR review.
+type PRReviewResult struct {
+	Approved      bool     `json:"approved"`
+	Issues        []string `json:"issues"`
+	Suggestions   []string `json:"suggestions"`
+	ReviewerAgent string   `json:"reviewer_agent"`
+}
+
+// PRReviewPollerRequest drives the periodic scan for unreviewed PRs.
+type PRReviewPollerRequest struct {
+	Workspace string `json:"workspace"`
+}
+
+// UnreviewedPR is an open PR that hasn't been reviewed by CHUM yet.
+type UnreviewedPR struct {
+	Number int    `json:"number"`
+	Author string `json:"author"` // mapped to CLI agent name for cross-model selection
+}
+
 // --- Dispatcher Types ---
 // DispatcherWorkflow scans for ready morsels and starts ChumAgentWorkflow
 // children. Runs on a Temporal Schedule every tick_interval.

@@ -668,12 +668,33 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 				// ===== MERGE TO MAIN — squash-merge feature branch into main =====
 				featureBranch := fmt.Sprintf("chum/%s", req.TaskID)
 				mergeCtx := workflow.WithActivityOptions(ctx, worktreeOpts)
+				var prNumber int
 				if err := workflow.ExecuteActivity(mergeCtx, a.MergeToMainActivity,
-					baseWorkDir, featureBranch, plan.Summary).Get(ctx, nil); err != nil {
+					baseWorkDir, featureBranch, plan.Summary).Get(ctx, &prNumber); err != nil {
 					logger.Warn(SharkPrefix+" Merge to main failed — branch pushed but not merged",
 						"error", err, "branch", featureBranch)
 					// If conflict, mark task as conflict status instead of completed.
 					notify("conflict", map[string]string{"branch": featureBranch, "error": err.Error()})
+				}
+
+				// ===== PR REVIEW — spawn cross-model review as fire-and-forget child =====
+				if prNumber > 0 {
+					prReviewOpts := workflow.ChildWorkflowOptions{
+						WorkflowID:        fmt.Sprintf("pr-review-%d-%s", prNumber, req.TaskID),
+						ParentClosePolicy: enumspb.PARENT_CLOSE_POLICY_ABANDON,
+					}
+					prReviewCtx := workflow.WithChildOptions(ctx, prReviewOpts)
+					prReviewFut := workflow.ExecuteChildWorkflow(prReviewCtx, PRReviewWorkflow, PRReviewRequest{
+						PRNumber:  prNumber,
+						Workspace: baseWorkDir,
+						Author:    req.Agent,
+					})
+					var prReviewExec workflow.Execution
+					if startErr := prReviewFut.GetChildWorkflowExecution().Get(ctx, &prReviewExec); startErr != nil {
+						logger.Warn(SharkPrefix+" PR review workflow failed to start", "error", startErr, "pr", prNumber)
+					} else {
+						logger.Info(SharkPrefix+" PR review spawned", "WorkflowID", prReviewExec.ID, "PR", prNumber)
+					}
 				}
 
 				cleanupWorktree()

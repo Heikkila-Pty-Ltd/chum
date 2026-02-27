@@ -1084,9 +1084,19 @@ func normalizeJSONKeys(jsonStr string) ([]byte, error) {
 }
 
 // PushWorktreeActivity pushes the organism's code branch to the remote origin.
+// Returns nil (skip) if no origin remote is configured — this is expected in
+// local-only worktrees and must not trigger Temporal retries.
 func (a *Activities) PushWorktreeActivity(ctx context.Context, wtDir string) error {
 	logger := activity.GetLogger(ctx)
 	logger.Info(SharkPrefix+" Pushing worktree branch to remote", "worktree", wtDir)
+
+	// Check if origin remote exists before attempting push.
+	// Missing remote is expected in local-only setups — skip push
+	// without triggering Temporal retry.
+	if !hasGitRemote(ctx, wtDir, "origin") {
+		logger.Warn(SharkPrefix+" No origin remote configured, skipping push", "worktree", wtDir)
+		return nil
+	}
 
 	pushCmd := exec.CommandContext(ctx, "git", "push", "origin", "HEAD")
 	pushCmd.Dir = wtDir
@@ -1096,6 +1106,13 @@ func (a *Activities) PushWorktreeActivity(ctx context.Context, wtDir string) err
 
 	logger.Info(SharkPrefix + " Worktree branch pushed successfully")
 	return nil
+}
+
+// hasGitRemote checks whether a named remote exists in the given git directory.
+func hasGitRemote(ctx context.Context, dir, remote string) bool {
+	cmd := exec.CommandContext(ctx, "git", "remote", "get-url", remote)
+	cmd.Dir = dir
+	return cmd.Run() == nil
 }
 
 // MergeToMainActivity creates a PR from the feature branch instead of merging

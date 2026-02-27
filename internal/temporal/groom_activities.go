@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -720,9 +721,16 @@ func (a *Activities) GenerateMorningBriefingActivity(ctx context.Context, req St
 					g.count++
 				}
 			}
-			for eventType, g := range groups {
+			// Sort keys for deterministic output order
+			keys := make([]string, 0, len(groups))
+			for k := range groups {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			for _, k := range keys {
+				g := groups[k]
 				healthSummaries = append(healthSummaries, HealthSummary{
-					EventType:    eventType,
+					EventType:    k,
 					Count:        g.count,
 					LatestDetail: g.latest,
 				})

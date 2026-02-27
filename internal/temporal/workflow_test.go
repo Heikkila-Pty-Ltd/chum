@@ -10,7 +10,10 @@ import (
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	enumspb "go.temporal.io/api/enums/v1"
+	historypb "go.temporal.io/api/history/v1"
 	"go.temporal.io/api/workflowservice/v1"
+	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/testsuite"
 	"go.temporal.io/sdk/workflow"
 )
@@ -1438,6 +1441,16 @@ func (f *fakeWorkflowListClient) ListWorkflow(_ context.Context, req *workflowse
 	}
 	return &workflowservice.ListWorkflowExecutionsResponse{}, nil
 }
+
+func (f *fakeWorkflowListClient) GetWorkflowHistory(_ context.Context, _ string, _ string, _ bool, _ enumspb.HistoryEventFilterType) client.HistoryEventIterator {
+	return &fakeHistoryEventIterator{}
+}
+
+// fakeHistoryEventIterator returns no events (empty history).
+type fakeHistoryEventIterator struct{}
+
+func (f *fakeHistoryEventIterator) HasNext() bool                                  { return false }
+func (f *fakeHistoryEventIterator) Next() (*historypb.HistoryEvent, error)          { return nil, nil }
 
 // TestRetriesForTierWithOverride verifies that higher-learning mode overrides
 // the default per-tier retry counts.

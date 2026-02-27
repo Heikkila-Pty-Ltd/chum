@@ -599,6 +599,7 @@ type FailedWorkflow struct {
 	RunID      string `json:"run_id"`
 	CloseTime  string `json:"close_time"`
 	ErrorMsg   string `json:"error_msg"`
+	Project    string `json:"project"`
 }
 
 // FailureContext is the structured context fetched from a failed workflow's

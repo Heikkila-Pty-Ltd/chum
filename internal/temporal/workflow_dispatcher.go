@@ -12,6 +12,7 @@ import (
 	enumspb "go.temporal.io/api/enums/v1"
 	"go.temporal.io/api/workflowservice/v1"
 	"go.temporal.io/sdk/activity"
+	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
 
@@ -244,9 +245,13 @@ func checkAndSpawnPostMortems(ctx workflow.Context, da *DispatchActivities) {
 			ParentClosePolicy: enumspb.PARENT_CLOSE_POLICY_ABANDON,
 		}
 		pmCtx := workflow.WithChildOptions(ctx, pmOpts)
+		project := fw.Project
+		if project == "" {
+			project = "chum" // fallback for workflows without search attributes
+		}
 		pmFut := workflow.ExecuteChildWorkflow(pmCtx, PostMortemWorkflow, PostMortemRequest{
 			Failure: fc,
-			Project: "chum",
+			Project: project,
 			Tier:    "fast",
 		})
 		var pmExec workflow.Execution
@@ -298,6 +303,7 @@ type DispatchActivities struct {
 
 type workflowListClient interface {
 	ListWorkflow(context.Context, *workflowservice.ListWorkflowExecutionsRequest) (*workflowservice.ListWorkflowExecutionsResponse, error)
+	GetWorkflowHistory(ctx context.Context, workflowID string, runID string, isLongPoll bool, filterType enumspb.HistoryEventFilterType) client.HistoryEventIterator
 }
 
 // ScanCandidatesActivity does all the I/O-heavy work of discovering ready tasks.
@@ -904,14 +910,20 @@ func (da *DispatchActivities) CheckFailedWorkflowsActivity(ctx context.Context) 
 				closeTime = exec.CloseTime.AsTime().Format(time.RFC3339)
 			}
 
-			// Extract error from workflow status
-			errMsg := exec.Status.String()
+			// Extract project from search attributes if available.
+			project := ""
+			if sa := exec.GetSearchAttributes(); sa != nil {
+				if payload, ok := sa.GetIndexedFields()[SearchAttributeProject]; ok {
+					project = strings.Trim(string(payload.GetData()), "\"")
+				}
+			}
 
 			failures = append(failures, FailedWorkflow{
 				WorkflowID: wfID,
 				RunID:      execInfo.GetRunId(),
 				CloseTime:  closeTime,
-				ErrorMsg:   errMsg,
+				ErrorMsg:   "", // Actual error extracted in FetchFailureContextActivity via history.
+				Project:    project,
 			})
 		}
 
@@ -934,21 +946,50 @@ func (da *DispatchActivities) FetchFailureContextActivity(ctx context.Context, f
 		WorkflowID:   fw.WorkflowID,
 		RunID:        fw.RunID,
 		ErrorMessage: fw.ErrorMsg,
+		TaskID:       extractTaskIDFromWorkflowID(fw.WorkflowID),
 	}
 
-	// Extract task ID from workflow ID (format: "chum-agent-<taskID>-<timestamp>")
-	if parts := strings.SplitN(fw.WorkflowID, "-", 4); len(parts) >= 3 {
-		fc.TaskID = strings.Join(parts[2:], "-")
+	// Fetch actual error message from workflow history close event.
+	if da.TC != nil {
+		errMsg := extractFailureFromHistory(ctx, da.TC, fw.WorkflowID, fw.RunID)
+		if errMsg != "" {
+			fc.ErrorMessage = errMsg
+		}
 	}
 
-	// Record that we're investigating this workflow (dedup marker)
+	// Record that we're investigating this workflow (dedup marker).
+	// Uses the raw workflow ID as details so HasRecentHealthEvent("postmortem_started", wfID, ...)
+	// in CheckFailedWorkflowsActivity finds the exact match.
 	if da.Store != nil {
-		_ = da.Store.RecordHealthEvent("postmortem_started",
-			fmt.Sprintf("wf=%s run=%s", fw.WorkflowID, fw.RunID))
+		_ = da.Store.RecordHealthEvent("postmortem_started", fw.WorkflowID)
 	}
 
-	logger.Info("Fetched failure context", "workflow_id", fw.WorkflowID, "task_id", fc.TaskID)
+	logger.Info("Fetched failure context", "workflow_id", fw.WorkflowID, "task_id", fc.TaskID,
+		"error_len", len(fc.ErrorMessage))
 	return fc, nil
+}
+
+// extractFailureFromHistory fetches the close event from a workflow's history
+// and extracts the failure message. Returns empty string on any error.
+func extractFailureFromHistory(ctx context.Context, tc workflowListClient, workflowID, runID string) string {
+	iter := tc.GetWorkflowHistory(ctx, workflowID, runID,
+		false, enumspb.HISTORY_EVENT_FILTER_TYPE_CLOSE_EVENT)
+	for iter.HasNext() {
+		event, err := iter.Next()
+		if err != nil {
+			return ""
+		}
+		if attrs := event.GetWorkflowExecutionFailedEventAttributes(); attrs != nil {
+			if f := attrs.GetFailure(); f != nil {
+				msg := f.GetMessage()
+				if cause := f.GetCause(); cause != nil && cause.GetMessage() != "" {
+					msg += ": " + cause.GetMessage()
+				}
+				return msg
+			}
+		}
+	}
+	return ""
 }
 
 func clampTaskPriority(priority int) int {

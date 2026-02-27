@@ -251,23 +251,30 @@ func runAdminMode(args []string, logger *slog.Logger) error {
 	return nil
 }
 
-// killAllChumProcesses finds and kills ALL chum binary processes except the current one.
-// Only matches processes whose executable is a chum binary (not shell commands that
-// happen to mention "chum" in their arguments).
-// Returns the number of processes killed.
-func killAllChumProcesses(logger *slog.Logger) int {
-	self := os.Getpid()
-	killed := 0
+// chumProcess holds info about a verified chum binary process.
+type chumProcess struct {
+	pid     int
+	exePath string
+	cmdline string
+}
 
-	out, err := exec.Command("pgrep", "-f", `chum`).Output()
+// findChumProcesses returns all running chum binary processes except the
+// current process and its parent, verified via /proc/PID/exe readlink.
+func findChumProcesses() []chumProcess {
+	self := os.Getpid()
+	parent := os.Getppid()
+
+	out, err := exec.Command("pgrep", "-x", "chum").Output()
 	if err != nil {
 		// pgrep exits 1 when no matches — not an error.
-		return 0
+		return nil
 	}
 
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	procs := make([]chumProcess, 0, len(lines))
+	for _, line := range lines {
 		pid, parseErr := strconv.Atoi(strings.TrimSpace(line))
-		if parseErr != nil || pid == self || pid == os.Getppid() {
+		if parseErr != nil || pid == self || pid == parent {
 			continue
 		}
 
@@ -279,20 +286,32 @@ func killAllChumProcesses(logger *slog.Logger) int {
 			continue
 		}
 
-		// Read the executable path via /proc to confirm it's actually a chum binary.
+		// Verify via /proc that this is actually a chum binary.
 		exePath, readErr := os.Readlink(fmt.Sprintf("/proc/%d/exe", pid))
-		if readErr != nil {
-			continue
-		}
-		if !strings.HasSuffix(filepath.Base(exePath), "chum") {
+		if readErr != nil || !strings.HasSuffix(filepath.Base(exePath), "chum") {
 			continue
 		}
 
-		// Read cmdline for logging.
 		cmdline, _ := os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid))
-		cmdStr := strings.ReplaceAll(string(cmdline), "\x00", " ")
+		cmdStr := strings.TrimSpace(strings.ReplaceAll(string(cmdline), "\x00", " "))
 
-		logger.Info("killing chum process", "pid", pid, "exe", exePath, "cmd", strings.TrimSpace(cmdStr))
+		procs = append(procs, chumProcess{pid: pid, exePath: exePath, cmdline: cmdStr})
+	}
+	return procs
+}
+
+// killAllChumProcesses finds and kills ALL chum binary processes except the current one.
+// Returns the number of processes killed.
+func killAllChumProcesses(logger *slog.Logger) int {
+	procs := findChumProcesses()
+	killed := 0
+
+	for _, p := range procs {
+		logger.Info("killing chum process", "pid", p.pid, "exe", p.exePath, "cmd", p.cmdline)
+		proc, err := os.FindProcess(p.pid)
+		if err != nil {
+			continue
+		}
 		_ = proc.Signal(syscall.SIGTERM)
 
 		dead := false
@@ -304,7 +323,7 @@ func killAllChumProcesses(logger *slog.Logger) int {
 			}
 		}
 		if !dead {
-			logger.Warn("process did not exit after SIGTERM, sending SIGKILL", "pid", pid)
+			logger.Warn("process did not exit after SIGTERM, sending SIGKILL", "pid", p.pid)
 			_ = proc.Signal(syscall.SIGKILL)
 		}
 		killed++
@@ -426,33 +445,14 @@ func runStatusCommand(_ *slog.Logger) error {
 		}
 	}
 
-	// 2. All chum processes via pgrep, verified by /proc/PID/exe.
-	out, pgrepErr := exec.Command("pgrep", "-f", `chum`).Output()
-	if pgrepErr != nil {
+	// 2. All chum processes, verified by /proc/PID/exe.
+	procs := findChumProcesses()
+	if len(procs) == 0 {
 		fmt.Println("processes:  none")
 	} else {
-		self := os.Getpid()
-		var procs []string
-		for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-			pid, parseErr := strconv.Atoi(strings.TrimSpace(line))
-			if parseErr != nil || pid == self || pid == os.Getppid() {
-				continue
-			}
-			exePath, readErr := os.Readlink(fmt.Sprintf("/proc/%d/exe", pid))
-			if readErr != nil || !strings.HasSuffix(filepath.Base(exePath), "chum") {
-				continue
-			}
-			cmdline, _ := os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid))
-			cmdStr := strings.ReplaceAll(string(cmdline), "\x00", " ")
-			procs = append(procs, fmt.Sprintf("  pid %d: %s", pid, strings.TrimSpace(cmdStr)))
-		}
-		if len(procs) == 0 {
-			fmt.Println("processes:  none")
-		} else {
-			fmt.Printf("processes:  %d found\n", len(procs))
-			for _, p := range procs {
-				fmt.Println(p)
-			}
+		fmt.Printf("processes:  %d found\n", len(procs))
+		for _, p := range procs {
+			fmt.Printf("  pid %d: %s\n", p.pid, p.cmdline)
 		}
 	}
 
@@ -512,35 +512,24 @@ func runDoctorCommand(args []string, _ *slog.Logger) error {
 
 	// Check 1: Orphaned processes (verified via /proc/PID/exe).
 	fmt.Println("[processes]")
-	self := os.Getpid()
-	out, pgrepErr := exec.Command("pgrep", "-f", `chum`).Output()
-	if pgrepErr != nil {
+	procs := findChumProcesses()
+	if len(procs) == 0 {
 		fmt.Println("  OK: no chum processes running")
 	} else {
-		var orphans []string
-		pidPath := filepath.Join(dataDir(), "chum.pid")
-		pidData, _ := os.ReadFile(pidPath)
+		pidFilePath := filepath.Join(dataDir(), "chum.pid")
+		pidData, _ := os.ReadFile(pidFilePath)
 		trackedPID := -1
 		if pidData != nil {
 			lines := strings.SplitN(string(pidData), "\n", 2)
 			trackedPID, _ = strconv.Atoi(strings.TrimSpace(lines[0]))
 		}
 
-		for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-			pid, parseErr := strconv.Atoi(strings.TrimSpace(line))
-			if parseErr != nil || pid == self || pid == os.Getppid() {
-				continue
-			}
-			exePath, readErr := os.Readlink(fmt.Sprintf("/proc/%d/exe", pid))
-			if readErr != nil || !strings.HasSuffix(filepath.Base(exePath), "chum") {
-				continue
-			}
-			cmdline, _ := os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid))
-			cmdStr := strings.TrimSpace(strings.ReplaceAll(string(cmdline), "\x00", " "))
-			if pid == trackedPID {
-				fmt.Printf("  OK: tracked process %d is alive\n", pid)
+		var orphans []string
+		for _, p := range procs {
+			if p.pid == trackedPID {
+				fmt.Printf("  OK: tracked process %d is alive\n", p.pid)
 			} else {
-				orphans = append(orphans, fmt.Sprintf("  WARN: orphaned process pid %d: %s", pid, cmdStr))
+				orphans = append(orphans, fmt.Sprintf("  WARN: orphaned process pid %d: %s", p.pid, p.cmdline))
 				issues++
 			}
 		}

@@ -60,12 +60,17 @@ func PostMortemWorkflow(ctx workflow.Context, req PostMortemRequest) error {
 
 	// File antibody morsel if investigation found something actionable.
 	if investigateErr == nil && investigation.Severity != "low" && investigation.RootCause != "" {
+		antibodyOpts := workflow.ActivityOptions{
+			StartToCloseTimeout: 30 * time.Second,
+			RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 1},
+		}
+		antibodyCtx := workflow.WithActivityOptions(ctx, antibodyOpts)
 		antibodyReq := FileAntibodyRequest{
 			Investigation: investigation,
 			Failure:       req.Failure,
 			Project:       req.Project,
 		}
-		_ = workflow.ExecuteActivity(bestEffortCtx, a.FileAntibodyActivity, antibodyReq).Get(ctx, nil)
+		_ = workflow.ExecuteActivity(antibodyCtx, a.FileAntibodyActivity, antibodyReq).Get(ctx, nil)
 	}
 
 	// Notify via Matrix with root-cause summary if available.

@@ -227,53 +227,40 @@ func TestDispatcherContinuesWhenFailureCheckFails(t *testing.T) {
 	require.NoError(t, env.GetWorkflowError(), "dispatcher should complete even if failure check fails")
 }
 
-func TestFetchFailureContextExtractsTaskID(t *testing.T) {
+func TestExtractTaskIDFromWorkflowID(t *testing.T) {
 	tests := []struct {
 		name       string
 		workflowID string
 		wantTaskID string
 	}{
 		{
-			name:       "standard format",
-			workflowID: "chum-agent-fix-db-migration-1234567890",
-			wantTaskID: "fix-db-migration-1234567890",
+			name:       "standard format with timestamp",
+			workflowID: "fix-db-migration-1234567890",
+			wantTaskID: "fix-db-migration",
 		},
 		{
-			name:       "short id",
-			workflowID: "chum-agent-task42",
+			name:       "with lane suffix",
+			workflowID: "fix-db-migration-direct-1234567890",
+			wantTaskID: "fix-db-migration",
+		},
+		{
+			name:       "short id no timestamp",
+			workflowID: "task42",
 			wantTaskID: "task42",
 		},
 		{
-			name:       "too short",
-			workflowID: "chum-agent",
+			name:       "empty",
+			workflowID: "",
 			wantTaskID: "",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			taskID := splitWorkflowID(tt.workflowID)
+			taskID := extractTaskIDFromWorkflowID(tt.workflowID)
 			require.Equal(t, tt.wantTaskID, taskID)
 		})
 	}
-}
-
-// splitWorkflowID extracts the task ID portion from a workflow ID.
-// Format: "chum-agent-<taskID>" where taskID is everything after the second dash.
-func splitWorkflowID(wfID string) string {
-	var count int
-	for i, c := range wfID {
-		if c == '-' {
-			count++
-			if count == 2 {
-				if i+1 < len(wfID) {
-					return wfID[i+1:]
-				}
-				return ""
-			}
-		}
-	}
-	return ""
 }
 
 func TestAntibodyDedupKey(t *testing.T) {

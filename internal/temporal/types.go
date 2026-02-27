@@ -552,7 +552,15 @@ type MorningBriefing struct {
 	TopPriorities []StrategicItem `json:"top_priorities"`
 	Risks         []string        `json:"risks"`
 	RecentLessons []Lesson        `json:"recent_lessons"`
-	Markdown      string          `json:"markdown"` // full rendered markdown
+	HealthEvents  []HealthSummary `json:"health_events,omitempty"` // system health from last 24h
+	Markdown      string          `json:"markdown"`                // full rendered markdown
+}
+
+// HealthSummary groups health events by type for the morning briefing.
+type HealthSummary struct {
+	EventType    string `json:"event_type"`
+	Count        int    `json:"count"`
+	LatestDetail string `json:"latest_detail"`
 }
 
 // --- Dispatcher Types ---

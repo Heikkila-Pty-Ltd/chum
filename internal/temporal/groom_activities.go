@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -97,12 +98,18 @@ Respond with ONLY a JSON object:
 		cliResult, runErr := a.runAgent(ctx, agent, prompt, req.WorkDir)
 		if runErr != nil {
 			logger.Warn(RemoraPrefix+" LLM check failed for task", "task", hit.ID, "error", runErr)
+			if a.Store != nil {
+				_ = a.Store.RecordHealthEvent("groom_mutation_failed", fmt.Sprintf("task=%s LLM error: %v", hit.ID, runErr))
+			}
 			continue
 		}
 
 		jsonStr := extractJSON(cliResult.Output)
 		if jsonStr == "" {
 			logger.Warn(RemoraPrefix+" No JSON in LLM response for task", "task", hit.ID)
+			if a.Store != nil {
+				_ = a.Store.RecordHealthEvent("groom_mutation_failed", fmt.Sprintf("task=%s: no JSON in LLM response", hit.ID))
+			}
 			continue
 		}
 
@@ -113,6 +120,9 @@ Respond with ONLY a JSON object:
 		}
 		if parseErr := json.Unmarshal([]byte(jsonStr), &verdict); parseErr != nil {
 			logger.Warn(RemoraPrefix+" Failed to parse verdict JSON", "task", hit.ID, "error", parseErr)
+			if a.Store != nil {
+				_ = a.Store.RecordHealthEvent("groom_mutation_failed", fmt.Sprintf("task=%s JSON parse: %v", hit.ID, parseErr))
+			}
 			continue
 		}
 
@@ -678,6 +688,7 @@ func (a *Activities) GenerateMorningBriefingActivity(ctx context.Context, req St
 		stored, storedErr := a.Store.GetRecentLessons(req.Project, 5)
 		if storedErr != nil {
 			logger.Warn(RemoraPrefix+" Failed to get recent lessons for briefing", "error", storedErr)
+			_ = a.Store.RecordHealthEvent("briefing_lessons_failed", fmt.Sprintf("project=%s: %v", req.Project, storedErr))
 		}
 		for i := range stored {
 			recentLessons = append(recentLessons, Lesson{
@@ -688,18 +699,77 @@ func (a *Activities) GenerateMorningBriefingActivity(ctx context.Context, req St
 		}
 	}
 
+	// Get recent health events for system health section
+	var healthSummaries []HealthSummary
+	if a.Store != nil {
+		events, healthErr := a.Store.GetRecentHealthEvents(24)
+		if healthErr != nil {
+			logger.Warn(RemoraPrefix+" Failed to get health events for briefing", "error", healthErr)
+		} else if len(events) > 0 {
+			// Group by event_type, count occurrences, keep latest detail
+			type eventGroup struct {
+				count  int
+				latest string
+			}
+			groups := make(map[string]*eventGroup)
+			// Events are sorted newest-first from the store query
+			for i := range events {
+				g, ok := groups[events[i].EventType]
+				if !ok {
+					groups[events[i].EventType] = &eventGroup{count: 1, latest: events[i].Details}
+				} else {
+					g.count++
+				}
+			}
+			// Sort keys for deterministic output order
+			keys := make([]string, 0, len(groups))
+			for k := range groups {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			for _, k := range keys {
+				g := groups[k]
+				healthSummaries = append(healthSummaries, HealthSummary{
+					EventType:    k,
+					Count:        g.count,
+					LatestDetail: g.latest,
+				})
+			}
+		}
+	}
+
 	briefing := &MorningBriefing{
 		Date:          today,
 		Project:       req.Project,
 		TopPriorities: analysis.Priorities,
 		Risks:         analysis.Risks,
 		RecentLessons: recentLessons,
+		HealthEvents:  healthSummaries,
 	}
 
 	// Render markdown
 	var md strings.Builder
 	md.WriteString(fmt.Sprintf("# Morning Briefing: %s\n\n", today))
 	md.WriteString(fmt.Sprintf("**Project**: %s\n\n", req.Project))
+
+	// System Health section — surface silent failures and degradation
+	md.WriteString("## System Health\n\n")
+	if len(healthSummaries) == 0 {
+		md.WriteString("All systems nominal.\n\n")
+	} else {
+		for _, hs := range healthSummaries {
+			detail := hs.LatestDetail
+			if len(detail) > 120 {
+				detail = detail[:120] + "..."
+			}
+			if hs.Count > 1 {
+				md.WriteString(fmt.Sprintf("- **%s** (%dx): %s\n", hs.EventType, hs.Count, detail))
+			} else {
+				md.WriteString(fmt.Sprintf("- **%s**: %s\n", hs.EventType, detail))
+			}
+		}
+		md.WriteString("\n")
+	}
 
 	md.WriteString("## Top Priorities\n\n")
 	urgencyMarker := map[string]string{"critical": " [!!!]", "high": " [!!]", "medium": " [!]", "low": ""}
@@ -743,6 +813,39 @@ func (a *Activities) GenerateMorningBriefingActivity(ctx context.Context, req St
 		logger.Error(RemoraPrefix+" Failed to write morning briefing", "path", briefingPath, "error", err)
 	} else {
 		logger.Info(RemoraPrefix+" Morning briefing written", "path", briefingPath)
+	}
+
+	// Send briefing summary to Matrix
+	if a.Sender != nil && a.DefaultRoom != "" {
+		// Build a concise summary for the Matrix message
+		var summary strings.Builder
+		summary.WriteString(fmt.Sprintf("**Morning Briefing: %s** (%s)\n\n", today, req.Project))
+
+		if len(healthSummaries) > 0 {
+			summary.WriteString("**System Health:**\n")
+			for _, hs := range healthSummaries {
+				summary.WriteString(fmt.Sprintf("- %s (%dx)\n", hs.EventType, hs.Count))
+			}
+			summary.WriteString("\n")
+		}
+
+		if len(analysis.Priorities) > 0 {
+			summary.WriteString("**Top Priorities:**\n")
+			limit := 3
+			if len(analysis.Priorities) < limit {
+				limit = len(analysis.Priorities)
+			}
+			for i := 0; i < limit; i++ {
+				p := analysis.Priorities[i]
+				summary.WriteString(fmt.Sprintf("%d. %s\n", i+1, p.Title))
+			}
+		}
+
+		if sendErr := a.Sender.SendMessage(ctx, a.DefaultRoom, summary.String()); sendErr != nil {
+			logger.Warn(RemoraPrefix+" Failed to send morning briefing to Matrix", "error", sendErr)
+		} else {
+			logger.Info(RemoraPrefix + " Morning briefing sent to Matrix")
+		}
 	}
 
 	return briefing, nil

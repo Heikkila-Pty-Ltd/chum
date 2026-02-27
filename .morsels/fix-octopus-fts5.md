@@ -1,6 +1,6 @@
 ---
 title: "Fix Octopus FTS5 syntax error in lesson search"
-status: ready
+status: done # fixed in PR #21 (FTS5 metachar sanitization, empty MATCH guard, JSON repair pipeline)
 priority: 0
 type: task
 labels:

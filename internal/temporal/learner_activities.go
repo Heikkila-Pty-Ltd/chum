@@ -121,6 +121,9 @@ If there are no meaningful lessons, return an empty array [].`,
 	cliResult, _, err := a.runAgentWithFailover(ctx, req.Tier, prompt, req.WorkDir)
 	if err != nil {
 		logger.Warn(OctopusPrefix+" Lesson extraction LLM failed", "error", err)
+		if a.Store != nil {
+			_ = a.Store.RecordHealthEvent("learner_extraction_failed", fmt.Sprintf("TaskID=%s: %v", req.TaskID, err))
+		}
 		return nil, nil // non-fatal
 	}
 
@@ -156,6 +159,9 @@ If there are no meaningful lessons, return an empty array [].`,
 		}
 
 		logger.Warn(OctopusPrefix+" All JSON repair strategies failed", "error", err)
+		if a.Store != nil {
+			_ = a.Store.RecordHealthEvent("learner_json_repair_failed", fmt.Sprintf("TaskID=%s: %v", req.TaskID, err))
+		}
 		return nil, nil
 	}
 stamped:
@@ -264,12 +270,18 @@ rules:
 		cliResult, _, err := a.runAgentWithFailover(ctx, req.Tier, prompt, req.WorkDir)
 		if err != nil {
 			logger.Warn(OctopusPrefix+" Semgrep rule generation failed", "lesson", lesson.Summary, "error", err)
+			if a.Store != nil {
+				_ = a.Store.RecordHealthEvent("semgrep_generation_failed", fmt.Sprintf("lesson=%s: %v", lesson.Summary, err))
+			}
 			continue
 		}
 
 		output := strings.TrimSpace(cliResult.Output)
 		if !strings.Contains(output, "rules:") {
 			logger.Warn(OctopusPrefix+" Generated output doesn't look like Semgrep YAML", "lesson", lesson.Summary)
+			if a.Store != nil {
+				_ = a.Store.RecordHealthEvent("semgrep_invalid_output", fmt.Sprintf("lesson=%s: output missing 'rules:' key", lesson.Summary))
+			}
 			continue
 		}
 
@@ -339,6 +351,7 @@ func (a *Activities) SynthesizeCLAUDEmdActivity(ctx context.Context, req Learner
 	allLessons, err := a.Store.GetRecentLessons(req.Project, 100)
 	if err != nil {
 		logger.Warn(OctopusPrefix+" Failed to read lessons for CLAUDE.md", "error", err)
+		_ = a.Store.RecordHealthEvent("claudemd_read_failed", fmt.Sprintf("project=%s: %v", req.Project, err))
 		return nil // non-fatal
 	}
 	if len(allLessons) == 0 {

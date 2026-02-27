@@ -136,7 +136,7 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 	w.RegisterActivity(acts.GenerateSemgrepRuleActivity)
 	w.RegisterActivity(acts.SynthesizeCLAUDEmdActivity)
 	w.RegisterActivity(acts.CalcifyPatternActivity)
-	w.RegisterActivity(acts.CommitAndPushLearnerOutputsActivity)
+	w.RegisterActivity(acts.CommitLearnerOutputsActivity)
 	w.RegisterActivity(acts.RecordEscalationActivity)
 	w.RegisterActivity(acts.AutoFixLintActivity)
 	w.RegisterActivity(acts.FailureTriageActivity)

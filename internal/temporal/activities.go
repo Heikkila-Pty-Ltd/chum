@@ -919,6 +919,16 @@ func truncate(s string, maxLen int) string {
 	return s[:maxLen] + "..."
 }
 
+// truncateRunes truncates a string to maxRunes runes, avoiding mid-character
+// splits on multi-byte UTF-8 content (e.g. health event details with non-ASCII).
+func truncateRunes(s string, maxRunes int) string {
+	runes := []rune(s)
+	if len(runes) <= maxRunes {
+		return s
+	}
+	return string(runes[:maxRunes]) + "..."
+}
+
 // SetupWorktreeActivity creates an isolated git worktree for this shark organism.
 // Each organism gets its own workspace so concurrent sharks don't compete for
 // build locks, .next/ directories, or other stateful artifacts.
@@ -1474,7 +1484,7 @@ func (a *Activities) AutoFixLintActivity(ctx context.Context, workDir string) (*
 		if err := stageCmd.Run(); err != nil {
 			logger.Warn(OrcaPrefix+" git add failed during auto-fix", "error", err)
 		} else {
-			commitCmd := exec.CommandContext(ctx, "git", "commit", "-m", "chore: auto-fix formatting (gofmt/goimports)", "--no-verify")
+			commitCmd := exec.CommandContext(ctx, "git", "commit", "-m", "chore: auto-fix formatting (gofmt/goimports)")
 			commitCmd.Dir = workDir
 			if err := commitCmd.Run(); err != nil {
 				logger.Warn(OrcaPrefix+" git commit failed during auto-fix", "error", err)

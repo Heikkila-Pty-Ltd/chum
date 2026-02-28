@@ -184,6 +184,7 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 	w.RegisterActivity(acts.StrategicAnalysisActivity)
 	w.RegisterActivity(acts.GenerateMorningBriefingActivity)
 	w.RegisterActivity(acts.ApplyStrategicMutationsActivity)
+	w.RegisterActivity(acts.DetectWhalesActivity)
 	w.RegisterActivity(acts.RecordFailureActivity)
 	w.RegisterActivity(acts.FileInvestigationTaskActivity)
 	w.RegisterActivity(acts.SentinelScanActivity)

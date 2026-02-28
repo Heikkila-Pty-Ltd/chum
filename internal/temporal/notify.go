@@ -203,6 +203,11 @@ func themed(event, taskID string, extra map[string]string) string {
 		errMsg := get("error")
 		return fmt.Sprintf("🐢 **ceremony failed** — `%s` phase %s: %s", taskID, phase, errMsg)
 
+	case "whale_sliced":
+		title := get("title")
+		morsels := get("morsels")
+		return fmt.Sprintf("🐋 **whale sliced** — `%s`: *%s* → %s morsels", taskID, title, morsels)
+
 	case "crab_escalate":
 		reason := get("reason")
 		return fmt.Sprintf("🦀→🐢 **crab couldn't slice** — `%s` escalated to turtle (%s)", taskID, reason)

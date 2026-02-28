@@ -456,6 +456,46 @@ func countOpenTasks(allTasks []graph.Task) int {
 	return n
 }
 
+// DetectWhalesActivity queries the DAG for open whale-sized tasks eligible for auto-decomposition.
+// Returns up to 3 whales sorted by priority (lowest number = highest priority).
+func (a *Activities) DetectWhalesActivity(ctx context.Context, project string) ([]graph.Task, error) {
+	logger := activity.GetLogger(ctx)
+
+	if a.DAG == nil {
+		logger.Warn(RemoraPrefix + " No DAG configured, skipping whale detection")
+		return nil, nil
+	}
+
+	allTasks, err := a.DAG.ListTasks(ctx, project, "open", "ready")
+	if err != nil {
+		return nil, fmt.Errorf("listing tasks for whale detection: %w", err)
+	}
+
+	var whales []graph.Task
+	for i := range allTasks {
+		t := &allTasks[i]
+		if t.Type == "epic" {
+			continue
+		}
+		if t.Type == "whale" || t.EstimateMinutes > 90 {
+			whales = append(whales, *t)
+		}
+	}
+
+	// Sort by priority ascending (highest priority first).
+	sort.Slice(whales, func(i, j int) bool {
+		return whales[i].Priority < whales[j].Priority
+	})
+
+	// Cap at 3 to prevent runaway decomposition.
+	if len(whales) > 3 {
+		whales = whales[:3]
+	}
+
+	logger.Info(RemoraPrefix+" Whale detection complete", "Found", len(whales), "Project", project)
+	return whales, nil
+}
+
 // GenerateRepoMapActivity generates a compressed codebase map using go list + go doc.
 // This gives the strategic groombot structural awareness without reading entire files.
 func (a *Activities) GenerateRepoMapActivity(ctx context.Context, req StrategicGroomRequest) (*RepoMap, error) {
@@ -791,6 +831,15 @@ func (a *Activities) GenerateMorningBriefingActivity(ctx context.Context, req St
 		md.WriteString("## Recent Lessons Learned\n\n")
 		for i := range recentLessons {
 			md.WriteString(fmt.Sprintf("- [%s] %s (from %s)\n", recentLessons[i].Category, recentLessons[i].Summary, recentLessons[i].TaskID))
+		}
+		md.WriteString("\n")
+	}
+
+	if len(analysis.WhalesDecomposed) > 0 {
+		md.WriteString("## Whales Sliced\n\n")
+		for _, w := range analysis.WhalesDecomposed {
+			md.WriteString(fmt.Sprintf("- `%s`: %q → %d morsels emitted (%s)\n",
+				w.WhaleID, w.WhaleTitle, len(w.MorselsEmitted), w.Status))
 		}
 		md.WriteString("\n")
 	}

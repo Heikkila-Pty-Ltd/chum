@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/antigravity-dev/chum/internal/graph"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	enumspb "go.temporal.io/api/enums/v1"
@@ -545,6 +546,8 @@ func TestStrategicGroomWorkflowPipeline(t *testing.T) {
 		MutationsApplied: 1,
 	}, nil)
 
+	env.OnActivity(a.DetectWhalesActivity, mock.Anything, mock.Anything).Return(nil, nil)
+
 	env.OnActivity(a.GenerateMorningBriefingActivity, mock.Anything, mock.Anything, mock.Anything).Return(&MorningBriefing{
 		Date:     "2026-02-20",
 		Project:  "test-project",
@@ -642,6 +645,8 @@ func TestStrategicGroomWorkflowActionableCreatePassesThroughToActivity(t *testin
 			}
 		}).Return(&GroomResult{MutationsApplied: 1}, nil)
 
+	env.OnActivity(a.DetectWhalesActivity, mock.Anything, mock.Anything).Return(nil, nil)
+
 	env.OnActivity(a.GenerateMorningBriefingActivity, mock.Anything, mock.Anything, mock.Anything).Return(&MorningBriefing{
 		Date:     "2026-02-21",
 		Project:  "test-project",
@@ -698,6 +703,8 @@ func TestStrategicGroomWorkflowVagueCreateIsDeferredNotP1(t *testing.T) {
 				capturedMutations = ms
 			}
 		}).Return(&GroomResult{MutationsApplied: 1}, nil)
+
+	env.OnActivity(a.DetectWhalesActivity, mock.Anything, mock.Anything).Return(nil, nil)
 
 	env.OnActivity(a.GenerateMorningBriefingActivity, mock.Anything, mock.Anything, mock.Anything).Return(&MorningBriefing{
 		Date:     "2026-02-21",
@@ -757,6 +764,64 @@ func TestNormalizeStrategicMutationsNonCreatePassesThrough(t *testing.T) {
 		require.Equal(t, StrategicMutationSource, m.StrategicSource, "all get source set")
 		require.False(t, m.Deferred, "non-create mutations are never deferred")
 	}
+}
+
+// TestStrategicGroomWorkflow_WithWhales verifies that when DetectWhalesActivity
+// returns a whale, the workflow spawns CrabDecompositionWorkflow, closes the parent,
+// and includes the result in the briefing.
+func TestStrategicGroomWorkflow_WithWhales(t *testing.T) {
+	s := testsuite.WorkflowTestSuite{}
+	env := s.NewTestWorkflowEnvironment()
+
+	env.OnActivity(a.GenerateRepoMapActivity, mock.Anything, mock.Anything).Return(&RepoMap{
+		TotalFiles: 10,
+		Packages:   []PackageInfo{{ImportPath: "example.com/pkg", Name: "pkg"}},
+	}, nil)
+
+	env.OnActivity(a.GetMorselStateSummaryActivity, mock.Anything, mock.Anything).Return("Open: 5", nil)
+
+	env.OnActivity(a.StrategicAnalysisActivity, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&StrategicAnalysis{
+		Priorities: []StrategicItem{{Title: "Ship auth", Urgency: "high"}},
+	}, nil)
+
+	env.OnActivity(a.DetectWhalesActivity, mock.Anything, mock.Anything).Return([]graph.Task{
+		{ID: "whale-1", Title: "Build authentication system", Type: "whale", EstimateMinutes: 480},
+	}, nil)
+
+	env.OnWorkflow(CrabDecompositionWorkflow, mock.Anything, mock.Anything).Return(&CrabDecompositionResult{
+		Status:         "completed",
+		MorselsEmitted: []string{"morsel-a", "morsel-b", "morsel-c"},
+	}, nil)
+
+	env.OnActivity(a.CloseTaskActivity, mock.Anything, "whale-1", "completed").Return(nil)
+	env.OnActivity(a.NotifyActivity, mock.Anything, mock.Anything).Return(nil).Maybe()
+
+	var capturedAnalysis *StrategicAnalysis
+	env.OnActivity(a.GenerateMorningBriefingActivity, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			if sa, ok := args.Get(2).(*StrategicAnalysis); ok {
+				capturedAnalysis = sa
+			}
+		}).Return(&MorningBriefing{
+		Date:     "2026-02-28",
+		Project:  "test-project",
+		Markdown: "# Briefing",
+	}, nil)
+
+	env.ExecuteWorkflow(StrategicGroomWorkflow, StrategicGroomRequest{
+		Project: "test-project",
+		WorkDir: "/tmp/test",
+		Tier:    "premium",
+	})
+
+	require.True(t, env.IsWorkflowCompleted())
+	require.NoError(t, env.GetWorkflowError())
+
+	require.NotNil(t, capturedAnalysis, "analysis must be passed to briefing")
+	require.Len(t, capturedAnalysis.WhalesDecomposed, 1)
+	require.Equal(t, "whale-1", capturedAnalysis.WhalesDecomposed[0].WhaleID)
+	require.Equal(t, "completed", capturedAnalysis.WhalesDecomposed[0].Status)
+	require.Equal(t, []string{"morsel-a", "morsel-b", "morsel-c"}, capturedAnalysis.WhalesDecomposed[0].MorselsEmitted)
 }
 
 // TestStepDurationLogging verifies that every pipeline step records its name,

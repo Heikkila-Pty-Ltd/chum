@@ -615,6 +615,16 @@ func ChumAgentWorkflow(ctx workflow.Context, req TaskRequest) (err error) {
 					logger.Warn(SharkPrefix+" Failed to mark morsel done (non-fatal)", "error", err)
 				}
 
+				// Auto-unblock downstream morsels whose deps are now all satisfied
+				unblockCtx := workflow.WithActivityOptions(ctx, recordOpts)
+				var unblocked []string
+				if err := workflow.ExecuteActivity(unblockCtx, a.UnblockDependentsActivity, baseWorkDir, req.TaskID).Get(ctx, &unblocked); err != nil {
+					logger.Warn(SharkPrefix+" Failed to auto-unblock dependents (non-fatal)", "error", err)
+				}
+				if len(unblocked) > 0 {
+					logger.Info(SharkPrefix+" Auto-unblocked downstream morsels", "count", len(unblocked), "ids", unblocked)
+				}
+
 				recordOutcome(ctx, recordOpts, a, req, "completed", 0,
 					true, "", startTime, totalTokens, activityTokens, stepMetrics)
 

@@ -1,6 +1,6 @@
 ---
 title: "Add Matrix/Hex notifications for escalations and groom results"
-status: ready
+status: done
 priority: 1
 type: feature
 labels:

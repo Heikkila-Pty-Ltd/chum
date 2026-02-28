@@ -121,7 +121,8 @@ const (
 		  AND (dependency.id IS NULL OR lower(dependency.status) NOT IN (?, ?, ?, ?, ?, ?))
 		ORDER BY e.to_task ASC
 		LIMIT 1;`
-	dependenciesSQL = `SELECT from_task, to_task FROM task_edges WHERE from_task IN `
+	dependenciesSQL  = `SELECT from_task, to_task FROM task_edges WHERE from_task IN `
+	getDependentsSQL = `SELECT from_task FROM task_edges WHERE to_task = ? ORDER BY from_task`
 )
 
 const (
@@ -584,6 +585,98 @@ func (d *DAG) GetReadyNodes(ctx context.Context, project string) ([]Task, error)
 	}
 
 	return tasks, nil
+}
+
+// terminalStatuses lists the status values considered resolved for dependency purposes.
+var terminalStatuses = map[string]struct{}{
+	statusClosed:  {},
+	"completed":   {},
+	"escalated":   {},
+	"plan_failed": {},
+	"canceled":    {},
+	"done":        {},
+}
+
+// isTerminalStatus reports whether a status is considered resolved.
+func isTerminalStatus(status string) bool {
+	_, ok := terminalStatuses[normalizeTaskStatus(status)]
+	return ok
+}
+
+// GetDependents returns task IDs that directly depend on the given task
+// (reverse edges: tasks whose from_task points to the given to_task).
+func (d *DAG) GetDependents(ctx context.Context, taskID string) ([]string, error) {
+	if d == nil || d.db == nil {
+		return nil, fmt.Errorf("graph: DAG is not initialized")
+	}
+	taskID = strings.TrimSpace(taskID)
+	if taskID == "" {
+		return nil, fmt.Errorf("task id is required")
+	}
+
+	rows, err := queryContext(ctx, d.db, getDependentsSQL, taskID)
+	if err != nil {
+		return nil, fmt.Errorf("get dependents: %w", err)
+	}
+	defer rows.Close()
+
+	var dependents []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scan dependent: %w", err)
+		}
+		dependents = append(dependents, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("get dependents: %w", err)
+	}
+	return dependents, nil
+}
+
+// AutoUnblockDependents checks all tasks that depend on completedTaskID.
+// For each dependent with status "open", if ALL of its dependencies are
+// in terminal states, it transitions the dependent to "ready".
+// Returns the list of task IDs that were promoted.
+func (d *DAG) AutoUnblockDependents(ctx context.Context, completedTaskID string) ([]string, error) {
+	dependents, err := d.GetDependents(ctx, completedTaskID)
+	if err != nil {
+		return nil, err
+	}
+
+	promoted := make([]string, 0, len(dependents))
+	for _, depID := range dependents {
+		task, err := d.GetTask(ctx, depID)
+		if err != nil {
+			continue // best-effort
+		}
+		if normalizeTaskStatus(task.Status) != statusOpen {
+			continue // only promote open -> ready
+		}
+
+		// Check if ALL dependencies of this task are now terminal.
+		allDone := true
+		for _, reqID := range task.DependsOn {
+			reqTask, getErr := d.GetTask(ctx, reqID)
+			if getErr != nil {
+				allDone = false
+				break
+			}
+			if !isTerminalStatus(reqTask.Status) {
+				allDone = false
+				break
+			}
+		}
+		if !allDone {
+			continue
+		}
+
+		if updateErr := d.UpdateTask(ctx, depID, map[string]any{"status": statusReady}); updateErr != nil {
+			continue // best-effort
+		}
+		promoted = append(promoted, depID)
+	}
+	return promoted, nil
 }
 
 func (d *DAG) taskProject(ctx context.Context, id string) (string, error) {

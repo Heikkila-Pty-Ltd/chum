@@ -2,8 +2,13 @@ package temporal
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
 	"strings"
+	"time"
 
 	"go.temporal.io/sdk/activity"
 
@@ -285,6 +290,9 @@ CLARIFICATIONS:
 EXISTING MORSELS IN PROJECT:
 %s
 
+BLAST RADIUS ANALYSIS:
+%s
+
 Rules:
 1. Each whale maps to one or more scope items
 2. Each morsel must be independently executable by a single agent in one session
@@ -325,6 +333,7 @@ Respond with ONLY a JSON array of whales:
 		oosList.String(),
 		clarificationContext.String(),
 		truncate(existingMorsels.String(), 2000),
+		FormatBlastRadiusSection(req.BlastRadius),
 	)
 
 	activity.RecordHeartbeat(ctx, "calling-llm-decompose")
@@ -700,4 +709,226 @@ func (a *Activities) EmitMorselsActivity(ctx context.Context, req CrabDecomposit
 	)
 
 	return result, nil
+}
+
+// BlastRadiusScanActivity scans a project's dependency graph to inform
+// decomposition quality. For Go projects it uses `go list`; for JS/TS it
+// tries madge. The scan is best-effort — failures are recorded but never
+// returned as errors.
+func (a *Activities) BlastRadiusScanActivity(ctx context.Context, workDir string) (*BlastRadiusReport, error) {
+	logger := activity.GetLogger(ctx)
+	start := time.Now()
+	report := &BlastRadiusReport{}
+
+	activity.RecordHeartbeat(ctx, "listing-source-files")
+
+	files := listSourceFiles(workDir)
+	report.TotalFiles = len(files)
+	report.Language = detectDominantLanguage(files)
+
+	switch report.Language {
+	case "go":
+		scanGoBlastRadius(ctx, workDir, report)
+	case "js", "react":
+		scanJSBlastRadius(ctx, workDir, report)
+	}
+
+	report.ScanDurMs = time.Since(start).Milliseconds()
+
+	logger.Info(CrabPrefix+" Blast radius scan complete",
+		"Language", report.Language,
+		"HotFiles", len(report.HotFiles),
+		"TotalPkgs", report.TotalPkgs,
+		"DurationMs", report.ScanDurMs,
+	)
+	return report, nil
+}
+
+// listSourceFiles collects source file paths under workDir (up to 5000 files).
+func listSourceFiles(workDir string) []string {
+	const maxFiles = 5000
+	sourceExts := map[string]struct{}{
+		".go": {}, ".ts": {}, ".tsx": {}, ".js": {}, ".jsx": {},
+		".py": {}, ".rs": {}, ".css": {}, ".scss": {}, ".html": {},
+	}
+
+	var files []string
+	_ = filepath.WalkDir(workDir, func(path string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return filepath.SkipDir
+		}
+		if d.IsDir() {
+			base := d.Name()
+			if base == "node_modules" || base == ".git" || base == "vendor" || base == "dist" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if len(files) >= maxFiles {
+			return filepath.SkipAll
+		}
+		ext := filepath.Ext(path)
+		if _, ok := sourceExts[ext]; ok {
+			rel, relErr := filepath.Rel(workDir, path)
+			if relErr == nil {
+				files = append(files, rel)
+			}
+		}
+		return nil
+	})
+	return files
+}
+
+// goListPackage is the subset of `go list -json` output we care about.
+type goListPackage struct {
+	ImportPath string   `json:"ImportPath"`
+	GoFiles    []string `json:"GoFiles"`
+	Imports    []string `json:"Imports"`
+}
+
+// scanGoBlastRadius populates the report using `go list -json ./...`.
+func scanGoBlastRadius(ctx context.Context, workDir string, report *BlastRadiusReport) {
+	result := runCommand(ctx, workDir, 30*time.Second, "go", "list", "-json", "./...")
+	if !result.Succeeded {
+		report.ScanErrors = append(report.ScanErrors, "go list failed: "+truncate(result.Error, 200))
+		return
+	}
+
+	// go list -json outputs concatenated JSON objects (not an array).
+	dec := json.NewDecoder(strings.NewReader(result.Stdout))
+	var pkgs []goListPackage
+	for dec.More() {
+		var pkg goListPackage
+		if err := dec.Decode(&pkg); err != nil {
+			break
+		}
+		pkgs = append(pkgs, pkg)
+	}
+	report.TotalPkgs = len(pkgs)
+
+	// Build import fan-in map: how many packages import each package.
+	fanIn := map[string]int{}
+	for _, pkg := range pkgs {
+		for _, imp := range pkg.Imports {
+			fanIn[imp]++
+		}
+	}
+
+	// Collect hot files: packages with fan-in >= 3, sorted by fan-in descending.
+	type fanEntry struct {
+		path  string
+		count int
+	}
+	var entries []fanEntry
+	for path, count := range fanIn {
+		if count >= 3 {
+			entries = append(entries, fanEntry{path, count})
+		}
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].count != entries[j].count {
+			return entries[i].count > entries[j].count
+		}
+		return entries[i].path < entries[j].path
+	})
+
+	// Cap at 20 hot files.
+	if len(entries) > 20 {
+		entries = entries[:20]
+	}
+	for _, e := range entries {
+		report.HotFiles = append(report.HotFiles, HotFile{Path: e.path, ImportedBy: e.count})
+	}
+}
+
+// scanJSBlastRadius populates the report using madge (if available).
+func scanJSBlastRadius(ctx context.Context, workDir string, report *BlastRadiusReport) {
+	// Try madge for circular dependency detection.
+	result := runCommand(ctx, workDir, 30*time.Second, "npx", "--yes", "madge", "--circular", "--json", ".")
+	if result.Succeeded {
+		var circular [][]string
+		if err := json.Unmarshal([]byte(result.Stdout), &circular); err == nil {
+			for _, cycle := range circular {
+				if len(cycle) > 0 {
+					report.CircularDeps = append(report.CircularDeps, strings.Join(cycle, " -> "))
+				}
+			}
+		}
+	} else {
+		report.ScanErrors = append(report.ScanErrors, "madge circular check unavailable")
+	}
+
+	// Try madge for dependency graph to compute fan-in.
+	graphResult := runCommand(ctx, workDir, 30*time.Second, "npx", "--yes", "madge", "--json", ".")
+	if graphResult.Succeeded {
+		var depGraph map[string][]string
+		if err := json.Unmarshal([]byte(graphResult.Stdout), &depGraph); err == nil {
+			report.TotalPkgs = len(depGraph)
+
+			// Build fan-in from dependency graph.
+			fanIn := map[string]int{}
+			for _, deps := range depGraph {
+				for _, dep := range deps {
+					fanIn[dep]++
+				}
+			}
+
+			type fanEntry struct {
+				path  string
+				count int
+			}
+			var entries []fanEntry
+			for path, count := range fanIn {
+				if count >= 3 {
+					entries = append(entries, fanEntry{path, count})
+				}
+			}
+			sort.Slice(entries, func(i, j int) bool {
+				if entries[i].count != entries[j].count {
+					return entries[i].count > entries[j].count
+				}
+				return entries[i].path < entries[j].path
+			})
+			if len(entries) > 20 {
+				entries = entries[:20]
+			}
+			for _, e := range entries {
+				report.HotFiles = append(report.HotFiles, HotFile{Path: e.path, ImportedBy: e.count})
+			}
+		}
+	} else {
+		report.ScanErrors = append(report.ScanErrors, "madge graph unavailable")
+	}
+}
+
+// FormatBlastRadiusSection returns a markdown summary of the blast radius report
+// suitable for injection into the decomposition prompt. Returns empty string
+// if the report is nil or has no useful data.
+func FormatBlastRadiusSection(report *BlastRadiusReport) string {
+	if report == nil {
+		return ""
+	}
+	if len(report.HotFiles) == 0 && len(report.CircularDeps) == 0 {
+		return ""
+	}
+
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("Language: %s | %d packages | %d source files\n\n", report.Language, report.TotalPkgs, report.TotalFiles))
+
+	if len(report.HotFiles) > 0 {
+		b.WriteString("High-coupling files (split carefully — changes here ripple widely):\n")
+		for _, hf := range report.HotFiles {
+			b.WriteString(fmt.Sprintf("- %s (imported by %d packages)\n", hf.Path, hf.ImportedBy))
+		}
+		b.WriteString("\n")
+	}
+
+	if len(report.CircularDeps) > 0 {
+		b.WriteString("Circular dependencies (break these if touched):\n")
+		for _, cd := range report.CircularDeps {
+			b.WriteString(fmt.Sprintf("- %s\n", cd))
+		}
+	}
+
+	return b.String()
 }

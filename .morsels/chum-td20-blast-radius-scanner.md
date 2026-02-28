@@ -1,6 +1,6 @@
 ---
 title: "Add pre-crab blast radius scanner"
-status: ready
+status: done
 priority: 2
 type: feature
 labels:

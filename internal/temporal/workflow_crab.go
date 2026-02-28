@@ -137,6 +137,20 @@ func CrabDecompositionWorkflow(ctx workflow.Context, req CrabDecompositionReques
 		clarifications.NeedsHumanInput = false
 	}
 
+	// ===== PHASE 2.5: BLAST RADIUS SCAN =====
+	scanStart := workflow.Now(ctx)
+	logger.Info(CrabPrefix+" Phase 2.5: BLAST RADIUS SCAN", "PlanID", req.PlanID)
+
+	scanCtx := workflow.WithActivityOptions(ctx, mediumAO)
+	var blastReport BlastRadiusReport
+	if err := workflow.ExecuteActivity(scanCtx, a.BlastRadiusScanActivity, req.WorkDir).Get(ctx, &blastReport); err != nil {
+		logger.Warn(CrabPrefix+" Blast radius scan failed (non-fatal)", "error", err)
+		recordStep("blast_scan", scanStart, "failed")
+	} else {
+		recordStep("blast_scan", scanStart, "ok")
+		req.BlastRadius = &blastReport
+	}
+
 	// ===== PHASE 3: DECOMPOSE =====
 	decomposeStart := workflow.Now(ctx)
 	logger.Info(CrabPrefix+" Phase 3: DECOMPOSE", "PlanID", req.PlanID)

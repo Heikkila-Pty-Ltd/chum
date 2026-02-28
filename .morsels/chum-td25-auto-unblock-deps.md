@@ -1,6 +1,6 @@
 ---
 title: "Auto-unblock morsels when all dependencies are done"
-status: ready
+status: done
 priority: 0
 type: task
 labels:

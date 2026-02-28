@@ -100,6 +100,10 @@ func themed(event, taskID string, extra map[string]string) string {
 		}
 		return fmt.Sprintf("🦈 **chum fed to %s sharks** — %s", count, tasks)
 
+	case "throttle":
+		reason := get("reason")
+		return fmt.Sprintf("⏸️ **dispatcher throttled** — %s", reason)
+
 	// --- Shark pipeline ---
 	case "plan":
 		title := get("title")

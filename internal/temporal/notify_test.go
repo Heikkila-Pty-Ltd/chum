@@ -29,6 +29,7 @@ func TestThemed_AllEvents(t *testing.T) {
 		{"crab_done", map[string]string{"whales": "4", "morsels": "12"}, "whale carved"},
 		{"learner", map[string]string{"lessons": "3"}, "octopus updating the knowledge store"},
 		{"groom", map[string]string{"applied": "2"}, "remoras cleaning up"},
+		{"throttle", map[string]string{"reason": "5h claude output ceiling: 100000/100000 (100%)"}, "dispatcher throttled"},
 	}
 
 	for _, tt := range events {

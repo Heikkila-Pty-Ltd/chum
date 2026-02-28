@@ -724,14 +724,33 @@ type PlannerOutcomeRecord struct {
 
 // CrabDecompositionRequest starts a crab decomposition workflow.
 type CrabDecompositionRequest struct {
-	PlanID                  string `json:"plan_id"`
-	Project                 string `json:"project"`
-	WorkDir                 string `json:"work_dir"`
-	PlanMarkdown            string `json:"plan_markdown"`
-	Tier                    string `json:"tier"`                      // LLM tier: "fast", "balanced", or "premium"
-	ParentWhaleID           string `json:"parent_whale_id,omitempty"` // optional parent whale to nest under
-	RequireHumanReview      bool   `json:"require_human_review"`      // if true, block at Phase 6 for human signal; default: auto-approve
-	DisableTurtleEscalation bool   `json:"disable_turtle_escalation"` // if true, return failed instead of crab->planning escalation (prevents recursive rebound)
+	PlanID                  string             `json:"plan_id"`
+	Project                 string             `json:"project"`
+	WorkDir                 string             `json:"work_dir"`
+	PlanMarkdown            string             `json:"plan_markdown"`
+	Tier                    string             `json:"tier"`                      // LLM tier: "fast", "balanced", or "premium"
+	ParentWhaleID           string             `json:"parent_whale_id,omitempty"` // optional parent whale to nest under
+	RequireHumanReview      bool               `json:"require_human_review"`      // if true, block at Phase 6 for human signal; default: auto-approve
+	DisableTurtleEscalation bool               `json:"disable_turtle_escalation"` // if true, return failed instead of crab->planning escalation (prevents recursive rebound)
+	BlastRadius             *BlastRadiusReport `json:"blast_radius,omitempty"`    // pre-scanned dependency analysis
+}
+
+// BlastRadiusReport summarizes the dependency and coupling data for a project,
+// used to inform crab decomposition decisions.
+type BlastRadiusReport struct {
+	Language     string    `json:"language"`
+	HotFiles     []HotFile `json:"hot_files,omitempty"`     // most-imported files (high fan-in)
+	CircularDeps []string  `json:"circular_deps,omitempty"` // circular dependency warnings
+	TotalPkgs    int       `json:"total_pkgs"`
+	TotalFiles   int       `json:"total_files"`
+	ScanDurMs    int64     `json:"scan_dur_ms"`
+	ScanErrors   []string  `json:"scan_errors,omitempty"` // non-fatal scan errors
+}
+
+// HotFile is a file imported by many others — high blast radius.
+type HotFile struct {
+	Path       string `json:"path"`
+	ImportedBy int    `json:"imported_by"`
 }
 
 // ParsedPlan is the output of deterministic markdown parsing.

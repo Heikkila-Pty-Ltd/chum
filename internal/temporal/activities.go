@@ -693,6 +693,71 @@ func (a *Activities) MarkMorselDoneActivity(ctx context.Context, workDir, taskID
 	return nil
 }
 
+// UnblockDependentsActivity checks downstream dependents of a completed task
+// and auto-promotes any whose dependencies are all satisfied from open to ready.
+// It also updates the corresponding morsel .md files and commits changes.
+// Non-fatal: returns nil on any failure.
+func (a *Activities) UnblockDependentsActivity(ctx context.Context, workDir, completedTaskID string) ([]string, error) {
+	logger := activity.GetLogger(ctx)
+
+	if a.DAG == nil {
+		logger.Warn(SharkPrefix + " DAG not configured, skipping auto-unblock")
+		return nil, nil
+	}
+
+	promoted, err := a.DAG.AutoUnblockDependents(ctx, completedTaskID)
+	if err != nil {
+		logger.Warn(SharkPrefix+" Auto-unblock failed (non-fatal)", "task", completedTaskID, "error", err)
+		return nil, nil
+	}
+
+	if len(promoted) == 0 {
+		return nil, nil
+	}
+
+	// Update morsel .md files from open/blocked to ready.
+	re := regexp.MustCompile(`(?m)^status:\s*(open|blocked)\b.*$`)
+	gitPaths := make([]string, 0, len(promoted))
+	for _, taskID := range promoted {
+		morselPath := filepath.Join(workDir, ".morsels", taskID+".md")
+		data, readErr := os.ReadFile(morselPath)
+		if readErr != nil {
+			logger.Warn(SharkPrefix+" Morsel file not found for unblock (non-fatal)", "path", morselPath)
+			continue
+		}
+		updated := re.ReplaceAllString(string(data), "status: ready")
+		if updated == string(data) {
+			continue
+		}
+		if writeErr := os.WriteFile(morselPath, []byte(updated), 0o644); writeErr != nil {
+			logger.Warn(SharkPrefix+" Failed to write unblocked morsel (non-fatal)", "path", morselPath)
+			continue
+		}
+		gitPaths = append(gitPaths, morselPath)
+	}
+
+	// Single git commit for all unblocked morsels.
+	if len(gitPaths) > 0 {
+		addArgs := append([]string{"add"}, gitPaths...)
+		addCmd := exec.CommandContext(ctx, "git", addArgs...)
+		addCmd.Dir = workDir
+		if addErr := addCmd.Run(); addErr != nil {
+			logger.Warn(SharkPrefix+" git add unblocked morsels failed (non-fatal)", "error", addErr)
+			return promoted, nil
+		}
+
+		commitMsg := fmt.Sprintf("chore: auto-unblock %d morsels after %s completed", len(gitPaths), completedTaskID)
+		commitCmd := exec.CommandContext(ctx, "git", "commit", "-m", commitMsg)
+		commitCmd.Dir = workDir
+		if out, commitErr := commitCmd.CombinedOutput(); commitErr != nil {
+			logger.Warn(SharkPrefix+" git commit unblock failed (non-fatal)", "error", commitErr, "output", string(out))
+		}
+	}
+
+	logger.Info(SharkPrefix+" Auto-unblocked dependents", "trigger", completedTaskID, "promoted", promoted)
+	return promoted, nil
+}
+
 // RecordHealthEventActivity records a health event to the store from within a
 // workflow. This makes crabs, grooming, and other workflows visible to the
 // octopus and stingray observability system.

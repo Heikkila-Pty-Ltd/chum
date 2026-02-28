@@ -977,3 +977,167 @@ func TestAddEdge_CrossProjectRejected(t *testing.T) {
 		t.Fatalf("expected cross-project error, got: %v", err)
 	}
 }
+
+func TestGetDependents(t *testing.T) {
+	dag := newTestDAG(t)
+	ctx := t.Context()
+
+	aID, _ := dag.CreateTask(ctx, Task{Title: "A", Project: "p", Status: "ready"})
+	bID, _ := dag.CreateTask(ctx, Task{Title: "B", Project: "p", Status: "open"})
+	cID, _ := dag.CreateTask(ctx, Task{Title: "C", Project: "p", Status: "open"})
+
+	// B depends on A, C depends on B
+	if err := dag.AddEdge(ctx, bID, aID); err != nil {
+		t.Fatal(err)
+	}
+	if err := dag.AddEdge(ctx, cID, bID); err != nil {
+		t.Fatal(err)
+	}
+
+	deps, err := dag.GetDependents(ctx, aID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(deps) != 1 || deps[0] != bID {
+		t.Fatalf("expected [%s], got %v", bID, deps)
+	}
+
+	deps, err = dag.GetDependents(ctx, bID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(deps) != 1 || deps[0] != cID {
+		t.Fatalf("expected [%s], got %v", cID, deps)
+	}
+
+	deps, err = dag.GetDependents(ctx, cID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(deps) != 0 {
+		t.Fatalf("expected empty, got %v", deps)
+	}
+}
+
+func TestAutoUnblockDependents_Chain(t *testing.T) {
+	dag := newTestDAG(t)
+	ctx := t.Context()
+
+	aID, _ := dag.CreateTask(ctx, Task{Title: "A", Project: "p", Status: "ready"})
+	bID, _ := dag.CreateTask(ctx, Task{Title: "B", Project: "p", Status: "open"})
+	cID, _ := dag.CreateTask(ctx, Task{Title: "C", Project: "p", Status: "open"})
+
+	if err := dag.AddEdge(ctx, bID, aID); err != nil {
+		t.Fatal(err)
+	}
+	if err := dag.AddEdge(ctx, cID, bID); err != nil {
+		t.Fatal(err)
+	}
+
+	// Complete A
+	if err := dag.UpdateTask(ctx, aID, map[string]any{"status": "done"}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Auto-unblock: B should promote to ready, C should stay open
+	promoted, err := dag.AutoUnblockDependents(ctx, aID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(promoted) != 1 || promoted[0] != bID {
+		t.Fatalf("expected [%s] promoted, got %v", bID, promoted)
+	}
+
+	bTask, _ := dag.GetTask(ctx, bID)
+	if bTask.Status != "ready" {
+		t.Fatalf("expected B=ready, got %s", bTask.Status)
+	}
+	cTask, _ := dag.GetTask(ctx, cID)
+	if cTask.Status != "open" {
+		t.Fatalf("expected C=open, got %s", cTask.Status)
+	}
+
+	// Complete B
+	if err := dag.UpdateTask(ctx, bID, map[string]any{"status": "done"}); err != nil {
+		t.Fatal(err)
+	}
+
+	promoted, err = dag.AutoUnblockDependents(ctx, bID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(promoted) != 1 || promoted[0] != cID {
+		t.Fatalf("expected [%s] promoted, got %v", cID, promoted)
+	}
+
+	cTask, _ = dag.GetTask(ctx, cID)
+	if cTask.Status != "ready" {
+		t.Fatalf("expected C=ready, got %s", cTask.Status)
+	}
+}
+
+func TestAutoUnblockDependents_MultiDep(t *testing.T) {
+	dag := newTestDAG(t)
+	ctx := t.Context()
+
+	aID, _ := dag.CreateTask(ctx, Task{Title: "A", Project: "p", Status: "ready"})
+	bID, _ := dag.CreateTask(ctx, Task{Title: "B", Project: "p", Status: "ready"})
+	cID, _ := dag.CreateTask(ctx, Task{Title: "C", Project: "p", Status: "open"})
+
+	// C depends on both A and B
+	if err := dag.AddEdge(ctx, cID, aID); err != nil {
+		t.Fatal(err)
+	}
+	if err := dag.AddEdge(ctx, cID, bID); err != nil {
+		t.Fatal(err)
+	}
+
+	// Complete A only — C should NOT unblock
+	if err := dag.UpdateTask(ctx, aID, map[string]any{"status": "done"}); err != nil {
+		t.Fatal(err)
+	}
+	promoted, err := dag.AutoUnblockDependents(ctx, aID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(promoted) != 0 {
+		t.Fatalf("expected no promotions, got %v", promoted)
+	}
+
+	cTask, _ := dag.GetTask(ctx, cID)
+	if cTask.Status != "open" {
+		t.Fatalf("expected C=open, got %s", cTask.Status)
+	}
+
+	// Complete B — now C should unblock
+	if err := dag.UpdateTask(ctx, bID, map[string]any{"status": "done"}); err != nil {
+		t.Fatal(err)
+	}
+	promoted, err = dag.AutoUnblockDependents(ctx, bID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(promoted) != 1 || promoted[0] != cID {
+		t.Fatalf("expected [%s] promoted, got %v", cID, promoted)
+	}
+
+	cTask, _ = dag.GetTask(ctx, cID)
+	if cTask.Status != "ready" {
+		t.Fatalf("expected C=ready, got %s", cTask.Status)
+	}
+}
+
+func TestIsTerminalStatus(t *testing.T) {
+	terminal := []string{"closed", "completed", "escalated", "plan_failed", "canceled", "done"}
+	for _, s := range terminal {
+		if !isTerminalStatus(s) {
+			t.Errorf("expected %q to be terminal", s)
+		}
+	}
+	nonTerminal := []string{"open", "ready", "in_progress", "blocked"}
+	for _, s := range nonTerminal {
+		if isTerminalStatus(s) {
+			t.Errorf("expected %q to be non-terminal", s)
+		}
+	}
+}

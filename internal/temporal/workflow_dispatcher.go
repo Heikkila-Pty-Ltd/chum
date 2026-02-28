@@ -67,6 +67,18 @@ func DispatcherWorkflow(ctx workflow.Context, _ struct{}) error {
 		logger.Info(SharkPrefix+" ⏸️  Dispatcher: throttled", "reason", result.ThrottleReason)
 		recordOrganismLog(ctx, "dispatcher", "", "", "throttled",
 			result.ThrottleReason, startTime, 0, "")
+
+		// Notify Matrix about circuit breaker trip
+		var a *Activities
+		nCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
+			StartToCloseTimeout: 5 * time.Second,
+			RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 1},
+		})
+		_ = workflow.ExecuteActivity(nCtx, a.NotifyActivity, NotifyRequest{
+			Event: "throttle",
+			Extra: map[string]string{"reason": result.ThrottleReason},
+		}).Get(ctx, nil)
+
 		return nil
 	}
 

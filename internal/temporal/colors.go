@@ -7,4 +7,8 @@ const (
 	RemoraPrefix  = "\033[32m🐟 REMORA\033[0m"
 	CrabPrefix    = "\033[31m🦀 CRAB\033[0m"
 	WhalePrefix   = "\033[34m🐳 WHALE\033[0m"
+
+	// healthEscalationThreshold is the number of identical health events in 1 hour
+	// that triggers an ERROR log and Matrix notification.
+	healthEscalationThreshold = 5
 )

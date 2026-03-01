@@ -765,7 +765,35 @@ func (a *Activities) RecordHealthEventActivity(ctx context.Context, eventType, d
 	if a.Store == nil {
 		return nil
 	}
-	return a.Store.RecordHealthEvent(eventType, details)
+	if err := a.Store.RecordHealthEvent(eventType, details); err != nil {
+		return err
+	}
+
+	// Threshold escalation: fire exactly once when the count crosses the threshold.
+	// Using == (not >) prevents spamming on every subsequent event in the window.
+	count, countErr := a.Store.CountRecentHealthEvents(eventType, 1*time.Hour)
+	if countErr != nil {
+		activity.GetLogger(ctx).Warn("Failed to count recent health events", "error", countErr)
+		return nil
+	}
+	if count == healthEscalationThreshold+1 {
+		logger := activity.GetLogger(ctx)
+		logger.Error("Health event threshold exceeded",
+			"event_type", eventType,
+			"count_1h", count,
+			"threshold", healthEscalationThreshold)
+
+		if a.Sender != nil && a.DefaultRoom != "" {
+			msg := themed("health_escalation", "", map[string]string{
+				"event_type": eventType,
+				"count":      fmt.Sprintf("%d", count),
+			})
+			if msg != "" {
+				_ = a.Sender.SendMessage(ctx, a.DefaultRoom, msg)
+			}
+		}
+	}
+	return nil
 }
 
 // RecordOrganismLogActivity persists a structured log entry for any non-shark

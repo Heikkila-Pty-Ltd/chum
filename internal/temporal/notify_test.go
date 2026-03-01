@@ -31,6 +31,8 @@ func TestThemed_AllEvents(t *testing.T) {
 		{"groom", map[string]string{"applied": "2"}, "remoras cleaning up"},
 		{"throttle", map[string]string{"reason": "5h claude output ceiling: 100000/100000 (100%)"}, "dispatcher throttled"},
 		{"whale_sliced", map[string]string{"title": "Auth system", "morsels": "5"}, "whale sliced"},
+		{"postmortem", map[string]string{"workflow_id": "wf-1", "root_cause": "missing column", "severity": "high"}, "post-mortem"},
+		{"health_escalation", map[string]string{"event_type": "groom_mutation_failed", "count": "8"}, "health escalation"},
 	}
 
 	for _, tt := range events {

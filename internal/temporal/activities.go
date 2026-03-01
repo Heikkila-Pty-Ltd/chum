@@ -769,14 +769,14 @@ func (a *Activities) RecordHealthEventActivity(ctx context.Context, eventType, d
 		return err
 	}
 
-	// Threshold escalation: if the same event type fires >5 times in 1 hour,
-	// escalate to ERROR log and send a Matrix notification.
+	// Threshold escalation: fire exactly once when the count crosses the threshold.
+	// Using == (not >) prevents spamming on every subsequent event in the window.
 	count, countErr := a.Store.CountRecentHealthEvents(eventType, 1*time.Hour)
 	if countErr != nil {
 		activity.GetLogger(ctx).Warn("Failed to count recent health events", "error", countErr)
 		return nil
 	}
-	if count > healthEscalationThreshold {
+	if count == healthEscalationThreshold+1 {
 		logger := activity.GetLogger(ctx)
 		logger.Error("Health event threshold exceeded",
 			"event_type", eventType,

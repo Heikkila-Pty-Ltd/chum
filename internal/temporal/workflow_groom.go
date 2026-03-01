@@ -145,14 +145,6 @@ func StrategicGroomWorkflow(ctx workflow.Context, req StrategicGroomRequest) err
 		for i := range whales {
 			whale := &whales[i]
 
-			// Stamp "groom:decomposed" label before spawning children to prevent
-			// re-detection if the workflow is terminated or close fails.
-			labelCtx := workflow.WithActivityOptions(ctx, shortAO)
-			if labelErr := workflow.ExecuteActivity(labelCtx, a.LabelWhaleDecomposedActivity, whale.ID).Get(ctx, nil); labelErr != nil {
-				logger.Warn(RemoraPrefix+" Failed to label whale, skipping decomposition", "WhaleID", whale.ID, "error", labelErr)
-				continue
-			}
-
 			planMD := buildWhalePlanMarkdown(whale)
 
 			crabReq := CrabDecompositionRequest{
@@ -212,8 +204,13 @@ func StrategicGroomWorkflow(ctx workflow.Context, req StrategicGroomRequest) err
 					summary.MorselsEmitted = crabResult.MorselsEmitted
 					summary.Status = crabResult.Status
 
-					// Close the parent whale after successful decomposition.
+					// Stamp label and close the parent whale after successful decomposition.
 					if crabResult.Status == "completed" && len(crabResult.MorselsEmitted) > 0 {
+						labelCtx := workflow.WithActivityOptions(gCtx, shortAO)
+						if labelErr := workflow.ExecuteActivity(labelCtx, a.LabelWhaleDecomposedActivity, p.whale.ID).Get(gCtx, nil); labelErr != nil {
+							logger.Warn(RemoraPrefix+" Failed to label whale", "WhaleID", p.whale.ID, "error", labelErr)
+						}
+
 						closeCtx := workflow.WithActivityOptions(gCtx, closeAO)
 						if closeErr := workflow.ExecuteActivity(closeCtx, a.CloseTaskActivity, p.whale.ID, "completed").Get(gCtx, nil); closeErr != nil {
 							logger.Error(RemoraPrefix+" Failed to close whale after decomposition — will re-detect next cycle",

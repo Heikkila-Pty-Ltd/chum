@@ -134,6 +134,14 @@ func StrategicGroomWorkflow(ctx workflow.Context, req StrategicGroomRequest) err
 
 	if len(whales) > 0 {
 		logger.Info(RemoraPrefix+" Decomposing whales", "Count", len(whales))
+
+		// Launch all crab decompositions concurrently — each involves LLM calls
+		// and can take minutes, so parallel execution saves significant wall time.
+		type pendingWhale struct {
+			whale  graph.Task
+			future workflow.ChildWorkflowFuture
+		}
+		pending := make([]pendingWhale, 0, len(whales))
 		for i := range whales {
 			whale := &whales[i]
 			planMD := buildWhalePlanMarkdown(whale)
@@ -154,25 +162,34 @@ func StrategicGroomWorkflow(ctx workflow.Context, req StrategicGroomRequest) err
 				ParentClosePolicy:     enumspb.PARENT_CLOSE_POLICY_ABANDON,
 			}
 			childCtx := workflow.WithChildOptions(ctx, childOpts)
+			future := workflow.ExecuteChildWorkflow(childCtx, CrabDecompositionWorkflow, crabReq)
+			pending = append(pending, pendingWhale{whale: *whale, future: future})
+		}
 
+		// Collect results from all concurrent decompositions.
+		notifyOpts := workflow.ActivityOptions{
+			StartToCloseTimeout: 5 * time.Second,
+			RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 1},
+		}
+		for _, p := range pending {
 			var crabResult CrabDecompositionResult
 			summary := WhaleDecompositionSummary{
-				WhaleID:    whale.ID,
-				WhaleTitle: whale.Title,
+				WhaleID:    p.whale.ID,
+				WhaleTitle: p.whale.Title,
 			}
 
-			if err := workflow.ExecuteChildWorkflow(childCtx, CrabDecompositionWorkflow, crabReq).Get(ctx, &crabResult); err != nil {
-				logger.Warn(RemoraPrefix+" Whale decomposition failed", "WhaleID", whale.ID, "error", err)
+			if err := p.future.Get(ctx, &crabResult); err != nil {
+				logger.Warn(RemoraPrefix+" Whale decomposition failed", "WhaleID", p.whale.ID, "error", err)
 				summary.Status = "failed"
 			} else {
 				summary.MorselsEmitted = crabResult.MorselsEmitted
 				summary.Status = crabResult.Status
 
-				// Close the parent whale with notes about child morsels.
+				// Close the parent whale after successful decomposition.
 				if crabResult.Status == "completed" && len(crabResult.MorselsEmitted) > 0 {
 					closeCtx := workflow.WithActivityOptions(ctx, shortAO)
-					if closeErr := workflow.ExecuteActivity(closeCtx, a.CloseTaskActivity, whale.ID, "completed").Get(ctx, nil); closeErr != nil {
-						logger.Warn(RemoraPrefix+" Failed to close whale after decomposition", "WhaleID", whale.ID, "error", closeErr)
+					if closeErr := workflow.ExecuteActivity(closeCtx, a.CloseTaskActivity, p.whale.ID, "completed").Get(ctx, nil); closeErr != nil {
+						logger.Warn(RemoraPrefix+" Failed to close whale after decomposition", "WhaleID", p.whale.ID, "error", closeErr)
 					}
 				}
 			}
@@ -180,16 +197,12 @@ func StrategicGroomWorkflow(ctx workflow.Context, req StrategicGroomRequest) err
 			analysis.WhalesDecomposed = append(analysis.WhalesDecomposed, summary)
 
 			// Fire-and-forget notification.
-			notifyOpts := workflow.ActivityOptions{
-				StartToCloseTimeout: 5 * time.Second,
-				RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 1},
-			}
 			nCtx := workflow.WithActivityOptions(ctx, notifyOpts)
 			_ = workflow.ExecuteActivity(nCtx, a.NotifyActivity, NotifyRequest{
 				Event:  "whale_sliced",
-				TaskID: whale.ID,
+				TaskID: p.whale.ID,
 				Extra: map[string]string{
-					"title":   whale.Title,
+					"title":   p.whale.Title,
 					"morsels": fmt.Sprintf("%d", len(summary.MorselsEmitted)),
 				},
 			}).Get(ctx, nil)

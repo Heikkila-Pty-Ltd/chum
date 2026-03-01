@@ -208,6 +208,22 @@ func themed(event, taskID string, extra map[string]string) string {
 		morsels := get("morsels")
 		return fmt.Sprintf("🐋 **whale sliced** — `%s`: *%s* → %s morsels", taskID, title, morsels)
 
+	// --- Post-Mortem ---
+	case "postmortem":
+		wfID := get("workflow_id")
+		rootCause := get("root_cause")
+		severity := get("severity")
+		if rootCause != "" {
+			return fmt.Sprintf("🔬 **post-mortem** — `%s` [%s]: %s", wfID, severity, rootCause)
+		}
+		errMsg := get("error")
+		return fmt.Sprintf("🔬 **post-mortem** — `%s`: %s", wfID, errMsg)
+
+	case "health_escalation":
+		eventType := get("event_type")
+		count := get("count")
+		return fmt.Sprintf("🚨 **health escalation** — `%s` fired %s times in the last hour", eventType, count)
+
 	case "crab_escalate":
 		reason := get("reason")
 		return fmt.Sprintf("🦀→🐢 **crab couldn't slice** — `%s` escalated to turtle (%s)", taskID, reason)

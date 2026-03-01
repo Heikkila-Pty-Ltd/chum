@@ -136,6 +136,8 @@ func StartWorker(st *store.Store, tiers config.Tiers, dag *graph.DAG, cfgMgr con
 
 	// --- Post-Mortem Workflow ---
 	w.RegisterWorkflow(PostMortemWorkflow)
+	w.RegisterActivity(acts.InvestigateFailureActivity)
+	w.RegisterActivity(acts.FileAntibodyActivity)
 
 	// --- CHUM Learner Activities ---
 	w.RegisterActivity(acts.ExtractLessonsActivity)

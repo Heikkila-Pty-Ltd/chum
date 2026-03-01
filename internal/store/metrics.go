@@ -97,6 +97,21 @@ func (s *Store) HasRecentHealthEvent(eventType, detailsSubstring string, within 
 	return err == nil && count > 0
 }
 
+// CountRecentHealthEvents returns the number of health events of a given type
+// recorded within the specified duration. Used for threshold-based escalation.
+func (s *Store) CountRecentHealthEvents(eventType string, within time.Duration) (int, error) {
+	cutoff := time.Now().UTC().Add(-within).Format("2006-01-02 15:04:05")
+	var count int
+	err := s.db.QueryRow(
+		`SELECT COUNT(*) FROM health_events WHERE event_type = ? AND created_at >= ?`,
+		eventType, cutoff,
+	).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("store: count health events: %w", err)
+	}
+	return count, nil
+}
+
 // RecordTickMetrics records metrics for a scheduler tick.
 func (s *Store) RecordTickMetrics(project string, open, ready, dispatched, completed, failed, stuck int) error {
 	_, err := s.db.Exec(

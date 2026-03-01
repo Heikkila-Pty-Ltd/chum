@@ -217,10 +217,11 @@ func TestDetectWhalesActivity(t *testing.T) {
 	// Create tasks with varying types and estimates.
 	tasks := []graph.Task{
 		{Title: "Small task", Type: "task", Priority: 2, EstimateMinutes: 30, Project: "proj"},
-		{Title: "Big task", Type: "task", Priority: 1, EstimateMinutes: 120, Project: "proj"},     // whale by estimate
-		{Title: "Typed whale", Type: "whale", Priority: 3, EstimateMinutes: 60, Project: "proj"},   // whale by type
-		{Title: "Epic container", Type: "epic", Priority: 0, EstimateMinutes: 500, Project: "proj"}, // excluded
-		{Title: "Borderline task", Type: "task", Priority: 2, EstimateMinutes: 90, Project: "proj"}, // exactly 90 = not whale
+		{Title: "Big task", Type: "task", Priority: 1, EstimateMinutes: 120, Project: "proj"},                                  // whale by estimate
+		{Title: "Typed whale", Type: "whale", Priority: 3, EstimateMinutes: 60, Project: "proj"},                                // whale by type
+		{Title: "Epic container", Type: "epic", Priority: 0, EstimateMinutes: 500, Project: "proj"},                              // excluded
+		{Title: "Borderline task", Type: "task", Priority: 2, EstimateMinutes: 90, Project: "proj"},                              // exactly 90 = not whale
+		{Title: "Already decomposed", Type: "whale", Priority: 1, EstimateMinutes: 200, Labels: []string{"groom:decomposed"}, Project: "proj"}, // excluded by label
 	}
 	for _, task := range tasks {
 		_, createErr := dag.CreateTask(t.Context(), task)

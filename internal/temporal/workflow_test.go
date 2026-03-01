@@ -788,6 +788,8 @@ func TestStrategicGroomWorkflow_WithWhales(t *testing.T) {
 		{ID: "whale-1", Title: "Build authentication system", Type: "whale", EstimateMinutes: 480},
 	}, nil)
 
+	env.OnActivity(a.LabelWhaleDecomposedActivity, mock.Anything, "whale-1").Return(nil)
+
 	env.OnWorkflow(CrabDecompositionWorkflow, mock.Anything, mock.Anything).Return(&CrabDecompositionResult{
 		Status:         "completed",
 		MorselsEmitted: []string{"morsel-a", "morsel-b", "morsel-c"},

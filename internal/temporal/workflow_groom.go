@@ -5,8 +5,11 @@ import (
 	"strings"
 	"time"
 
+	enumspb "go.temporal.io/api/enums/v1"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
+
+	"github.com/antigravity-dev/chum/internal/graph"
 )
 
 // TacticalGroomWorkflow runs after every morsel completion to tidy the backlog.
@@ -122,6 +125,127 @@ func StrategicGroomWorkflow(ctx workflow.Context, req StrategicGroomRequest) err
 		}
 	}
 
+	// Step 4.5: Detect and decompose whales
+	whaleCtx := workflow.WithActivityOptions(ctx, shortAO)
+	var whales []graph.Task
+	if err := workflow.ExecuteActivity(whaleCtx, a.DetectWhalesActivity, req.Project).Get(ctx, &whales); err != nil {
+		logger.Warn(RemoraPrefix+" Whale detection failed (non-fatal)", "error", err)
+	}
+
+	if len(whales) > 0 {
+		logger.Info(RemoraPrefix+" Decomposing whales", "Count", len(whales))
+
+		// Launch all crab decompositions concurrently — each involves LLM calls
+		// and can take minutes, so parallel execution saves significant wall time.
+		type pendingWhale struct {
+			whale  graph.Task
+			future workflow.ChildWorkflowFuture
+		}
+		pending := make([]pendingWhale, 0, len(whales))
+		for i := range whales {
+			whale := &whales[i]
+
+			// Stamp "groom:decomposed" label before spawning children to prevent
+			// re-detection if the workflow is terminated or close fails.
+			labelCtx := workflow.WithActivityOptions(ctx, shortAO)
+			if labelErr := workflow.ExecuteActivity(labelCtx, a.LabelWhaleDecomposedActivity, whale.ID).Get(ctx, nil); labelErr != nil {
+				logger.Warn(RemoraPrefix+" Failed to label whale, skipping decomposition", "WhaleID", whale.ID, "error", labelErr)
+				continue
+			}
+
+			planMD := buildWhalePlanMarkdown(whale)
+
+			crabReq := CrabDecompositionRequest{
+				PlanID:                  whale.ID,
+				Project:                 req.Project,
+				WorkDir:                 req.WorkDir,
+				PlanMarkdown:            planMD,
+				Tier:                    "premium",
+				RequireHumanReview:      false,
+				DisableTurtleEscalation: true,
+			}
+
+			// TERMINATE: if the groom workflow is canceled, kill pending crabs
+			// to avoid orphaned decompositions that emit morsels without closing
+			// the parent whale (which would cause re-detection next cycle).
+			childOpts := workflow.ChildWorkflowOptions{
+				WorkflowID:            fmt.Sprintf("crab-from-groom-%s-%d", whale.ID, workflow.Now(ctx).Unix()),
+				WorkflowIDReusePolicy: enumspb.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE,
+				ParentClosePolicy:     enumspb.PARENT_CLOSE_POLICY_TERMINATE,
+			}
+			childCtx := workflow.WithChildOptions(ctx, childOpts)
+			future := workflow.ExecuteChildWorkflow(childCtx, CrabDecompositionWorkflow, crabReq)
+			pending = append(pending, pendingWhale{whale: *whale, future: future})
+		}
+
+		// Aggressive retry for closing whales — idempotent and critical to avoid
+		// re-detection on the next daily cycle.
+		closeAO := workflow.ActivityOptions{
+			StartToCloseTimeout: 30 * time.Second,
+			RetryPolicy: &temporal.RetryPolicy{
+				MaximumAttempts:    10,
+				InitialInterval:    2 * time.Second,
+				BackoffCoefficient: 2.0,
+				MaximumInterval:    30 * time.Second,
+			},
+		}
+		notifyOpts := workflow.ActivityOptions{
+			StartToCloseTimeout: 5 * time.Second,
+			RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 1},
+		}
+
+		// Collect results concurrently — each goroutine awaits its own future,
+		// closes the parent whale, and sends its notification without blocking others.
+		doneCh := workflow.NewChannel(ctx)
+		for _, p := range pending {
+			workflow.Go(ctx, func(gCtx workflow.Context) {
+				var crabResult CrabDecompositionResult
+				summary := WhaleDecompositionSummary{
+					WhaleID:    p.whale.ID,
+					WhaleTitle: p.whale.Title,
+				}
+
+				if err := p.future.Get(gCtx, &crabResult); err != nil {
+					logger.Warn(RemoraPrefix+" Whale decomposition failed", "WhaleID", p.whale.ID, "error", err)
+					summary.Status = "failed"
+				} else {
+					summary.MorselsEmitted = crabResult.MorselsEmitted
+					summary.Status = crabResult.Status
+
+					// Close the parent whale after successful decomposition.
+					if crabResult.Status == "completed" && len(crabResult.MorselsEmitted) > 0 {
+						closeCtx := workflow.WithActivityOptions(gCtx, closeAO)
+						if closeErr := workflow.ExecuteActivity(closeCtx, a.CloseTaskActivity, p.whale.ID, "completed").Get(gCtx, nil); closeErr != nil {
+							logger.Error(RemoraPrefix+" Failed to close whale after decomposition — will re-detect next cycle",
+								"WhaleID", p.whale.ID, "error", closeErr)
+						}
+					}
+				}
+
+				analysis.WhalesDecomposed = append(analysis.WhalesDecomposed, summary)
+
+				// Best-effort notification (errors swallowed by NotifyActivity).
+				nCtx := workflow.WithActivityOptions(gCtx, notifyOpts)
+				_ = workflow.ExecuteActivity(nCtx, a.NotifyActivity, NotifyRequest{
+					Event:  "whale_sliced",
+					TaskID: p.whale.ID,
+					Extra: map[string]string{
+						"title":   p.whale.Title,
+						"morsels": fmt.Sprintf("%d", len(summary.MorselsEmitted)),
+					},
+				}).Get(gCtx, nil)
+
+				doneCh.Send(gCtx, true)
+			})
+		}
+
+		// Wait for all goroutines to finish before proceeding to the briefing.
+		for range pending {
+			var done bool
+			doneCh.Receive(ctx, &done)
+		}
+	}
+
 	// Step 5: Generate morning briefing
 	briefingCtx := workflow.WithActivityOptions(ctx, shortAO)
 	var briefing MorningBriefing
@@ -143,12 +267,13 @@ func StrategicGroomWorkflow(ctx workflow.Context, req StrategicGroomRequest) err
 		"Priorities", len(analysis.Priorities),
 		"Risks", len(analysis.Risks),
 		"UBSMorsels", ubsMorselsCreated,
+		"WhalesSliced", len(analysis.WhalesDecomposed),
 	)
 
 	recordOrganismLog(ctx, "groomer", "", req.Project, "completed",
-		fmt.Sprintf("strategic: %d priorities, %d risks, %d UBS morsels",
-			len(analysis.Priorities), len(analysis.Risks), ubsMorselsCreated),
-		startTime, 6, "")
+		fmt.Sprintf("strategic: %d priorities, %d risks, %d UBS morsels, %d whales sliced",
+			len(analysis.Priorities), len(analysis.Risks), ubsMorselsCreated, len(analysis.WhalesDecomposed)),
+		startTime, 7, "")
 
 	return nil
 }
@@ -219,4 +344,26 @@ func isStrategicCreateActionable(m MorselMutation) bool {
 func intPtrCopy(v int) *int {
 	value := v
 	return &value
+}
+
+// buildWhalePlanMarkdown constructs a plan markdown from a whale task's fields
+// for use as input to CrabDecompositionWorkflow.
+func buildWhalePlanMarkdown(t *graph.Task) string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("# %s\n\n", t.Title))
+	if t.Description != "" {
+		sb.WriteString(t.Description)
+		sb.WriteString("\n\n")
+	}
+	if t.Acceptance != "" {
+		sb.WriteString("## Acceptance Criteria\n\n")
+		sb.WriteString(t.Acceptance)
+		sb.WriteString("\n\n")
+	}
+	if t.Design != "" {
+		sb.WriteString("## Design\n\n")
+		sb.WriteString(t.Design)
+		sb.WriteString("\n\n")
+	}
+	return sb.String()
 }

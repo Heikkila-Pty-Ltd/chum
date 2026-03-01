@@ -445,6 +445,18 @@ func appendLabelIfMissing(labels []string, label string) []string {
 	return append(labels, label)
 }
 
+const whaleDecomposedLabel = "groom:decomposed"
+
+// taskHasLabel checks if a task's label list contains a given label (case-insensitive).
+func taskHasLabel(labels []string, label string) bool {
+	for _, l := range labels {
+		if strings.EqualFold(l, label) {
+			return true
+		}
+	}
+	return false
+}
+
 // countOpenTasks returns the number of open, non-epic tasks.
 func countOpenTasks(allTasks []graph.Task) int {
 	n := 0
@@ -454,6 +466,67 @@ func countOpenTasks(allTasks []graph.Task) int {
 		}
 	}
 	return n
+}
+
+// DetectWhalesActivity queries the DAG for open whale-sized tasks eligible for auto-decomposition.
+// Returns up to 3 whales sorted by priority (lowest number = highest priority).
+func (a *Activities) DetectWhalesActivity(ctx context.Context, project string) ([]graph.Task, error) {
+	logger := activity.GetLogger(ctx)
+
+	if a.DAG == nil {
+		logger.Warn(RemoraPrefix + " No DAG configured, skipping whale detection")
+		return nil, nil
+	}
+
+	allTasks, err := a.DAG.ListTasks(ctx, project, "open", "ready")
+	if err != nil {
+		return nil, fmt.Errorf("listing tasks for whale detection: %w", err)
+	}
+
+	var whales []graph.Task
+	for i := range allTasks {
+		t := &allTasks[i]
+		if t.Type == "epic" {
+			continue
+		}
+		// Skip whales already decomposed (label set before close — guards against
+		// re-detection if CloseTaskActivity fails between cycles).
+		if taskHasLabel(t.Labels, whaleDecomposedLabel) {
+			continue
+		}
+		if t.Type == "whale" || t.EstimateMinutes > 90 {
+			whales = append(whales, *t)
+		}
+	}
+
+	// Sort by priority ascending (highest priority first).
+	sort.Slice(whales, func(i, j int) bool {
+		return whales[i].Priority < whales[j].Priority
+	})
+
+	// Cap at 3 to prevent runaway decomposition.
+	if len(whales) > 3 {
+		whales = whales[:3]
+	}
+
+	logger.Info(RemoraPrefix+" Whale detection complete", "Found", len(whales), "Project", project)
+	return whales, nil
+}
+
+// LabelWhaleDecomposedActivity stamps the "groom:decomposed" label on a whale task
+// to prevent re-detection if CloseTaskActivity fails between daily groom cycles.
+func (a *Activities) LabelWhaleDecomposedActivity(ctx context.Context, taskID string) error {
+	if a.DAG == nil {
+		return nil
+	}
+
+	task, err := a.DAG.GetTask(ctx, taskID)
+	if err != nil {
+		return fmt.Errorf("getting task %s for labeling: %w", taskID, err)
+	}
+
+	labels := appendLabelIfMissing(task.Labels, whaleDecomposedLabel)
+	return a.DAG.UpdateTask(ctx, taskID, map[string]any{"labels": labels})
 }
 
 // GenerateRepoMapActivity generates a compressed codebase map using go list + go doc.
@@ -791,6 +864,15 @@ func (a *Activities) GenerateMorningBriefingActivity(ctx context.Context, req St
 		md.WriteString("## Recent Lessons Learned\n\n")
 		for i := range recentLessons {
 			md.WriteString(fmt.Sprintf("- [%s] %s (from %s)\n", recentLessons[i].Category, recentLessons[i].Summary, recentLessons[i].TaskID))
+		}
+		md.WriteString("\n")
+	}
+
+	if len(analysis.WhalesDecomposed) > 0 {
+		md.WriteString("## Whales Sliced\n\n")
+		for _, w := range analysis.WhalesDecomposed {
+			md.WriteString(fmt.Sprintf("- `%s`: %q → %d morsels emitted (%s)\n",
+				w.WhaleID, w.WhaleTitle, len(w.MorselsEmitted), w.Status))
 		}
 		md.WriteString("\n")
 	}

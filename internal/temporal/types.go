@@ -531,10 +531,19 @@ type PackageInfo struct {
 
 // StrategicAnalysis is the output of the premium LLM strategic analysis.
 type StrategicAnalysis struct {
-	Priorities   []StrategicItem  `json:"priorities"`
-	Risks        []string         `json:"risks"`
-	Observations []string         `json:"observations"`
-	Mutations    []MorselMutation `json:"mutations"` // suggested morsel mutations
+	Priorities       []StrategicItem            `json:"priorities"`
+	Risks            []string                   `json:"risks"`
+	Observations     []string                   `json:"observations"`
+	Mutations        []MorselMutation           `json:"mutations"`          // suggested morsel mutations
+	WhalesDecomposed []WhaleDecompositionSummary `json:"whales_decomposed"` // populated by workflow, not the LLM
+}
+
+// WhaleDecompositionSummary records the result of auto-slicing a whale via CrabDecompositionWorkflow.
+type WhaleDecompositionSummary struct {
+	WhaleID        string   `json:"whale_id"`
+	WhaleTitle     string   `json:"whale_title"`
+	MorselsEmitted []string `json:"morsels_emitted"`
+	Status         string   `json:"status"` // "completed", "failed"
 }
 
 // StrategicItem is a single priority from strategic analysis.

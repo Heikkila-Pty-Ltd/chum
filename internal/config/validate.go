@@ -30,12 +30,8 @@ func validate(cfg *Config) error {
 		}
 	}
 
-	hasEnabled := false
 	for projectName := range cfg.Projects {
 		p := cfg.Projects[projectName]
-		if p.Enabled {
-			hasEnabled = true
-		}
 
 		// Validate sprint planning configuration when provided
 		if err := validateSprintPlanningConfig(projectName, p); err != nil {
@@ -53,9 +49,8 @@ func validate(cfg *Config) error {
 			return fmt.Errorf("project %q merge config: %w", projectName, err)
 		}
 	}
-	if !hasEnabled {
-		return fmt.Errorf("at least one project must be enabled")
-	}
+	// Allow starting with no projects enabled (idle mode).
+	// The dispatcher will simply have nothing to do.
 
 	if err := validateCadenceConfig(cfg.Cadence); err != nil {
 		return fmt.Errorf("cadence config: %w", err)

@@ -292,8 +292,8 @@ priority = 1
 `
 	path := writeTestConfig(t, cfg)
 	_, err := Load(path)
-	if err == nil {
-		t.Fatal("expected error for no enabled projects")
+	if err != nil {
+		t.Fatalf("idle mode (no enabled projects) should be valid, got: %v", err)
 	}
 }
 

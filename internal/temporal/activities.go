@@ -107,7 +107,9 @@ OUTPUT FORMAT: You MUST respond with ONLY a JSON object (no markdown, no comment
   "risk_assessment": "what could go wrong"
 }
 
-Be thorough. Planning space is cheap — implementation is expensive.`, req.Prompt, genomeContext, semgrepContext, failureContext, codebaseSection)
+Be thorough. Planning space is cheap — implementation is expensive.
+
+%s`, req.Prompt, genomeContext, semgrepContext, failureContext, codebaseSection, iterationBudgetPrompt(getMaxAgentIterations(a)))
 
 	cliResult, err := a.runAgent(ctx, req.Agent, prompt, req.WorkDir)
 	if err != nil {
@@ -238,6 +240,11 @@ func (a *Activities) ExecuteActivity(ctx context.Context, plan StructuredPlan, r
 			}
 		}
 	}
+
+	// Iteration budget awareness — agent self-manages wrap-up near limit.
+	sb.WriteString("\n")
+	sb.WriteString(iterationBudgetPrompt(getMaxAgentIterations(a)))
+	sb.WriteString("\n")
 
 	sb.WriteString("\nImplement this plan now. Make all necessary code changes.")
 

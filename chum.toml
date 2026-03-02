@@ -14,7 +14,7 @@ slow_step_threshold = "2m"
 state_db = "/home/ubuntu/.local/share/chum/chum.db"
 
 [projects.chum]
-enabled = false  # DISABLED: self-referential editing is too risky
+enabled = false  # DISABLED: paused while porting to CHUM
 morsels_dir = "/home/ubuntu/projects/cortex/.morsels"
 workspace = "~/projects/cortex"
 priority = 0
@@ -30,7 +30,7 @@ require_estimate = true
 require_acceptance = true
 
 [projects.golf-directory]
-enabled = true
+enabled = false  # DISABLED: paused while porting to CHUM
 morsels_dir = "/home/ubuntu/projects/golf-directory/.morsels"
 workspace = "~/projects/golf-directory"
 priority = 1
@@ -246,7 +246,7 @@ max_concurrent_per_project = 3
 enabled = false
 
 [crab]
-enabled = true
+enabled = false  # DISABLED: paused while porting to CHUM
 
 [calcifier]
 enabled = false

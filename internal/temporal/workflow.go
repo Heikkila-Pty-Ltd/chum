@@ -18,18 +18,6 @@ const (
 	defaultSlowStepThreshold = 2 * time.Minute
 )
 
-// tierForIndex maps chain index to tier name.
-func tierForIndex(idx int) string {
-	switch idx {
-	case 0:
-		return "fast"
-	case 1:
-		return "balanced"
-	default:
-		return "premium"
-	}
-}
-
 // retriesForTier returns the max retry attempts per tier level.
 // Cheap models get more retries; expensive models fewer.
 // If override > 0, it takes precedence (e.g. higher-learning mode).

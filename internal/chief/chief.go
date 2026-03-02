@@ -24,6 +24,7 @@ type Chief struct {
 	logger     *slog.Logger
 	allocator  *AllocationRecorder
 	retro      *RetrospectiveRecorder
+	nowFunc    func() time.Time // injectable clock for testing
 }
 
 type multiTeamPortfolioContextKey struct{}
@@ -82,6 +83,7 @@ func New(cfg *config.Config, store *store.Store, dag *graph.DAG, dispatcher disp
 	allocator := NewAllocationRecorder(cfg, store, dispatcher, logger)
 	retroRecorder := NewRetrospectiveRecorder(cfg, store, dag, dispatcher, logger)
 	return &Chief{
+		nowFunc:    time.Now,
 		cfg:        cfg,
 		store:      store,
 		dag:        dag,
@@ -99,7 +101,7 @@ func (c *Chief) ShouldRunCeremony(ctx context.Context, schedule CeremonySchedule
 		return false
 	}
 
-	now := time.Now()
+	now := c.nowFunc()
 
 	// Check if we've already checked recently (within last hour to avoid spam)
 	if now.Sub(schedule.LastChecked) < time.Hour {

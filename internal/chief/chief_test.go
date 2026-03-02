@@ -18,15 +18,26 @@ func TestShouldRunCeremony(t *testing.T) {
 	}
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-
-	// Test that New creates a valid Chief instance
 	chief := New(cfg, nil, nil, nil, logger)
 	if chief == nil {
 		t.Fatal("Expected New to return a valid Chief instance")
 	}
 
-	// This test validates that the ceremony logic is sound, but would need time mocking in practice
-	t.Log("TestShouldRunCeremony: ceremony scheduling logic test (time mocking would be needed for full validation)")
+	// Inject clock: Monday 10:00 AM UTC
+	fakeNow := time.Date(2024, 1, 8, 10, 0, 0, 0, time.UTC)
+	chief.nowFunc = func() time.Time { return fakeNow }
+
+	schedule := CeremonySchedule{
+		Type:        CeremonyMultiTeamPlanning,
+		DayOfWeek:   time.Monday,
+		TimeOfDay:   time.Date(0, 1, 1, 9, 0, 0, 0, time.UTC),
+		LastChecked: fakeNow.Add(-2 * time.Hour),
+		LastRan:     time.Time{}, // never ran
+	}
+
+	if !chief.ShouldRunCeremony(t.Context(), schedule) {
+		t.Error("Expected ceremony to run on Monday 10AM with no prior run")
+	}
 }
 
 func TestShouldNotRunCeremony_WrongDay(t *testing.T) {
@@ -37,14 +48,25 @@ func TestShouldNotRunCeremony_WrongDay(t *testing.T) {
 	}
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-
-	// Test that New creates a valid Chief instance
 	chief := New(cfg, nil, nil, nil, logger)
 	if chief == nil {
 		t.Fatal("Expected New to return a valid Chief instance")
 	}
 
-	t.Log("TestShouldNotRunCeremony_WrongDay: ceremony scheduling logic test (time mocking would be needed for full validation)")
+	// Inject clock: Tuesday 10:00 AM UTC (wrong day for Monday ceremony)
+	fakeNow := time.Date(2024, 1, 9, 10, 0, 0, 0, time.UTC)
+	chief.nowFunc = func() time.Time { return fakeNow }
+
+	schedule := CeremonySchedule{
+		Type:        CeremonyMultiTeamPlanning,
+		DayOfWeek:   time.Monday,
+		TimeOfDay:   time.Date(0, 1, 1, 9, 0, 0, 0, time.UTC),
+		LastChecked: fakeNow.Add(-2 * time.Hour),
+	}
+
+	if chief.ShouldRunCeremony(t.Context(), schedule) {
+		t.Error("Expected ceremony NOT to run on Tuesday when scheduled for Monday")
+	}
 }
 
 func TestShouldNotRunCeremony_TooEarly(t *testing.T) {
@@ -55,21 +77,25 @@ func TestShouldNotRunCeremony_TooEarly(t *testing.T) {
 	}
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-
-	// Test that New creates a valid Chief instance and test schedule parameters
 	chief := New(cfg, nil, nil, nil, logger)
 	if chief == nil {
 		t.Fatal("Expected New to return a valid Chief instance")
 	}
 
-	// Test the logic by validating schedule parameters
-	targetTime := time.Date(0, 1, 1, 9, 0, 0, 0, time.UTC) // 9:00 AM
+	// Inject clock: Monday 8:00 AM UTC (before 9AM target)
+	fakeNow := time.Date(2024, 1, 8, 8, 0, 0, 0, time.UTC)
+	chief.nowFunc = func() time.Time { return fakeNow }
 
-	if targetTime.Hour() != 9 {
-		t.Errorf("Expected target time 9 AM, got %d", targetTime.Hour())
+	schedule := CeremonySchedule{
+		Type:        CeremonyMultiTeamPlanning,
+		DayOfWeek:   time.Monday,
+		TimeOfDay:   time.Date(0, 1, 1, 9, 0, 0, 0, time.UTC),
+		LastChecked: fakeNow.Add(-2 * time.Hour),
 	}
 
-	t.Log("TestShouldNotRunCeremony_TooEarly: ceremony scheduling logic test (time mocking would be needed for full validation)")
+	if chief.ShouldRunCeremony(t.Context(), schedule) {
+		t.Error("Expected ceremony NOT to run before target time")
+	}
 }
 
 func TestShouldNotRunCeremony_AlreadyRanToday(t *testing.T) {
@@ -80,33 +106,26 @@ func TestShouldNotRunCeremony_AlreadyRanToday(t *testing.T) {
 	}
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-
-	// Test that New creates a valid Chief instance
 	chief := New(cfg, nil, nil, nil, logger)
 	if chief == nil {
 		t.Fatal("Expected New to return a valid Chief instance")
 	}
 
-	// Test the ceremony schedule structure
-	now := time.Date(2024, 1, 8, 10, 0, 0, 0, time.UTC)    // Monday 10:00 AM
-	targetTime := time.Date(0, 1, 1, 9, 0, 0, 0, time.UTC) // 9:00 AM
+	// Inject clock: Monday 10:00 AM UTC
+	fakeNow := time.Date(2024, 1, 8, 10, 0, 0, 0, time.UTC)
+	chief.nowFunc = func() time.Time { return fakeNow }
 
-	lastRan := time.Date(2024, 1, 8, 9, 30, 0, 0, time.UTC) // Ran today at 9:30 AM
 	schedule := CeremonySchedule{
 		Type:        CeremonyMultiTeamPlanning,
 		DayOfWeek:   time.Monday,
-		TimeOfDay:   targetTime,
-		LastChecked: now.Add(-2 * time.Hour),
-		LastRan:     lastRan,
+		TimeOfDay:   time.Date(0, 1, 1, 9, 0, 0, 0, time.UTC),
+		LastChecked: fakeNow.Add(-2 * time.Hour),
+		LastRan:     time.Date(2024, 1, 8, 9, 30, 0, 0, time.UTC), // already ran today
 	}
 
-	// Validate that ShouldRunCeremony returns false (already ran today).
-	shouldRun := chief.ShouldRunCeremony(t.Context(), schedule)
-	if shouldRun {
-		t.Errorf("Expected ceremony NOT to run when already ran today")
+	if chief.ShouldRunCeremony(t.Context(), schedule) {
+		t.Error("Expected ceremony NOT to run when already ran today")
 	}
-
-	t.Log("TestShouldNotRunCeremony_AlreadyRanToday: ceremony scheduling logic test (time mocking would be needed for full validation)")
 }
 
 func TestShouldNotRunCeremony_Disabled(t *testing.T) {

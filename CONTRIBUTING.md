@@ -229,3 +229,14 @@ See [docs/development/RELEASE.md](./docs/development/RELEASE.md) for release pro
 This project follows the [Contributor Covenant Code of Conduct](https://www.contributor-covenant.org/version/2/1/code_of_conduct/).
 
 By participating, you agree to uphold this code.
+
+## Review Guard
+
+Run these before pushing:
+
+```bash
+bash scripts/review_guard.sh
+bash scripts/validate_repo.sh
+```
+
+`review_guard.sh` fails high-risk code changes that do not come with matching test changes.

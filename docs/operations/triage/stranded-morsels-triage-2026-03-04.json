@@ -1,0 +1,1492 @@
+{
+  "archive_done": [
+    {
+      "file": "chum-td17-unsupervised-automation.md",
+      "title": "Implement Unsupervised Automation Pipeline",
+      "state": "done",
+      "reason": "frontmatter status is done",
+      "ch_ids": [],
+      "dt": "2026-02-26 20:59:59.660280"
+    },
+    {
+      "file": "chum-td18-prevent-silent-failures.md",
+      "title": "Prevent silent failures in CHUM pipeline",
+      "state": "done",
+      "reason": "frontmatter status is done",
+      "ch_ids": [],
+      "dt": "2026-03-03 11:14:01.523938"
+    },
+    {
+      "file": "chum-td19-auto-postmortem.md",
+      "title": "Auto-investigate workflow failures with post-mortem LLM analysis",
+      "state": "done",
+      "reason": "frontmatter status is done",
+      "ch_ids": [],
+      "dt": "2026-02-26 20:59:59.660280"
+    },
+    {
+      "file": "chum-td19a-failure-detection.md",
+      "title": "Auto-Postmortem Step 1: Failure Detection & History Fetching",
+      "state": "done",
+      "reason": "frontmatter status is done",
+      "ch_ids": [],
+      "dt": "2026-03-03 11:14:01.528938"
+    },
+    {
+      "file": "chum-td19b-llm-investigation.md",
+      "title": "Auto-Postmortem Step 2: LLM Investigation & Antibody Filing",
+      "state": "done",
+      "reason": "frontmatter status is done",
+      "ch_ids": [],
+      "dt": "2026-03-03 11:14:01.530938"
+    },
+    {
+      "file": "chum-td20-blast-radius-scanner.md",
+      "title": "Add pre-crab blast radius scanner",
+      "state": "done",
+      "reason": "frontmatter status is done",
+      "ch_ids": [],
+      "dt": "2026-03-03 11:14:01.533938"
+    },
+    {
+      "file": "chum-td21-matrix-notifications.md",
+      "title": "Add Matrix/Hex notifications for escalations and groom results",
+      "state": "done",
+      "reason": "frontmatter status is done",
+      "ch_ids": [],
+      "dt": "2026-03-03 11:14:01.540938"
+    },
+    {
+      "file": "chum-td23-auto-mark-done.md",
+      "title": "Auto-mark morsel as done when shark catches land",
+      "state": "done",
+      "reason": "frontmatter status is done",
+      "ch_ids": [],
+      "dt": "2026-03-03 11:14:01.549938"
+    },
+    {
+      "file": "chum-td25-auto-unblock-deps.md",
+      "title": "Auto-unblock morsels when all dependencies are done",
+      "state": "done",
+      "reason": "frontmatter status is done",
+      "ch_ids": [],
+      "dt": "2026-03-03 11:14:01.552938"
+    },
+    {
+      "file": "fix-octopus-fts5.md",
+      "title": "Fix Octopus FTS5 syntax error in lesson search",
+      "state": "done",
+      "reason": "frontmatter status is done",
+      "ch_ids": [],
+      "dt": "2026-03-03 11:14:01.554938"
+    },
+    {
+      "file": "fix-provider-genes-column.md",
+      "title": "Add provider_genes column to genomes table",
+      "state": "done",
+      "reason": "frontmatter status is done",
+      "ch_ids": [],
+      "dt": "2026-03-03 11:14:01.555938"
+    },
+    {
+      "file": "fix-semgrep-registration.md",
+      "title": "Register RunSemgrepScanActivity in Temporal worker",
+      "state": "done",
+      "reason": "frontmatter status is done",
+      "ch_ids": [],
+      "dt": "2026-03-03 11:14:01.563938"
+    }
+  ],
+  "archive_invalid": [
+    {
+      "file": "jarvis-20260227-051455-title.md",
+      "title": "<title>",
+      "state": "ready",
+      "reason": "placeholder/invalid title",
+      "ch_ids": [],
+      "dt": "2026-02-27 05:14:55"
+    }
+  ],
+  "archive_user_confirmed_resolved": [
+    {
+      "file": "jarvis-20260304-002101-kill-duplicate-chum-serve-and-prevent-do.md",
+      "title": "Kill duplicate chum serve and prevent double-start",
+      "state": "ready",
+      "reason": "user confirmed duplicate chum serve issue is fixed",
+      "ch_ids": [],
+      "dt": "2026-03-04 00:21:01"
+    },
+    {
+      "file": "jarvis-20260304-005641-prevent-duplicate-chum-serve-processes-o.md",
+      "title": "Prevent duplicate chum serve processes on restart",
+      "state": "ready",
+      "reason": "user confirmed duplicate chum serve issue is fixed",
+      "ch_ids": [],
+      "dt": "2026-03-04 00:56:41"
+    }
+  ],
+  "archive_out_of_scope": [
+    {
+      "file": "jarvis-20260303-211602-lead-reporting-identify-data-sources.md",
+      "title": "Lead reporting: identify data sources",
+      "state": "ready",
+      "reason": "external marketing/reporting scope",
+      "ch_ids": [],
+      "dt": "2026-03-03 21:16:02"
+    },
+    {
+      "file": "jarvis-20260303-211602-lead-traffic-weekly-report-generator.md",
+      "title": "Lead + traffic weekly report generator",
+      "state": "ready",
+      "reason": "external marketing/reporting scope",
+      "ch_ids": [],
+      "dt": "2026-03-03 21:16:02"
+    },
+    {
+      "file": "jarvis-20260303-211602-traffic-reporting-connect-google-search-.md",
+      "title": "Traffic reporting: connect Google Search Console API",
+      "state": "ready",
+      "reason": "external marketing/reporting scope",
+      "ch_ids": [],
+      "dt": "2026-03-03 21:16:02"
+    },
+    {
+      "file": "jarvis-20260303-212047-set-up-lead-and-traffic-reporting-baseli.md",
+      "title": "Set up lead and traffic reporting baseline",
+      "state": "ready",
+      "reason": "external marketing/reporting scope",
+      "ch_ids": [],
+      "dt": "2026-03-03 21:20:47"
+    },
+    {
+      "file": "jarvis-20260303-212600-ga4-traffic-report-script-weekly-session.md",
+      "title": "GA4 traffic report script \u2014 weekly sessions, users, top pages",
+      "state": "ready",
+      "reason": "external marketing/reporting scope",
+      "ch_ids": [],
+      "dt": "2026-03-03 21:26:00"
+    },
+    {
+      "file": "jarvis-20260303-212601-hubspot-lead-pull-script-new-contacts-an.md",
+      "title": "HubSpot lead pull script \u2014 new contacts and form submissions last 7 days",
+      "state": "ready",
+      "reason": "external marketing/reporting scope",
+      "ch_ids": [],
+      "dt": "2026-03-03 21:26:01"
+    },
+    {
+      "file": "jarvis-20260303-212601-weekly-report-combiner-and-matrix-delive.md",
+      "title": "Weekly report combiner and Matrix delivery",
+      "state": "ready",
+      "reason": "external marketing/reporting scope",
+      "ch_ids": [],
+      "dt": "2026-03-03 21:26:01"
+    },
+    {
+      "file": "jarvis-20260303-213225-write-a-temporal-schedule-for-huntergall.md",
+      "title": "Write a Temporal schedule for huntergalloway.com.au weekly lead+traffic report",
+      "state": "ready",
+      "reason": "external marketing/reporting scope",
+      "ch_ids": [],
+      "dt": "2026-03-03 21:32:25"
+    }
+  ],
+  "archive_superseded_duplicate": [
+    {
+      "file": "jarvis-20260303-081535-re-attempt-test-agentworkflow-pr-creatio.md",
+      "title": "Re-attempt: Test AgentWorkflow PR creation failure path",
+      "state": "ready",
+      "reason": "superseded by newer morsel: jarvis-20260303-213224-retry-test-agentworkflow-pr-creation-fai.md",
+      "ch_ids": [
+        "ch-29f1e"
+      ],
+      "dt": "2026-03-03 08:15:35"
+    },
+    {
+      "file": "jarvis-20260303-084123-fix-missing-time-import-in-internal-ast-.md",
+      "title": "Fix missing time import in internal/ast/embed_test.go",
+      "state": "ready",
+      "reason": "superseded by newer morsel: jarvis-20260303-084542-fix-missing-time-import-in-internal-ast-.md",
+      "ch_ids": [],
+      "dt": "2026-03-03 08:41:23"
+    },
+    {
+      "file": "jarvis-20260303-095105-fix-dod-failed-test-agentworkflow-pr-cre.md",
+      "title": "Fix dod_failed: Test AgentWorkflow PR creation failure path",
+      "state": "ready",
+      "reason": "superseded by newer morsel: jarvis-20260303-213224-retry-test-agentworkflow-pr-creation-fai.md",
+      "ch_ids": [
+        "ch-29f1e"
+      ],
+      "dt": "2026-03-03 09:51:05"
+    },
+    {
+      "file": "jarvis-20260303-100105-investigate-and-fix-dod-failed-ch-29f1e-.md",
+      "title": "Investigate and fix dod_failed ch-29f1e: Test AgentWorkflow PR creation failure path",
+      "state": "ready",
+      "reason": "superseded by newer morsel: jarvis-20260303-164612-retry-dod-failed-test-agentworkflow-pr-c.md",
+      "ch_ids": [
+        "ch-29f1e"
+      ],
+      "dt": "2026-03-03 10:01:05"
+    },
+    {
+      "file": "jarvis-20260303-100544-fix-dod-failed-agentworkflow-pr-creation.md",
+      "title": "Fix dod_failed: AgentWorkflow PR creation failure path test",
+      "state": "ready",
+      "reason": "superseded by newer morsel: jarvis-20260303-213224-retry-test-agentworkflow-pr-creation-fai.md",
+      "ch_ids": [
+        "ch-29f1e"
+      ],
+      "dt": "2026-03-03 10:05:44"
+    },
+    {
+      "file": "jarvis-20260303-101043-fix-dod-failed-test-agentworkflow-pr-cre.md",
+      "title": "Fix dod_failed: Test AgentWorkflow PR creation failure path (ch-29f1e)",
+      "state": "ready",
+      "reason": "superseded by newer morsel: jarvis-20260303-213224-retry-test-agentworkflow-pr-creation-fai.md",
+      "ch_ids": [
+        "ch-29f1e"
+      ],
+      "dt": "2026-03-03 10:10:43"
+    },
+    {
+      "file": "jarvis-20260303-102045-retry-test-agentworkflow-pr-creation-fai.md",
+      "title": "Retry: Test AgentWorkflow PR creation failure path (ch-29f1e)",
+      "state": "ready",
+      "reason": "superseded by newer morsel: jarvis-20260303-213224-retry-test-agentworkflow-pr-creation-fai.md",
+      "ch_ids": [
+        "ch-29f1e"
+      ],
+      "dt": "2026-03-03 10:20:45"
+    },
+    {
+      "file": "jarvis-20260303-103052-rewrite-ch-29f1e-agentworkflow-pr-creati.md",
+      "title": "Rewrite ch-29f1e: AgentWorkflow PR creation failure test",
+      "state": "ready",
+      "reason": "superseded by newer morsel: jarvis-20260303-170632-retry-ch-29f1e-agentworkflow-pr-creation.md",
+      "ch_ids": [
+        "ch-29f1e"
+      ],
+      "dt": "2026-03-03 10:30:52"
+    },
+    {
+      "file": "jarvis-20260303-110601-refine-ch-29f1e-test-agentworkflow-pr-cr.md",
+      "title": "Refine ch-29f1e: Test AgentWorkflow PR creation failure path \u2014 dod_failed",
+      "state": "ready",
+      "reason": "superseded by newer morsel: jarvis-20260303-115537-fix-ch-29f1e-test-agentworkflow-pr-creat.md",
+      "ch_ids": [
+        "ch-29f1e"
+      ],
+      "dt": "2026-03-03 11:06:01"
+    },
+    {
+      "file": "jarvis-20260303-112603-retry-agentworkflow-pr-creation-failure-.md",
+      "title": "Retry AgentWorkflow PR creation failure path test (ch-29f1e dod_failed)",
+      "state": "ready",
+      "reason": "superseded by newer morsel: jarvis-20260303-115537-fix-ch-29f1e-test-agentworkflow-pr-creat.md",
+      "ch_ids": [
+        "ch-29f1e"
+      ],
+      "dt": "2026-03-03 11:26:03"
+    },
+    {
+      "file": "jarvis-20260303-114554-fix-dod-failed-ch-29f1e-agentworkflow-pr.md",
+      "title": "Fix dod_failed ch-29f1e: AgentWorkflow PR creation failure path test",
+      "state": "ready",
+      "reason": "superseded by newer morsel: jarvis-20260303-213224-retry-test-agentworkflow-pr-creation-fai.md",
+      "ch_ids": [
+        "ch-29f1e"
+      ],
+      "dt": "2026-03-03 11:45:54"
+    },
+    {
+      "file": "jarvis-20260303-120622-retry-ch-29f1e-test-agentworkflow-pr-cre.md",
+      "title": "Retry ch-29f1e: Test AgentWorkflow PR creation failure path",
+      "state": "ready",
+      "reason": "superseded by newer morsel: jarvis-20260303-213224-retry-test-agentworkflow-pr-creation-fai.md",
+      "ch_ids": [
+        "ch-29f1e"
+      ],
+      "dt": "2026-03-03 12:06:22"
+    },
+    {
+      "file": "jarvis-20260303-121545-retry-ch-29f1e-test-agentworkflow-pr-cre.md",
+      "title": "Retry ch-29f1e: Test AgentWorkflow PR creation failure path",
+      "state": "ready",
+      "reason": "superseded by newer morsel: jarvis-20260303-213224-retry-test-agentworkflow-pr-creation-fai.md",
+      "ch_ids": [
+        "ch-29f1e"
+      ],
+      "dt": "2026-03-03 12:15:45"
+    },
+    {
+      "file": "jarvis-20260303-122552-fix-dod-failed-test-agentworkflow-pr-cre.md",
+      "title": "Fix dod_failed: Test AgentWorkflow PR creation failure path (ch-29f1e)",
+      "state": "ready",
+      "reason": "superseded by newer morsel: jarvis-20260303-213224-retry-test-agentworkflow-pr-creation-fai.md",
+      "ch_ids": [
+        "ch-29f1e"
+      ],
+      "dt": "2026-03-03 12:25:52"
+    },
+    {
+      "file": "jarvis-20260303-122552-fix-unexported-contextkey-in-auth-middle.md",
+      "title": "Fix unexported contextKey in auth middleware",
+      "state": "ready",
+      "reason": "superseded by newer morsel: jarvis-20260303-182552-fix-unexported-contextkey-in-auth-middle.md",
+      "ch_ids": [
+        "ch-55879"
+      ],
+      "dt": "2026-03-03 12:25:52"
+    },
+    {
+      "file": "jarvis-20260303-124556-retry-ch-29f1e-test-agentworkflow-pr-cre.md",
+      "title": "Retry ch-29f1e: Test AgentWorkflow PR creation failure path",
+      "state": "ready",
+      "reason": "superseded by newer morsel: jarvis-20260303-213224-retry-test-agentworkflow-pr-creation-fai.md",
+      "ch_ids": [
+        "ch-29f1e",
+        "ch-bc2ea",
+        "ch-c730f"
+      ],
+      "dt": "2026-03-03 12:45:56"
+    },
+    {
+      "file": "jarvis-20260303-131549-add-tests-for-notifyactivity-path-select.md",
+      "title": "Add tests for NotifyActivity path selection and failure behavior",
+      "state": "ready",
+      "reason": "superseded by newer morsel: jarvis-20260303-133543-add-tests-for-notifyactivity-path-select.md",
+      "ch_ids": [],
+      "dt": "2026-03-03 13:15:49"
+    },
+    {
+      "file": "jarvis-20260303-132608-retry-test-agentworkflow-pr-creation-fai.md",
+      "title": "Retry: Test AgentWorkflow PR creation failure path",
+      "state": "ready",
+      "reason": "superseded by newer morsel: jarvis-20260303-213224-retry-test-agentworkflow-pr-creation-fai.md",
+      "ch_ids": [
+        "ch-29f1e"
+      ],
+      "dt": "2026-03-03 13:26:08"
+    },
+    {
+      "file": "jarvis-20260303-134047-fix-dod-failed-test-agentworkflow-pr-cre.md",
+      "title": "Fix dod_failed: Test AgentWorkflow PR creation failure path (ch-29f1e)",
+      "state": "ready",
+      "reason": "superseded by newer morsel: jarvis-20260303-213224-retry-test-agentworkflow-pr-creation-fai.md",
+      "ch_ids": [
+        "ch-29f1e"
+      ],
+      "dt": "2026-03-03 13:40:47"
+    },
+    {
+      "file": "jarvis-20260303-140549-fix-unexported-useridkey-in-auth-middlew.md",
+      "title": "Fix unexported userIDKey in auth middleware",
+      "state": "ready",
+      "reason": "superseded by newer morsel: jarvis-20260303-181106-fix-unexported-useridkey-in-auth-middlew.md",
+      "ch_ids": [
+        "ch-55879"
+      ],
+      "dt": "2026-03-03 14:05:49"
+    },
+    {
+      "file": "jarvis-20260303-143603-fix-unexported-contextkey-in-auth-middle.md",
+      "title": "Fix unexported contextKey in auth middleware (ch-65386 unblock)",
+      "state": "ready",
+      "reason": "superseded by newer morsel: jarvis-20260303-182552-fix-unexported-contextkey-in-auth-middle.md",
+      "ch_ids": [
+        "ch-65386"
+      ],
+      "dt": "2026-03-03 14:36:03"
+    },
+    {
+      "file": "jarvis-20260303-145618-investigate-and-fix-dod-failed-ch-29f1e-.md",
+      "title": "Investigate and fix dod_failed ch-29f1e AgentWorkflow PR creation failure path",
+      "state": "ready",
+      "reason": "superseded by newer morsel: jarvis-20260303-164612-retry-dod-failed-test-agentworkflow-pr-c.md",
+      "ch_ids": [
+        "ch-29f1e"
+      ],
+      "dt": "2026-03-03 14:56:18"
+    },
+    {
+      "file": "jarvis-20260303-151604-recover-ch-29f1e-test-agentworkflow-pr-c.md",
+      "title": "Recover ch-29f1e: Test AgentWorkflow PR creation failure path",
+      "state": "ready",
+      "reason": "superseded by newer morsel: jarvis-20260303-213224-retry-test-agentworkflow-pr-creation-fai.md",
+      "ch_ids": [
+        "ch-29f1e"
+      ],
+      "dt": "2026-03-03 15:16:04"
+    },
+    {
+      "file": "jarvis-20260303-152139-retry-test-agentworkflow-pr-creation-fai.md",
+      "title": "Retry: Test AgentWorkflow PR creation failure path",
+      "state": "ready",
+      "reason": "superseded by newer morsel: jarvis-20260303-213224-retry-test-agentworkflow-pr-creation-fai.md",
+      "ch_ids": [
+        "ch-29f1e"
+      ],
+      "dt": "2026-03-03 15:21:39"
+    },
+    {
+      "file": "jarvis-20260303-164154-fix-dod-failed-agentworkflow-pr-creation.md",
+      "title": "Fix dod_failed: AgentWorkflow PR creation failure path test",
+      "state": "ready",
+      "reason": "superseded by newer morsel: jarvis-20260303-213224-retry-test-agentworkflow-pr-creation-fai.md",
+      "ch_ids": [
+        "ch-29f1e"
+      ],
+      "dt": "2026-03-03 16:41:54"
+    },
+    {
+      "file": "jarvis-20260303-164612-fix-unexported-contextkey-in-auth-middle.md",
+      "title": "Fix unexported contextKey in auth middleware (ch-65386)",
+      "state": "ready",
+      "reason": "superseded by newer morsel: jarvis-20260303-182552-fix-unexported-contextkey-in-auth-middle.md",
+      "ch_ids": [
+        "ch-65386"
+      ],
+      "dt": "2026-03-03 16:46:12"
+    },
+    {
+      "file": "jarvis-20260303-172048-retry-ch-29f1e-test-agentworkflow-pr-cre.md",
+      "title": "Retry ch-29f1e: Test AgentWorkflow PR creation failure path",
+      "state": "ready",
+      "reason": "superseded by newer morsel: jarvis-20260303-213224-retry-test-agentworkflow-pr-creation-fai.md",
+      "ch_ids": [
+        "ch-29f1e"
+      ],
+      "dt": "2026-03-03 17:20:48"
+    },
+    {
+      "file": "jarvis-20260303-173123-fix-dod-failed-test-agentworkflow-pr-cre.md",
+      "title": "Fix dod_failed: Test AgentWorkflow PR creation failure path (ch-29f1e)",
+      "state": "ready",
+      "reason": "superseded by newer morsel: jarvis-20260303-213224-retry-test-agentworkflow-pr-creation-fai.md",
+      "ch_ids": [
+        "ch-29f1e"
+      ],
+      "dt": "2026-03-03 17:31:23"
+    },
+    {
+      "file": "jarvis-20260303-180111-retry-test-agentworkflow-pr-creation-fai.md",
+      "title": "Retry: Test AgentWorkflow PR creation failure path (ch-29f1e)",
+      "state": "ready",
+      "reason": "superseded by newer morsel: jarvis-20260303-213224-retry-test-agentworkflow-pr-creation-fai.md",
+      "ch_ids": [
+        "ch-29f1e"
+      ],
+      "dt": "2026-03-03 18:01:11"
+    },
+    {
+      "file": "jarvis-20260303-181551-retry-ch-29f1e-test-agentworkflow-pr-cre.md",
+      "title": "Retry ch-29f1e: Test AgentWorkflow PR creation failure path",
+      "state": "ready",
+      "reason": "superseded by newer morsel: jarvis-20260303-213224-retry-test-agentworkflow-pr-creation-fai.md",
+      "ch_ids": [
+        "ch-29f1e"
+      ],
+      "dt": "2026-03-03 18:15:51"
+    },
+    {
+      "file": "jarvis-20260303-183601-fix-dod-failed-test-agentworkflow-pr-cre.md",
+      "title": "Fix dod_failed: Test AgentWorkflow PR creation failure path (ch-29f1e)",
+      "state": "ready",
+      "reason": "superseded by newer morsel: jarvis-20260303-213224-retry-test-agentworkflow-pr-creation-fai.md",
+      "ch_ids": [
+        "ch-29f1e"
+      ],
+      "dt": "2026-03-03 18:36:01"
+    },
+    {
+      "file": "jarvis-20260303-184554-retry-test-agentworkflow-pr-creation-fai.md",
+      "title": "Retry: Test AgentWorkflow PR creation failure path",
+      "state": "ready",
+      "reason": "superseded by newer morsel: jarvis-20260303-213224-retry-test-agentworkflow-pr-creation-fai.md",
+      "ch_ids": [
+        "ch-29f1e"
+      ],
+      "dt": "2026-03-03 18:45:54"
+    },
+    {
+      "file": "jarvis-20260303-193624-fix-dod-failed-ch-29f1e-test-agentworkfl.md",
+      "title": "Fix dod_failed ch-29f1e: Test AgentWorkflow PR creation failure path",
+      "state": "ready",
+      "reason": "superseded by newer morsel: jarvis-20260303-213224-retry-test-agentworkflow-pr-creation-fai.md",
+      "ch_ids": [
+        "ch-29f1e"
+      ],
+      "dt": "2026-03-03 19:36:24"
+    },
+    {
+      "file": "jarvis-20260303-202604-test-agentworkflow-pr-creation-failure-p.md",
+      "title": "Test AgentWorkflow PR creation failure path (retry)",
+      "state": "ready",
+      "reason": "superseded by newer morsel: jarvis-20260303-213224-retry-test-agentworkflow-pr-creation-fai.md",
+      "ch_ids": [
+        "ch-29f1e"
+      ],
+      "dt": "2026-03-03 20:26:04"
+    }
+  ],
+  "likely_stale_orphan_ch_ref": [
+    {
+      "file": "jarvis-20260303-082545-fix-task-status-not-updating-to-needs-re.md",
+      "title": "Fix task status not updating to needs_review after agent completes PR",
+      "state": "ready",
+      "reason": "references ch-* IDs absent from tasks/dispatches/morsel_stages",
+      "ch_ids": [
+        "ch-23b14",
+        "ch-a3af0",
+        "ch-c8689",
+        "ch-ddd02"
+      ],
+      "dt": "2026-03-03 08:25:45"
+    },
+    {
+      "file": "jarvis-20260303-083045-add-chum-task-update-subcommand.md",
+      "title": "Add chum task update subcommand",
+      "state": "ready",
+      "reason": "references ch-* IDs absent from tasks/dispatches/morsel_stages",
+      "ch_ids": [
+        "ch-c8689"
+      ],
+      "dt": "2026-03-03 08:30:45"
+    },
+    {
+      "file": "jarvis-20260303-084654-cli-chum-review-task-task-id-for-manual-.md",
+      "title": "CLI: chum review --task TASK_ID for manual review trigger",
+      "state": "ready",
+      "reason": "references ch-* IDs absent from tasks/dispatches/morsel_stages",
+      "ch_ids": [
+        "ch-79602"
+      ],
+      "dt": "2026-03-03 08:46:54"
+    },
+    {
+      "file": "jarvis-20260303-094545-investigate-and-fix-dod-failed-on-ch-29f.md",
+      "title": "Investigate and fix dod_failed on ch-29f1e AgentWorkflow PR creation failure test",
+      "state": "ready",
+      "reason": "references ch-* IDs absent from tasks/dispatches/morsel_stages",
+      "ch_ids": [
+        "ch-29f1e"
+      ],
+      "dt": "2026-03-03 09:45:45"
+    },
+    {
+      "file": "jarvis-20260303-102544-investigate-and-fix-dod-failed-on-ch-29f.md",
+      "title": "Investigate and fix dod_failed on ch-29f1e: Test AgentWorkflow PR creation failure path",
+      "state": "ready",
+      "reason": "references ch-* IDs absent from tasks/dispatches/morsel_stages",
+      "ch_ids": [
+        "ch-29f1e"
+      ],
+      "dt": "2026-03-03 10:25:44"
+    },
+    {
+      "file": "jarvis-20260303-105051-refine-ch-29f1e-clarify-dod-and-unblock-.md",
+      "title": "Refine ch-29f1e: clarify DoD and unblock dod_failed state",
+      "state": "ready",
+      "reason": "references ch-* IDs absent from tasks/dispatches/morsel_stages",
+      "ch_ids": [
+        "ch-29f1e"
+      ],
+      "dt": "2026-03-03 10:50:51"
+    },
+    {
+      "file": "jarvis-20260303-110042-fix-ch-d2cbe-push-failure.md",
+      "title": "Fix ch-d2cbe push failure",
+      "state": "ready",
+      "reason": "references ch-* IDs absent from tasks/dispatches/morsel_stages",
+      "ch_ids": [
+        "ch-d2cbe"
+      ],
+      "dt": "2026-03-03 11:00:42"
+    },
+    {
+      "file": "jarvis-20260303-110601-fix-ch-d2cbe-push-failed-on-test-dispatc.md",
+      "title": "Fix ch-d2cbe: push_failed on Test DispatcherWorkflow scan failure task",
+      "state": "ready",
+      "reason": "references ch-* IDs absent from tasks/dispatches/morsel_stages",
+      "ch_ids": [
+        "ch-d2cbe"
+      ],
+      "dt": "2026-03-03 11:06:01"
+    },
+    {
+      "file": "jarvis-20260303-114554-recover-stuck-needs-review-tasks-ch-5587.md",
+      "title": "Recover stuck needs_review tasks ch-55879 and ch-79602",
+      "state": "ready",
+      "reason": "references ch-* IDs absent from tasks/dispatches/morsel_stages",
+      "ch_ids": [
+        "ch-55879",
+        "ch-79602"
+      ],
+      "dt": "2026-03-03 11:45:54"
+    },
+    {
+      "file": "jarvis-20260303-115537-fix-ch-29f1e-test-agentworkflow-pr-creat.md",
+      "title": "Fix ch-29f1e: Test AgentWorkflow PR creation failure path (dod_failed)",
+      "state": "ready",
+      "reason": "references ch-* IDs absent from tasks/dispatches/morsel_stages",
+      "ch_ids": [
+        "ch-29f1e"
+      ],
+      "dt": "2026-03-03 11:55:37"
+    },
+    {
+      "file": "jarvis-20260303-115537-unstick-ch-55879-auth-middleware-needs-r.md",
+      "title": "Unstick ch-55879: auth middleware needs_review with no open PR",
+      "state": "ready",
+      "reason": "references ch-* IDs absent from tasks/dispatches/morsel_stages",
+      "ch_ids": [
+        "ch-55879"
+      ],
+      "dt": "2026-03-03 11:55:37"
+    },
+    {
+      "file": "jarvis-20260303-115537-unstick-ch-79602-ratelimit-config-needs-.md",
+      "title": "Unstick ch-79602: RateLimit config needs_review with no open PR",
+      "state": "ready",
+      "reason": "references ch-* IDs absent from tasks/dispatches/morsel_stages",
+      "ch_ids": [
+        "ch-55879",
+        "ch-79602"
+      ],
+      "dt": "2026-03-03 11:55:37"
+    },
+    {
+      "file": "jarvis-20260303-120622-rebase-ch-79602-onto-current-master-and-.md",
+      "title": "Rebase ch-79602 onto current master and open PR",
+      "state": "ready",
+      "reason": "references ch-* IDs absent from tasks/dispatches/morsel_stages",
+      "ch_ids": [
+        "ch-79602"
+      ],
+      "dt": "2026-03-03 12:06:22"
+    },
+    {
+      "file": "jarvis-20260303-121545-fix-unexported-contextkey-in-auth-middle.md",
+      "title": "Fix unexported contextKey in auth middleware (PR #44)",
+      "state": "ready",
+      "reason": "references ch-* IDs absent from tasks/dispatches/morsel_stages",
+      "ch_ids": [
+        "ch-55879"
+      ],
+      "dt": "2026-03-03 12:15:45"
+    },
+    {
+      "file": "jarvis-20260303-130050-investigate-and-re-queue-ch-29f1e-agentw.md",
+      "title": "Investigate and re-queue ch-29f1e: AgentWorkflow PR creation failure path",
+      "state": "ready",
+      "reason": "references ch-* IDs absent from tasks/dispatches/morsel_stages",
+      "ch_ids": [
+        "ch-29f1e"
+      ],
+      "dt": "2026-03-03 13:00:50"
+    },
+    {
+      "file": "jarvis-20260303-134547-fix-exported-context-key-in-auth-middlew.md",
+      "title": "Fix exported context key in auth middleware (PR #44)",
+      "state": "ready",
+      "reason": "references ch-* IDs absent from tasks/dispatches/morsel_stages",
+      "ch_ids": [
+        "ch-55879"
+      ],
+      "dt": "2026-03-03 13:45:47"
+    },
+    {
+      "file": "jarvis-20260303-144559-investigate-and-re-run-dod-failed-task-c.md",
+      "title": "Investigate and re-run dod_failed task ch-29f1e",
+      "state": "ready",
+      "reason": "references ch-* IDs absent from tasks/dispatches/morsel_stages",
+      "ch_ids": [
+        "ch-29f1e"
+      ],
+      "dt": "2026-03-03 14:45:59"
+    },
+    {
+      "file": "jarvis-20260303-144559-reset-zombie-task-ch-65386-to-open-state.md",
+      "title": "Reset zombie task ch-65386 to open state",
+      "state": "ready",
+      "reason": "references ch-* IDs absent from tasks/dispatches/morsel_stages",
+      "ch_ids": [
+        "ch-65386"
+      ],
+      "dt": "2026-03-03 14:45:59"
+    },
+    {
+      "file": "jarvis-20260303-164612-retry-dod-failed-test-agentworkflow-pr-c.md",
+      "title": "Retry dod_failed: Test AgentWorkflow PR creation failure path",
+      "state": "ready",
+      "reason": "references ch-* IDs absent from tasks/dispatches/morsel_stages",
+      "ch_ids": [
+        "ch-29f1e"
+      ],
+      "dt": "2026-03-03 16:46:12"
+    },
+    {
+      "file": "jarvis-20260303-170215-re-decompose-ch-29f1e-testagentworkflow-.md",
+      "title": "Re-decompose ch-29f1e: TestAgentWorkflow PR creation failure path",
+      "state": "ready",
+      "reason": "references ch-* IDs absent from tasks/dispatches/morsel_stages",
+      "ch_ids": [
+        "ch-29f1e"
+      ],
+      "dt": "2026-03-03 17:02:15"
+    },
+    {
+      "file": "jarvis-20260303-170632-retry-ch-29f1e-agentworkflow-pr-creation.md",
+      "title": "Retry ch-29f1e: AgentWorkflow PR creation failure test",
+      "state": "ready",
+      "reason": "references ch-* IDs absent from tasks/dispatches/morsel_stages",
+      "ch_ids": [
+        "ch-29f1e"
+      ],
+      "dt": "2026-03-03 17:06:32"
+    },
+    {
+      "file": "jarvis-20260303-172049-review-and-merge-ch-55879-implement-auth.md",
+      "title": "Review and merge ch-55879: Implement auth middleware",
+      "state": "ready",
+      "reason": "references ch-* IDs absent from tasks/dispatches/morsel_stages",
+      "ch_ids": [
+        "ch-55879"
+      ],
+      "dt": "2026-03-03 17:20:49"
+    },
+    {
+      "file": "jarvis-20260303-175557-unblock-auth-middleware-review-ch-55879.md",
+      "title": "Unblock auth middleware review ch-55879",
+      "state": "ready",
+      "reason": "references ch-* IDs absent from tasks/dispatches/morsel_stages",
+      "ch_ids": [
+        "ch-55879",
+        "ch-61267"
+      ],
+      "dt": "2026-03-03 17:55:57"
+    },
+    {
+      "file": "jarvis-20260303-175558-verify-rate-limiter-task-dependency-chai.md",
+      "title": "Verify rate-limiter task dependency chain is correct",
+      "state": "ready",
+      "reason": "references ch-* IDs absent from tasks/dispatches/morsel_stages",
+      "ch_ids": [
+        "ch-02829",
+        "ch-34946",
+        "ch-49540",
+        "ch-90411"
+      ],
+      "dt": "2026-03-03 17:55:58"
+    },
+    {
+      "file": "jarvis-20260303-182552-fix-unexported-contextkey-in-auth-middle.md",
+      "title": "Fix unexported contextKey in auth middleware",
+      "state": "ready",
+      "reason": "references ch-* IDs absent from tasks/dispatches/morsel_stages",
+      "ch_ids": [
+        "ch-55879"
+      ],
+      "dt": "2026-03-03 18:25:52"
+    },
+    {
+      "file": "jarvis-20260303-183055-fix-unexported-contextkey-breaks-userfro.md",
+      "title": "Fix unexported contextKey breaks UserFromContext across packages",
+      "state": "ready",
+      "reason": "references ch-* IDs absent from tasks/dispatches/morsel_stages",
+      "ch_ids": [
+        "ch-55879"
+      ],
+      "dt": "2026-03-03 18:30:55"
+    },
+    {
+      "file": "jarvis-20260303-183600-fix-exported-userfromcontext-context-key.md",
+      "title": "Fix exported UserFromContext context key in auth middleware",
+      "state": "ready",
+      "reason": "references ch-* IDs absent from tasks/dispatches/morsel_stages",
+      "ch_ids": [
+        "ch-55879"
+      ],
+      "dt": "2026-03-03 18:36:00"
+    },
+    {
+      "file": "jarvis-20260303-185546-fix-dod-failed-testagentworkflow-prcreat.md",
+      "title": "Fix dod_failed: TestAgentWorkflow_PRCreationFailure",
+      "state": "ready",
+      "reason": "references ch-* IDs absent from tasks/dispatches/morsel_stages",
+      "ch_ids": [
+        "ch-29f1e"
+      ],
+      "dt": "2026-03-03 18:55:46"
+    },
+    {
+      "file": "jarvis-20260303-185546-pr-review-auth-middleware-ch-55879-and-r.md",
+      "title": "PR review: auth middleware (ch-55879) and rate limit config (ch-79602)",
+      "state": "ready",
+      "reason": "references ch-* IDs absent from tasks/dispatches/morsel_stages",
+      "ch_ids": [
+        "ch-55879",
+        "ch-79602"
+      ],
+      "dt": "2026-03-03 18:55:46"
+    },
+    {
+      "file": "jarvis-20260303-190051-fix-unexported-contextkey-type-in-auth-m.md",
+      "title": "Fix unexported contextKey type in auth middleware (PR #44)",
+      "state": "ready",
+      "reason": "references ch-* IDs absent from tasks/dispatches/morsel_stages",
+      "ch_ids": [
+        "ch-55879"
+      ],
+      "dt": "2026-03-03 19:00:51"
+    },
+    {
+      "file": "jarvis-20260303-191608-implement-ch-c8689-test-agentworkflow-me.md",
+      "title": "Implement ch-c8689: Test AgentWorkflow merge failure path",
+      "state": "ready",
+      "reason": "references ch-* IDs absent from tasks/dispatches/morsel_stages",
+      "ch_ids": [
+        "ch-29f1e",
+        "ch-bc2ea",
+        "ch-c8689"
+      ],
+      "dt": "2026-03-03 19:16:08"
+    },
+    {
+      "file": "jarvis-20260303-191608-implement-ch-ddd02-test-parsereposlug-an.md",
+      "title": "Implement ch-ddd02: Test parseRepoSlug and reviewStateToOutcome",
+      "state": "ready",
+      "reason": "references ch-* IDs absent from tasks/dispatches/morsel_stages",
+      "ch_ids": [
+        "ch-ddd02"
+      ],
+      "dt": "2026-03-03 19:16:08"
+    },
+    {
+      "file": "jarvis-20260303-191608-resolve-dod-failed-on-ch-29f1e-verify-fi.md",
+      "title": "Resolve dod_failed on ch-29f1e: verify fix commit 9b6395d covers PR creation failure path",
+      "state": "ready",
+      "reason": "references ch-* IDs absent from tasks/dispatches/morsel_stages",
+      "ch_ids": [
+        "ch-29f1e"
+      ],
+      "dt": "2026-03-03 19:16:08"
+    },
+    {
+      "file": "jarvis-20260303-195637-fix-dod-failed-on-ch-29f1e-testagentwork.md",
+      "title": "Fix dod_failed on ch-29f1e: TestAgentWorkflow_PRCreationFailure",
+      "state": "ready",
+      "reason": "references ch-* IDs absent from tasks/dispatches/morsel_stages",
+      "ch_ids": [
+        "ch-29f1e"
+      ],
+      "dt": "2026-03-03 19:56:37"
+    },
+    {
+      "file": "jarvis-20260303-210558-export-contextkey-in-auth-middleware.md",
+      "title": "Export contextKey in auth middleware",
+      "state": "ready",
+      "reason": "references ch-* IDs absent from tasks/dispatches/morsel_stages",
+      "ch_ids": [
+        "ch-55879"
+      ],
+      "dt": "2026-03-03 21:05:58"
+    },
+    {
+      "file": "jarvis-20260303-213224-retry-test-agentworkflow-pr-creation-fai.md",
+      "title": "Retry: Test AgentWorkflow PR creation failure path",
+      "state": "ready",
+      "reason": "references ch-* IDs absent from tasks/dispatches/morsel_stages",
+      "ch_ids": [
+        "ch-29f1e"
+      ],
+      "dt": "2026-03-03 21:32:24"
+    },
+    {
+      "file": "jarvis-20260303-220119-decompose-ch-57379-into-per-package-call.md",
+      "title": "Decompose ch-57379 into per-package caller updates",
+      "state": "ready",
+      "reason": "references ch-* IDs absent from tasks/dispatches/morsel_stages",
+      "ch_ids": [
+        "ch-57379"
+      ],
+      "dt": "2026-03-03 22:01:19"
+    },
+    {
+      "file": "jarvis-20260303-220119-fix-ch-32633-acceptance-criteria-and-unb.md",
+      "title": "Fix ch-32633 acceptance criteria and unblock PR creation failure test",
+      "state": "ready",
+      "reason": "references ch-* IDs absent from tasks/dispatches/morsel_stages",
+      "ch_ids": [
+        "ch-29f1e",
+        "ch-32633"
+      ],
+      "dt": "2026-03-03 22:01:19"
+    },
+    {
+      "file": "jarvis-20260303-235129-diagnose-and-fix-dispatcherworkflow-not-.md",
+      "title": "Diagnose and fix DispatcherWorkflow not starting from chum serve",
+      "state": "ready",
+      "reason": "references ch-* IDs absent from tasks/dispatches/morsel_stages",
+      "ch_ids": [
+        "ch-16434"
+      ],
+      "dt": "2026-03-03 23:51:29"
+    },
+    {
+      "file": "jarvis-20260303-235129-mark-stale-needs-review-tasks-as-done-wh.md",
+      "title": "Mark stale needs_review tasks as done where PRs are merged",
+      "state": "ready",
+      "reason": "references ch-* IDs absent from tasks/dispatches/morsel_stages",
+      "ch_ids": [
+        "ch-00440",
+        "ch-08021",
+        "ch-50612",
+        "ch-52426",
+        "ch-c8689"
+      ],
+      "dt": "2026-03-03 23:51:29"
+    },
+    {
+      "file": "jarvis-20260304-003630-fix-chum-serve-exits-immediately-after-s.md",
+      "title": "Fix: chum serve exits immediately after startup instead of blocking",
+      "state": "ready",
+      "reason": "references ch-* IDs absent from tasks/dispatches/morsel_stages",
+      "ch_ids": [
+        "ch-02830",
+        "ch-02831"
+      ],
+      "dt": "2026-03-04 00:36:30"
+    },
+    {
+      "file": "jarvis-20260304-004707-reset-stale-needs-review-tasks-with-no-c.md",
+      "title": "Reset stale needs_review tasks with no commits to ready",
+      "state": "ready",
+      "reason": "references ch-* IDs absent from tasks/dispatches/morsel_stages",
+      "ch_ids": [
+        "ch-03718",
+        "ch-32633",
+        "ch-62703"
+      ],
+      "dt": "2026-03-04 00:47:07"
+    },
+    {
+      "file": "jarvis-20260304-005641-mark-tasks-done-when-their-branch-has-no.md",
+      "title": "Mark tasks done when their branch has no diff vs master",
+      "state": "ready",
+      "reason": "references ch-* IDs absent from tasks/dispatches/morsel_stages",
+      "ch_ids": [
+        "ch-03718",
+        "ch-32633",
+        "ch-62703"
+      ],
+      "dt": "2026-03-04 00:56:41"
+    },
+    {
+      "file": "jarvis-20260304-010116-fix-orphaned-running-tasks-after-workflo.md",
+      "title": "Fix orphaned 'running' tasks after workflow completion",
+      "state": "ready",
+      "reason": "references ch-* IDs absent from tasks/dispatches/morsel_stages",
+      "ch_ids": [
+        "ch-08021",
+        "ch-32633",
+        "ch-41062",
+        "ch-52426",
+        "ch-a3af0"
+      ],
+      "dt": "2026-03-04 01:01:16"
+    }
+  ],
+  "keep_candidate": [
+    {
+      "file": "chum-td17a-embedding-pipeline.md",
+      "title": "Unsupervised Automation Phase 1: Embedding Pipeline",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-02-26 20:59:59.660280"
+    },
+    {
+      "file": "chum-td17b-clustering.md",
+      "title": "Unsupervised Automation Phase 2: Signal Point Clustering",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-02-26 20:59:59.660280"
+    },
+    {
+      "file": "chum-td17c-protein-synthesis.md",
+      "title": "Unsupervised Automation Phase 3: Protein Synthesis & Self-Test",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-02-26 20:59:59.660280"
+    },
+    {
+      "file": "chum-td22-proactive-grooming.md",
+      "title": "Proactive whale slicing during strategic groom",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-02-26 20:59:59.665280"
+    },
+    {
+      "file": "chum-td24-calibrate-rate-limits.md",
+      "title": "Calibrate rate limiter caps to actual provider token limits",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-02-26 20:59:59.667280"
+    },
+    {
+      "file": "jarvis-20260227-092731-dependency-update-payloadcms-suite-eslin.md",
+      "title": "Dependency update: PayloadCMS suite + eslint 8\u219210 major upgrade",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-02-27 09:27:31"
+    },
+    {
+      "file": "jarvis-20260303-084542-fix-missing-time-import-in-internal-ast-.md",
+      "title": "Fix missing time import in internal/ast/embed_test.go",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-03-03 08:45:42"
+    },
+    {
+      "file": "jarvis-20260303-084654-dispatcher-re-queue-needs-review-tasks-w.md",
+      "title": "Dispatcher: re-queue needs_review tasks with no active workflow",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-03-03 08:46:54"
+    },
+    {
+      "file": "jarvis-20260303-085526-implement-scanorphanedreviewsactivity-on.md",
+      "title": "Implement ScanOrphanedReviewsActivity on DispatchActivities",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-03-03 08:55:26"
+    },
+    {
+      "file": "jarvis-20260303-101547-test-agentworkflow-handles-pr-creation-f.md",
+      "title": "Test AgentWorkflow handles PR creation failure gracefully",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-03-03 10:15:47"
+    },
+    {
+      "file": "jarvis-20260303-102544-fix-initiatives-db-query-jarvis-db-schem.md",
+      "title": "Fix initiatives DB query \u2014 jarvis.db schema mismatch",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-03-03 10:25:44"
+    },
+    {
+      "file": "jarvis-20260303-103052-decompose-epic-planning-remaining-subtas.md",
+      "title": "Decompose epic-planning: remaining subtasks after plan-04",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-03-03 10:30:52"
+    },
+    {
+      "file": "jarvis-20260303-104056-refine-and-implement-health-check-endpoi.md",
+      "title": "Refine and implement health check endpoint for chum-factory API",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-03-03 10:40:56"
+    },
+    {
+      "file": "jarvis-20260303-105051-refine-epic-planning-decompose-into-exec.md",
+      "title": "Refine epic-planning: decompose into executable subtasks",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-03-03 10:50:51"
+    },
+    {
+      "file": "jarvis-20260303-110600-fix-cortex-auto-reviewer-diagnose-review.md",
+      "title": "Fix Cortex auto-reviewer: diagnose reviewer_error on PRs #30,32,33,35,37,38,39,40",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-03-03 11:06:00"
+    },
+    {
+      "file": "jarvis-20260303-113550-investigate-broken-api-routes-on-port-97.md",
+      "title": "Investigate broken API routes on port 9780",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-03-03 11:35:50"
+    },
+    {
+      "file": "jarvis-20260303-114051-audit-disabled-workflows-and-create-re-e.md",
+      "title": "Audit disabled workflows and create re-enable task list",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-03-03 11:40:51"
+    },
+    {
+      "file": "jarvis-20260303-114051-re-enable-first-cortex-workflow-under-ch.md",
+      "title": "Re-enable first cortex workflow under CHUM orchestration",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-03-03 11:40:51"
+    },
+    {
+      "file": "jarvis-20260303-132049-add-unit-tests-for-notifyactivity-path-s.md",
+      "title": "Add unit tests for NotifyActivity path selection and failure behavior",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-03-03 13:20:49"
+    },
+    {
+      "file": "jarvis-20260303-133543-add-tests-for-notifyactivity-path-select.md",
+      "title": "Add tests for NotifyActivity path selection and failure behavior",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-03-03 13:35:43"
+    },
+    {
+      "file": "jarvis-20260303-135122-audit-chum-store-package-for-conflicts-w.md",
+      "title": "Audit Chum store package for conflicts with Cortex store interfaces",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-03-03 13:51:22"
+    },
+    {
+      "file": "jarvis-20260303-135122-port-cortex-dag-implementation-to-chum-p.md",
+      "title": "Port Cortex DAG implementation to Chum planning package",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-03-03 13:51:22"
+    },
+    {
+      "file": "jarvis-20260303-135122-port-cortex-dispatchstore-and-metricssto.md",
+      "title": "Port Cortex DispatchStore and MetricsStore interfaces to Chum",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-03-03 13:51:22"
+    },
+    {
+      "file": "jarvis-20260303-135122-port-cortex-tracestore-interface-and-sql.md",
+      "title": "Port Cortex TraceStore interface and SQLite implementation to Chum",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-03-03 13:51:22"
+    },
+    {
+      "file": "jarvis-20260303-140105-fix-unexported-useridkey-in-auth-middlew.md",
+      "title": "Fix unexported userIDKey in auth middleware so UserFromContext works cross-package",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-03-03 14:01:05"
+    },
+    {
+      "file": "jarvis-20260303-152920-split-temporal-move-activity-files-to-in.md",
+      "title": "Split temporal: move activity files to internal/activity/",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-03-03 15:29:20"
+    },
+    {
+      "file": "jarvis-20260303-152920-split-temporal-move-agent-cli-go-and-age.md",
+      "title": "Split temporal: move agent_cli.go and agent_parsers.go to internal/agent/",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-03-03 15:29:20"
+    },
+    {
+      "file": "jarvis-20260303-152920-split-temporal-update-worker-go-to-impor.md",
+      "title": "Split temporal: update worker.go to import from new packages",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-03-03 15:29:20"
+    },
+    {
+      "file": "jarvis-20260303-152921-extract-store-interfaces-define-reader-a.md",
+      "title": "Extract store interfaces: define Reader and Writer in iface.go",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-03-03 15:29:21"
+    },
+    {
+      "file": "jarvis-20260303-152921-extract-store-interfaces-update-consumer.md",
+      "title": "Extract store interfaces: update consumers to accept interfaces",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-03-03 15:29:21"
+    },
+    {
+      "file": "jarvis-20260303-152921-split-temporal-resolve-circular-imports-.md",
+      "title": "Split temporal: resolve circular imports and shared types",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-03-03 15:29:21"
+    },
+    {
+      "file": "jarvis-20260303-181106-fix-unexported-useridkey-in-auth-middlew.md",
+      "title": "Fix unexported userIDKey in auth middleware",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-03-03 18:11:06"
+    },
+    {
+      "file": "jarvis-20260303-185044-health-check-endpoint-for-chum-factory-a.md",
+      "title": "Health check endpoint for chum-factory API (cf-d0i)",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-03-03 18:50:44"
+    },
+    {
+      "file": "jarvis-20260303-194058-fix-auth-middleware-contextkey-visibilit.md",
+      "title": "Fix auth middleware contextKey visibility",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-03-03 19:40:58"
+    },
+    {
+      "file": "jarvis-20260303-203548-port-activity-definitions-from-cortex-to.md",
+      "title": "Port activity definitions from Cortex to Chum temporal layer",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-03-03 20:35:48"
+    },
+    {
+      "file": "jarvis-20260303-203548-port-failure-classifier-to-chum-temporal.md",
+      "title": "Port failure classifier to Chum temporal layer",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-03-03 20:35:48"
+    },
+    {
+      "file": "jarvis-20260303-203548-port-planning-workflow-to-chum-temporal-.md",
+      "title": "Port planning workflow to Chum temporal layer",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-03-03 20:35:48"
+    },
+    {
+      "file": "jarvis-20260303-203548-port-workflow-dispatcher-to-chum-tempora.md",
+      "title": "Port workflow dispatcher to Chum temporal layer",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-03-03 20:35:48"
+    },
+    {
+      "file": "jarvis-20260303-203549-add-temporal-workflow-tests-for-planning.md",
+      "title": "Add temporal workflow tests for planning workflow",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-03-03 20:35:49"
+    },
+    {
+      "file": "jarvis-20260303-212601-temporal-schedule-for-weekly-hg-report.md",
+      "title": "Temporal schedule for weekly HG report",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-03-03 21:26:01"
+    },
+    {
+      "file": "jarvis-20260303-215715-wire-and-validate-dashboard-api-addition.md",
+      "title": "Wire and validate dashboard API additions",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-03-03 21:57:15"
+    },
+    {
+      "file": "jarvis-20260303-215716-open-prs-for-jarvis-rename-conventions-f.md",
+      "title": "Open PRs for jarvis/rename-conventions, fix/notify-collision, fix/review-recovery",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-03-03 21:57:16"
+    },
+    {
+      "file": "jarvis-20260303-220613-fix-broken-build-unknown-fields-dag-and-.md",
+      "title": "Fix broken build: unknown fields DAG and WebDir in jarvis.API struct",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-03-03 22:06:13"
+    },
+    {
+      "file": "jarvis-20260303-221612-fix-build-failure-jarvis-api-missing-dag.md",
+      "title": "Fix build failure: jarvis.API missing DAG and WebDir fields in cmd/chum/main.go",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-03-03 22:16:12"
+    },
+    {
+      "file": "jarvis-20260303-222108-fix-build-failure-remove-stale-dag-and-w.md",
+      "title": "Fix build failure: remove stale DAG and WebDir fields from API instantiation",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-03-03 22:21:08"
+    },
+    {
+      "file": "jarvis-20260303-223557-diagnose-why-dispatcherworkflow-is-not-s.md",
+      "title": "Diagnose why DispatcherWorkflow is not starting",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-03-03 22:35:57"
+    },
+    {
+      "file": "jarvis-20260303-224042-debug-why-dispatcherworkflow-never-start.md",
+      "title": "Debug why DispatcherWorkflow never starts",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-03-03 22:40:42"
+    },
+    {
+      "file": "jarvis-20260303-225603-diagnose-and-fix-dispatcherworkflow-not-.md",
+      "title": "Diagnose and fix DispatcherWorkflow not starting in chum serve",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-03-03 22:56:03"
+    },
+    {
+      "file": "jarvis-20260303-225603-reset-stale-running-tasks-to-ready-on-ch.md",
+      "title": "Reset stale 'running' tasks to 'ready' on chum serve startup",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-03-03 22:56:03"
+    },
+    {
+      "file": "jarvis-20260303-230128-diagnose-why-chum-serve-doesn-t-start-di.md",
+      "title": "Diagnose why chum serve doesn't start DispatcherWorkflow",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-03-03 23:01:28"
+    },
+    {
+      "file": "jarvis-20260303-230129-fix-chum-serve-to-actually-start-dispatc.md",
+      "title": "Fix chum serve to actually start DispatcherWorkflow on launch",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-03-03 23:01:29"
+    },
+    {
+      "file": "jarvis-20260303-231110-add-chum-task-update-status-command-to-c.md",
+      "title": "Add chum task update --status command to CLI",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-03-03 23:11:10"
+    },
+    {
+      "file": "jarvis-20260303-231110-diagnose-and-fix-dispatcherworkflow-not-.md",
+      "title": "Diagnose and fix DispatcherWorkflow not re-scheduling after termination",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-03-03 23:11:10"
+    },
+    {
+      "file": "jarvis-20260303-233144-debug-why-dispatcherworkflow-never-start.md",
+      "title": "Debug why DispatcherWorkflow never starts from chum serve",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-03-03 23:31:44"
+    },
+    {
+      "file": "jarvis-20260303-235608-increase-initiativeworkflow-runpicoclawa.md",
+      "title": "Increase InitiativeWorkflow RunPicoClawActivity timeout from 5m to 15m",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-03-03 23:56:08"
+    },
+    {
+      "file": "jarvis-20260304-000614-add-mtime-based-caching-to-parser-parsef.md",
+      "title": "Add mtime-based caching to Parser.ParseFile",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-03-04 00:06:14"
+    },
+    {
+      "file": "jarvis-20260304-000614-implement-internal-ratelimit-package-wit.md",
+      "title": "Implement internal/ratelimit package with token-bucket limiter",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-03-04 00:06:14"
+    },
+    {
+      "file": "jarvis-20260304-000615-decompose-epic-planning-ceremony-into-im.md",
+      "title": "Decompose epic-planning ceremony into implementation tasks",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-03-04 00:06:15"
+    },
+    {
+      "file": "jarvis-20260304-004109-diagnose-needs-review-tasks-with-no-asso.md",
+      "title": "Diagnose needs_review tasks with no associated PRs",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-03-04 00:41:09"
+    },
+    {
+      "file": "jarvis-20260304-004707-fix-pr-creation-in-chum-factory-missing-.md",
+      "title": "Fix PR creation in chum-factory \u2014 missing local main branch",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-03-04 00:47:07"
+    },
+    {
+      "file": "jarvis-20260304-005041-ingest-morsels-from-cortex-morsels-direc.md",
+      "title": "Ingest morsels from cortex/.morsels directory",
+      "state": "ready",
+      "reason": "no stale signal matched",
+      "ch_ids": [],
+      "dt": "2026-03-04 00:50:41"
+    }
+  ]
+}

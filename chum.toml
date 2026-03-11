@@ -109,12 +109,12 @@ tier = "balanced"
 authed = true
 model = "claude-sonnet-4-5"
 cli = "claude"
-enabled = true
+enabled = false  # DISABLED: Claude tokens exhausted, re-enable tomorrow
 
 [tiers]
 fast = ["gemini", "gemini-flash-lite", "gemini-3-flash", "codex"]
-balanced = ["codex-medium", "gemini-high", "gemini-3-pro", "claude"]
-premium = ["codex-high", "claude"]
+balanced = ["codex-medium", "gemini-high", "gemini-3-pro"]
+premium = ["codex-high"]
 
 [health]
 check_interval = "2m"
